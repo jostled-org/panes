@@ -1,0 +1,26 @@
+[package]
+name = "panes-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "WASM/canvas adapter for the panes layout engine"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jostled-org/panes"
+homepage = "https://github.com/jostled-org/panes"
+keywords = ["layout", "wasm", "canvas", "webassembly"]
+categories = ["gui", "wasm"]
+
+[dependencies]
+panes = { version = "0.1", path = ".." }
+rustc-hash = "2"
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+default = []
+js = ["wasm-bindgen"]
+
+[dev-dependencies]
+panes = { version = "0.1", path = ".." }
+rustc-hash = "2"
+
+[lints]
+workspace = true

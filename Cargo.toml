@@ -1,0 +1,64 @@
+[package]
+name = "panes"
+version = "0.1.0"
+edition = "2024"
+description = "Renderer-agnostic layout engine with SwiftUI-grade ergonomics"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jostled-org/panes"
+homepage = "https://github.com/jostled-org/panes"
+keywords = ["layout", "flexbox", "grid", "tui", "ui"]
+categories = ["gui"]
+exclude = ["docs/", "logs/"]
+
+[features]
+toml = ["dep:toml", "dep:serde"]
+
+[dependencies]
+rustc-hash = "2"
+serde = { version = "1", features = ["derive"], optional = true }
+taffy = "0.9"
+thiserror = "2"
+toml = { version = "0.8", optional = true }
+
+[lints]
+workspace = true
+
+[workspace]
+members = [".", "panes-ratatui", "panes-egui", "panes-css", "panes-wasm"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+single_match = "allow"
+single_match_else = "allow"
+needless_match = "warn"
+needless_late_init = "warn"
+redundant_pattern_matching = "warn"
+redundant_pattern = "warn"
+redundant_guards = "warn"
+collapsible_match = "warn"
+match_single_binding = "warn"
+match_same_arms = "warn"
+match_ref_pats = "warn"
+needless_bool = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.dev]
+incremental = true
+debug = "line-tables-only"
+
+[profile.test]
+incremental = true
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "resolve"
+harness = false

@@ -1,0 +1,64 @@
+use std::sync::Arc;
+
+use crate::builder::{LayoutBuilder, gap};
+use crate::error::PaneError;
+use crate::layout::Layout;
+use crate::panel::grow;
+use crate::preset::{add_active_hidden_panels, collect_kinds, validate_active, validate_f32_param, validate_kinds};
+use crate::preset::master_stack::col_style;
+
+pub struct Deck {
+    kinds: Arc<[Arc<str>]>,
+    master_ratio: f32,
+    active: usize,
+    gap: f32,
+}
+
+impl Deck {
+    pub(crate) fn new(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Self {
+        Self {
+            kinds: collect_kinds(kinds),
+            master_ratio: 0.5,
+            active: 0,
+            gap: 0.0,
+        }
+    }
+
+    pub fn master_ratio(mut self, ratio: f32) -> Self {
+        self.master_ratio = ratio;
+        self
+    }
+
+    pub fn active(mut self, index: usize) -> Self {
+        self.active = index;
+        self
+    }
+
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.gap = gap;
+        self
+    }
+
+    pub fn build(&self) -> Result<Layout, PaneError> {
+        validate_kinds(&self.kinds)?;
+        validate_active(self.active, self.kinds.len())?;
+        validate_f32_param("master_ratio", self.master_ratio)?;
+
+        let mut b = LayoutBuilder::new();
+        let ratio = self.master_ratio;
+        let gap_px = self.gap;
+        let master_kind = Arc::clone(&self.kinds[0]);
+        let active = self.active;
+
+        b.row(gap(gap_px), |r| {
+            r.panel(master_kind, grow(ratio))?;
+            r.taffy_node(col_style(1.0 - ratio, 0.0), |c| {
+                add_active_hidden_panels(c, &self.kinds[1..], active)
+            })
+        })?;
+
+        b.build()
+    }
+}
+
+super::impl_preset!(Deck);

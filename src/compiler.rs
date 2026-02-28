@@ -1,0 +1,263 @@
+use rustc_hash::FxHashMap;
+
+use crate::error::PaneError;
+use crate::node::{Node, NodeId, PanelId};
+use crate::panel::Constraints;
+use crate::tree::LayoutTree;
+
+/// The axis along which a parent container lays out its children.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    /// Row container: children flow left-to-right. Constraints apply to width.
+    Horizontal,
+    /// Col container: children flow top-to-bottom. Constraints apply to height.
+    Vertical,
+}
+
+/// Result of compiling a `LayoutTree` into a Taffy tree.
+pub struct CompileResult {
+    pub taffy_tree: taffy::TaffyTree,
+    pub node_map: FxHashMap<NodeId, taffy::NodeId>,
+    pub root: taffy::NodeId,
+}
+
+/// Mutable state threaded through recursive compilation.
+struct CompileCtx {
+    taffy_tree: taffy::TaffyTree,
+    node_map: FxHashMap<NodeId, taffy::NodeId>,
+}
+
+/// Map panes `Constraints` to a Taffy `Style` for a child along the given axis.
+pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Style {
+    let (flex_grow, flex_basis, flex_shrink) = match (constraints.grow, constraints.fixed) {
+        (Some(g), _) => (g, taffy::Dimension::length(0.0), 1.0),
+        (_, Some(f)) => (0.0, taffy::Dimension::length(f), 0.0),
+        (None, None) => (1.0, taffy::Dimension::length(0.0), 1.0),
+    };
+
+    let min_dim = constraints
+        .min
+        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
+    let max_dim = constraints
+        .max
+        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
+
+    let auto = taffy::Dimension::auto();
+    let (min_size, max_size) = match axis {
+        Axis::Horizontal => (
+            taffy::Size {
+                width: min_dim,
+                height: auto,
+            },
+            taffy::Size {
+                width: max_dim,
+                height: auto,
+            },
+        ),
+        Axis::Vertical => (
+            taffy::Size {
+                width: auto,
+                height: min_dim,
+            },
+            taffy::Size {
+                width: auto,
+                height: max_dim,
+            },
+        ),
+    };
+
+    taffy::Style {
+        flex_grow,
+        flex_basis,
+        flex_shrink,
+        min_size,
+        max_size,
+        ..Default::default()
+    }
+}
+
+/// Build a Taffy `Style` for a container node (Row, Col, or TaffyPassthrough).
+///
+/// Only called from the container arm of `compile_node`; the Panel arm is
+/// unreachable by construction but kept for exhaustiveness.
+fn container_style(node: &Node, is_root: bool) -> taffy::Style {
+    let (size, flex_grow, flex_basis, flex_shrink) = match is_root {
+        true => (
+            taffy::Size {
+                width: taffy::Dimension::percent(1.0),
+                height: taffy::Dimension::percent(1.0),
+            },
+            0.0,
+            taffy::Dimension::auto(),
+            0.0,
+        ),
+        false => (taffy::Size::auto(), 1.0, taffy::Dimension::length(0.0), 1.0),
+    };
+
+    match node {
+        Node::Row { gap, .. } => taffy::Style {
+            flex_direction: taffy::FlexDirection::Row,
+            size,
+            flex_grow,
+            flex_basis,
+            flex_shrink,
+            gap: taffy::Size {
+                width: taffy::LengthPercentage::length(*gap),
+                height: taffy::LengthPercentage::length(0.0),
+            },
+            ..Default::default()
+        },
+        Node::Col { gap, .. } => taffy::Style {
+            flex_direction: taffy::FlexDirection::Column,
+            size,
+            flex_grow,
+            flex_basis,
+            flex_shrink,
+            gap: taffy::Size {
+                width: taffy::LengthPercentage::length(0.0),
+                height: taffy::LengthPercentage::length(*gap),
+            },
+            ..Default::default()
+        },
+        Node::TaffyPassthrough { style, .. } => style.as_ref().clone(),
+        Node::Panel { .. } => taffy::Style::default(),
+    }
+}
+
+/// Derive the child axis from a parent node's layout direction.
+fn axis_of(node: &Node) -> Axis {
+    match node {
+        Node::Col { .. } => Axis::Vertical,
+        Node::TaffyPassthrough { style, .. }
+            if matches!(
+                style.flex_direction,
+                taffy::FlexDirection::Column | taffy::FlexDirection::ColumnReverse
+            ) =>
+        {
+            Axis::Vertical
+        }
+        _ => Axis::Horizontal,
+    }
+}
+
+/// Compile a `LayoutTree` into a Taffy tree ready for layout computation.
+///
+/// Validates the tree, then recursively walks from root, mapping each panes
+/// node to a corresponding Taffy node.
+pub fn compile(tree: &LayoutTree) -> Result<CompileResult, PaneError> {
+    #[cfg(debug_assertions)]
+    tree.validate()?;
+
+    let root_id = tree
+        .root()
+        .ok_or_else(|| PaneError::InvalidTree("root is not set".into()))?;
+
+    let mut ctx = CompileCtx {
+        taffy_tree: taffy::TaffyTree::new(),
+        node_map: FxHashMap::with_capacity_and_hasher(tree.node_count(), Default::default()),
+    };
+
+    let root_node = tree.node(root_id).ok_or(PaneError::NodeNotFound(root_id))?;
+    let root_axis = axis_of(root_node);
+    let taffy_root = compile_node(tree, root_id, root_axis, true, &mut ctx)?;
+
+    Ok(CompileResult {
+        taffy_tree: ctx.taffy_tree,
+        node_map: ctx.node_map,
+        root: taffy_root,
+    })
+}
+
+/// Recursively compile a single panes node into the Taffy tree.
+fn compile_node(
+    tree: &LayoutTree,
+    nid: NodeId,
+    parent_axis: Axis,
+    is_root: bool,
+    ctx: &mut CompileCtx,
+) -> Result<taffy::NodeId, PaneError> {
+    let node = tree.node(nid).ok_or(PaneError::NodeNotFound(nid))?;
+
+    let taffy_id = match node {
+        Node::Panel { constraints, .. } => {
+            let style = constraints_to_style(constraints, parent_axis);
+            ctx.taffy_tree
+                .new_leaf(style)
+                .map_err(|e| PaneError::InvalidTree(e.to_string().into()))?
+        }
+        Node::Row { .. } | Node::Col { .. } | Node::TaffyPassthrough { .. } => {
+            let taffy_children = compile_children(tree, node, ctx)?;
+            let style = container_style(node, is_root);
+            ctx.taffy_tree
+                .new_with_children(style, &taffy_children)
+                .map_err(|e| PaneError::InvalidTree(e.to_string().into()))?
+        }
+    };
+
+    ctx.node_map.insert(nid, taffy_id);
+    Ok(taffy_id)
+}
+
+/// Compile all children of a container node, returning their Taffy node ids.
+fn compile_children(
+    tree: &LayoutTree,
+    node: &Node,
+    ctx: &mut CompileCtx,
+) -> Result<Vec<taffy::NodeId>, PaneError> {
+    let child_axis = axis_of(node);
+    node.children()
+        .iter()
+        .map(|&child_nid| compile_node(tree, child_nid, child_axis, false, ctx))
+        .collect()
+}
+
+/// Reject NaN, negative, or infinite viewport dimensions.
+fn validate_viewport(width: f32, height: f32) -> Result<(), PaneError> {
+    validate_dimension(width)?;
+    validate_dimension(height)
+}
+
+fn validate_dimension(d: f32) -> Result<(), PaneError> {
+    match d {
+        v if v.is_nan() => Err(PaneError::InvalidViewport(
+            "dimensions must not be NaN".into(),
+        )),
+        v if v < 0.0 => Err(PaneError::InvalidViewport(
+            "dimensions must not be negative".into(),
+        )),
+        v if v.is_infinite() => Err(PaneError::InvalidViewport(
+            "dimensions must be finite".into(),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Run Taffy layout computation on a compiled tree at the given dimensions.
+pub fn compute_layout(
+    result: &mut CompileResult,
+    width: f32,
+    height: f32,
+) -> Result<(), PaneError> {
+    validate_viewport(width, height)?;
+    let available = taffy::Size {
+        width: taffy::AvailableSpace::Definite(width),
+        height: taffy::AvailableSpace::Definite(height),
+    };
+    result
+        .taffy_tree
+        .compute_layout(result.root, available)
+        .map_err(|e| PaneError::InvalidTree(e.to_string().into()))
+}
+
+/// Look up the computed layout for a panel by its `PanelId`.
+///
+/// Resolves PanelId → NodeId → taffy::NodeId → taffy Layout.
+pub fn panel_layout<'a>(
+    result: &'a CompileResult,
+    tree: &LayoutTree,
+    pid: PanelId,
+) -> Option<&'a taffy::Layout> {
+    let nid = tree.node_for_panel(pid)?;
+    let taffy_id = result.node_map.get(&nid)?;
+    result.taffy_tree.layout(*taffy_id).ok()
+}
