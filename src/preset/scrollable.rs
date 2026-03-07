@@ -6,6 +6,7 @@ use crate::layout::Layout;
 use crate::panel::fixed;
 use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 
+/// Builder for the scrollable preset layout.
 pub struct Scrollable {
     kinds: Arc<[Arc<str>]>,
     col_width: f32,
@@ -21,16 +22,19 @@ impl Scrollable {
         }
     }
 
+    /// Set the column width.
     pub fn col_width(mut self, width: f32) -> Self {
         self.col_width = width;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_f32_param("col_width", self.col_width)?;

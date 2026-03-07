@@ -16,8 +16,11 @@ pub enum Axis {
 
 /// Result of compiling a `LayoutTree` into a Taffy tree.
 pub struct CompileResult {
+    /// The Taffy tree backing layout computation.
     pub taffy_tree: taffy::TaffyTree,
+    /// Mapping from panes `NodeId` to Taffy `NodeId`.
     pub node_map: FxHashMap<NodeId, taffy::NodeId>,
+    /// The Taffy root node.
     pub root: taffy::NodeId,
 }
 

@@ -6,6 +6,7 @@ use crate::layout::Layout;
 use crate::panel::{fixed, grow};
 use crate::preset::validate_f32_param;
 
+/// Builder for the sidebar preset layout.
 pub struct Sidebar {
     sidebar_kind: Arc<str>,
     content_kind: Arc<str>,
@@ -26,16 +27,19 @@ impl Sidebar {
         }
     }
 
+    /// Set the sidebar width.
     pub fn sidebar_width(mut self, width: f32) -> Self {
         self.sidebar_width = width;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_f32_param("sidebar_width", self.sidebar_width)?;
 

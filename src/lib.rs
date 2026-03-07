@@ -1,7 +1,12 @@
-// panes — renderer-agnostic layout engine for Rust
+//! Renderer-agnostic spatial layout engine.
+//!
+//! Describe panels in rows, columns, and presets. panes solves the geometry
+//! via Taffy's flexbox engine and hands back a map of `PanelId → Rect`.
 
 mod builder;
+/// Compiles a [`LayoutTree`] into a Taffy tree for layout computation.
 pub mod compiler;
+/// Frame-to-frame diffing of resolved layouts.
 pub mod diff;
 mod error;
 mod layout;
@@ -10,7 +15,9 @@ mod node;
 mod panel;
 mod preset;
 mod rect;
+/// Resolves compiled Taffy output into [`ResolvedLayout`].
 pub mod resolver;
+/// Stateful runtime with viewport tracking, caching, and frame diffing.
 pub mod runtime;
 #[cfg(feature = "toml")]
 mod toml_parse;

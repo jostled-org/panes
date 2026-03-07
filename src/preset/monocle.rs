@@ -5,6 +5,7 @@ use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::{add_active_hidden_panels, collect_kinds, validate_active, validate_kinds};
 
+/// Builder for the monocle preset layout.
 pub struct Monocle {
     kinds: Arc<[Arc<str>]>,
     active: usize,
@@ -18,11 +19,13 @@ impl Monocle {
         }
     }
 
+    /// Set which panel index is active (visible).
     pub fn active(mut self, index: usize) -> Self {
         self.active = index;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_active(self.active, self.kinds.len())?;

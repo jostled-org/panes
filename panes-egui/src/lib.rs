@@ -1,4 +1,4 @@
-// panes-egui — egui adapter for panes layout engine
+//! Convert panes layouts into `egui::Rect` values.
 
 use panes::{PanelId, ResolvedLayout};
 use rustc_hash::FxHashMap;

@@ -1,10 +1,10 @@
-You want layout math separate from your egui widget code. Every frame you're nesting `ui.horizontal()` and `ui.vertical()` to approximate what a layout engine should compute once.
-
-**panes-egui** converts [`panes`](https://crates.io/crates/panes) layouts into `egui::Rect` values for direct use in your render pass.
-
 [![crates.io](https://img.shields.io/crates/v/panes-egui.svg)](https://crates.io/crates/panes-egui)
 [![docs.rs](https://docs.rs/panes-egui/badge.svg)](https://docs.rs/panes-egui)
 [![license](https://img.shields.io/crates/l/panes-egui.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
+
+You want layout math separate from your egui widget code. Every frame you're nesting `ui.horizontal()` and `ui.vertical()` to approximate what a layout engine should compute once.
+
+**panes-egui** converts [`panes`](https://crates.io/crates/panes) layouts into `egui::Rect` values for direct use in your render pass.
 
 ## Install
 

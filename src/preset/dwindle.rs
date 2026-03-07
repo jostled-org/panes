@@ -7,6 +7,7 @@ use crate::panel::grow;
 use crate::preset::master_stack::{col_style, row_style};
 use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 
+/// Builder for the dwindle preset layout.
 pub struct Dwindle {
     kinds: Arc<[Arc<str>]>,
     ratio: f32,
@@ -22,16 +23,19 @@ impl Dwindle {
         }
     }
 
+    /// Set the split ratio.
     pub fn ratio(mut self, ratio: f32) -> Self {
         self.ratio = ratio;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_f32_param("ratio", self.ratio)?;

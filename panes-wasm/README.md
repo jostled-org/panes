@@ -1,10 +1,10 @@
-You're rendering to a canvas or passing layout data to JavaScript. You need f64 coordinates, not f32, and optionally `wasm-bindgen` interop.
-
-**panes-wasm** converts [`panes`](https://crates.io/crates/panes) layouts into `WasmRect` values with f64 fields for JavaScript consumption.
-
 [![crates.io](https://img.shields.io/crates/v/panes-wasm.svg)](https://crates.io/crates/panes-wasm)
 [![docs.rs](https://docs.rs/panes-wasm/badge.svg)](https://docs.rs/panes-wasm)
 [![license](https://img.shields.io/crates/l/panes-wasm.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
+
+You're rendering to a canvas or passing layout data to JavaScript. You need f64 coordinates, not f32, and optionally `wasm-bindgen` interop.
+
+**panes-wasm** converts [`panes`](https://crates.io/crates/panes) layouts into `WasmRect` values with f64 fields for JavaScript consumption.
 
 ## Install
 

@@ -6,18 +6,28 @@ use crate::layout::Layout;
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum TomlError {
+    /// TOML deserialization failed.
     #[error("TOML parse error: {0}")]
     Parse(#[from] toml::de::Error),
 
+    /// The strategy name is not recognized.
     #[error("unknown strategy: {0}")]
     UnknownStrategy(Box<str>),
 
+    /// A required field is absent.
     #[error("missing field: {0}")]
     MissingField(Box<str>),
 
+    /// A field value is out of range or otherwise invalid.
     #[error("invalid value for field '{field}': {reason}")]
-    InvalidValue { field: Box<str>, reason: Box<str> },
+    InvalidValue {
+        /// The field name.
+        field: Box<str>,
+        /// Why the value is invalid.
+        reason: Box<str>,
+    },
 
+    /// File I/O error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

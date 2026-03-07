@@ -6,6 +6,7 @@ use crate::layout::Layout;
 use crate::preset::dwindle::build_recursive;
 use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 
+/// Builder for the spiral preset layout.
 pub struct Spiral {
     kinds: Arc<[Arc<str>]>,
     ratio: f32,
@@ -21,16 +22,19 @@ impl Spiral {
         }
     }
 
+    /// Set the split ratio.
     pub fn ratio(mut self, ratio: f32) -> Self {
         self.ratio = ratio;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_f32_param("ratio", self.ratio)?;

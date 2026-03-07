@@ -32,6 +32,7 @@ pub struct LayoutBuilder {
 }
 
 impl LayoutBuilder {
+    /// Create an empty builder with no root set.
     pub fn new() -> Self {
         Self {
             tree: LayoutTree::new(),

@@ -1,4 +1,4 @@
-// panes-wasm — WASM/canvas adapter for panes layout engine
+//! Convert panes layouts into f64 rects for WASM/JavaScript consumption.
 
 use panes::{PanelId, ResolvedLayout};
 use rustc_hash::FxHashMap;
@@ -7,9 +7,13 @@ use rustc_hash::FxHashMap;
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "js", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct WasmRect {
+    /// Horizontal origin.
     pub x: f64,
+    /// Vertical origin.
     pub y: f64,
+    /// Width.
     pub w: f64,
+    /// Height.
     pub h: f64,
 }
 

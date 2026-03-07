@@ -6,6 +6,7 @@ use crate::layout::Layout;
 use crate::preset::master_stack::row_style;
 use crate::preset::{collect_kinds, validate_kinds};
 
+/// Builder for the grid preset layout.
 pub struct Grid {
     cols: usize,
     kinds: Arc<[Arc<str>]>,
@@ -21,11 +22,13 @@ impl Grid {
         }
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         match self.cols {
             0 => {

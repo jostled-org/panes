@@ -1,17 +1,23 @@
 /// Axis-aligned rectangle defined by origin (x, y) and size (w, h).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rect {
+    /// Horizontal origin.
     pub x: f32,
+    /// Vertical origin.
     pub y: f32,
+    /// Width.
     pub w: f32,
+    /// Height.
     pub h: f32,
 }
 
 impl Rect {
+    /// Compute the area (w × h).
     pub fn area(self) -> f32 {
         self.w * self.h
     }
 
+    /// Return the center point as `(x, y)`.
     pub fn center(self) -> (f32, f32) {
         (self.x + self.w / 2.0, self.y + self.h / 2.0)
     }

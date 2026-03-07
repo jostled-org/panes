@@ -7,6 +7,7 @@ use crate::panel::grow;
 use crate::preset::master_stack::{add_panels, col_style};
 use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 
+/// Builder for the centered-master preset layout.
 pub struct CenteredMaster {
     kinds: Arc<[Arc<str>]>,
     master_ratio: f32,
@@ -22,16 +23,19 @@ impl CenteredMaster {
         }
     }
 
+    /// Set the master panel's share of the viewport.
     pub fn master_ratio(mut self, ratio: f32) -> Self {
         self.master_ratio = ratio;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_f32_param("master_ratio", self.master_ratio)?;

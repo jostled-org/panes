@@ -8,6 +8,7 @@ pub struct PanelIdGenerator {
 }
 
 impl PanelIdGenerator {
+    /// Create a generator starting at zero.
     pub fn new() -> Self {
         Self::default()
     }
@@ -28,18 +29,24 @@ impl PanelIdGenerator {
 /// Spatial constraints for a panel within a layout.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Constraints {
+    /// Flex grow factor. Mutually exclusive with `fixed`.
     pub grow: Option<f32>,
+    /// Fixed size in layout units. Mutually exclusive with `grow`.
     pub fixed: Option<f32>,
+    /// Minimum size along the parent axis.
     pub min: Option<f32>,
+    /// Maximum size along the parent axis.
     pub max: Option<f32>,
 }
 
 impl Constraints {
+    /// Set the minimum size constraint.
     pub fn min(mut self, value: f32) -> Self {
         self.min = Some(value);
         self
     }
 
+    /// Set the maximum size constraint.
     pub fn max(mut self, value: f32) -> Self {
         self.max = Some(value);
         self

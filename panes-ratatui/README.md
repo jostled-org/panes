@@ -1,10 +1,10 @@
-You computed layout rectangles with float precision. Now you need them as `ratatui::layout::Rect` without gaps between adjacent panels.
-
-**panes-ratatui** converts [`panes`](https://crates.io/crates/panes) layouts into ratatui rects with pixel-perfect edge rounding.
-
 [![crates.io](https://img.shields.io/crates/v/panes-ratatui.svg)](https://crates.io/crates/panes-ratatui)
 [![docs.rs](https://docs.rs/panes-ratatui/badge.svg)](https://docs.rs/panes-ratatui)
 [![license](https://img.shields.io/crates/l/panes-ratatui.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
+
+You computed layout rectangles with float precision. Now you need them as `ratatui::layout::Rect` without gaps between adjacent panels.
+
+**panes-ratatui** converts [`panes`](https://crates.io/crates/panes) layouts into ratatui rects with pixel-perfect edge rounding.
 
 ## Install
 

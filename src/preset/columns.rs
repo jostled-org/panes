@@ -7,6 +7,7 @@ use crate::preset::collect_kinds;
 use crate::preset::master_stack::col_style;
 use crate::preset::validate_kinds;
 
+/// Builder for the equal-columns preset layout.
 pub struct Columns {
     count: usize,
     kinds: Arc<[Arc<str>]>,
@@ -22,11 +23,13 @@ impl Columns {
         }
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         match self.count {
             0 => {

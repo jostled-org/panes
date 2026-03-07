@@ -64,36 +64,43 @@ impl Layout {
 
     // -- Preset constructors --
 
+    /// Create a [`MasterStack`](crate::preset::MasterStack) builder.
     pub fn master_stack(
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> crate::preset::MasterStack {
         crate::preset::MasterStack::new(kinds)
     }
 
+    /// Create a [`CenteredMaster`](crate::preset::CenteredMaster) builder.
     pub fn centered_master(
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> crate::preset::CenteredMaster {
         crate::preset::CenteredMaster::new(kinds)
     }
 
+    /// Create a [`Monocle`](crate::preset::Monocle) builder.
     pub fn monocle(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Monocle {
         crate::preset::Monocle::new(kinds)
     }
 
+    /// Create a [`Scrollable`](crate::preset::Scrollable) builder.
     pub fn scrollable(
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> crate::preset::Scrollable {
         crate::preset::Scrollable::new(kinds)
     }
 
+    /// Create a [`Dwindle`](crate::preset::Dwindle) builder.
     pub fn dwindle(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Dwindle {
         crate::preset::Dwindle::new(kinds)
     }
 
+    /// Create a [`Spiral`](crate::preset::Spiral) builder.
     pub fn spiral(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Spiral {
         crate::preset::Spiral::new(kinds)
     }
 
+    /// Create a [`Columns`](crate::preset::Columns) builder.
     pub fn columns(
         count: usize,
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
@@ -101,18 +108,22 @@ impl Layout {
         crate::preset::Columns::new(count, kinds)
     }
 
+    /// Create a [`Deck`](crate::preset::Deck) builder.
     pub fn deck(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Deck {
         crate::preset::Deck::new(kinds)
     }
 
+    /// Create a [`Tabbed`](crate::preset::Tabbed) builder.
     pub fn tabbed(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Tabbed {
         crate::preset::Tabbed::new(kinds)
     }
 
+    /// Create a [`Stacked`](crate::preset::Stacked) builder.
     pub fn stacked(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Stacked {
         crate::preset::Stacked::new(kinds)
     }
 
+    /// Create a [`Sidebar`](crate::preset::Sidebar) builder.
     pub fn sidebar(
         sidebar_kind: impl Into<Arc<str>>,
         content_kind: impl Into<Arc<str>>,
@@ -120,6 +131,7 @@ impl Layout {
         crate::preset::Sidebar::new(sidebar_kind, content_kind)
     }
 
+    /// Create a [`HolyGrail`](crate::preset::HolyGrail) builder.
     pub fn holy_grail(
         header: impl Into<Arc<str>>,
         footer: impl Into<Arc<str>>,
@@ -130,16 +142,19 @@ impl Layout {
         crate::preset::HolyGrail::new(header, footer, left, main, right)
     }
 
+    /// Create a [`Dashboard`](crate::preset::Dashboard) builder.
     pub fn dashboard(
         cards: impl IntoIterator<Item = (impl Into<Arc<str>>, usize)>,
     ) -> crate::preset::Dashboard {
         crate::preset::Dashboard::new(cards)
     }
 
+    /// Create a [`Split`](crate::preset::Split) builder.
     pub fn split(first: impl Into<Arc<str>>, second: impl Into<Arc<str>>) -> crate::preset::Split {
         crate::preset::Split::new(first, second)
     }
 
+    /// Create a [`Grid`](crate::preset::Grid) builder.
     pub fn grid(
         cols: usize,
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,

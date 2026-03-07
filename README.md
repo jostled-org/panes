@@ -1,11 +1,11 @@
-Every layout engine you've found is welded to a renderer. You need the math without the framework.
-
-**panes** is a spatial layout engine that computes rectangles without rendering them.
-
 [![crates.io](https://img.shields.io/crates/v/panes.svg)](https://crates.io/crates/panes)
 [![docs.rs](https://docs.rs/panes/badge.svg)](https://docs.rs/panes)
 [![CI](https://github.com/jostled-org/panes/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/panes/actions)
 [![license](https://img.shields.io/crates/l/panes.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
+
+Every layout engine you've found is welded to a renderer. You need the math without the framework.
+
+**panes** is a spatial layout engine that computes rectangles without rendering them.
 
 Describe panels in rows, columns, and presets. panes solves the geometry via Taffy's flexbox engine and hands back a map of `PanelId → Rect`. No framework. No widget system. No opinions about pixels.
 

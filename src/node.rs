@@ -43,21 +43,34 @@ use crate::panel::Constraints;
 /// A node in the layout tree.
 #[derive(Debug, Clone)]
 pub enum Node {
+    /// Horizontal container laying children left-to-right.
     Row {
+        /// Space between children.
         gap: f32,
+        /// Ordered child node ids.
         children: Vec<NodeId>,
     },
+    /// Vertical container laying children top-to-bottom.
     Col {
+        /// Space between children.
         gap: f32,
+        /// Ordered child node ids.
         children: Vec<NodeId>,
     },
+    /// Leaf node representing a single panel.
     Panel {
+        /// Unique panel identifier.
         id: PanelId,
+        /// Application-defined panel kind (e.g. "editor", "chat").
         kind: Arc<str>,
+        /// Size constraints for this panel.
         constraints: Constraints,
     },
+    /// Raw Taffy node for escape-hatch styling.
     TaffyPassthrough {
+        /// Custom Taffy style applied directly.
         style: Rc<taffy::Style>,
+        /// Ordered child node ids.
         children: Vec<NodeId>,
     },
 }

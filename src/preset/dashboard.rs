@@ -7,6 +7,7 @@ use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
 
+/// Builder for the grid-based dashboard preset layout.
 pub struct Dashboard {
     cards: Arc<[(Arc<str>, usize)]>,
     columns: usize,
@@ -25,16 +26,19 @@ impl Dashboard {
         }
     }
 
+    /// Set the number of columns.
     pub fn columns(mut self, columns: usize) -> Self {
         self.columns = columns;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         match self.cards.is_empty() {
             true => {

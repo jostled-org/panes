@@ -9,18 +9,26 @@ const EPSILON: f32 = 1e-4;
 /// A panel whose rect changed between two frames.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RectChange {
+    /// The panel that changed.
     pub id: PanelId,
+    /// The rect in the previous frame.
     pub from: Rect,
+    /// The rect in the current frame.
     pub to: Rect,
 }
 
 /// Categorized differences between two resolved layouts.
 #[derive(Debug)]
 pub struct LayoutDiff {
+    /// Panels present in the new frame but not the old.
     pub added: Box<[PanelId]>,
+    /// Panels present in the old frame but not the new.
     pub removed: Box<[PanelId]>,
+    /// Panels whose position changed.
     pub moved: Box<[RectChange]>,
+    /// Panels whose size changed.
     pub resized: Box<[RectChange]>,
+    /// Panels whose rect is identical across frames.
     pub unchanged: Box<[PanelId]>,
 }
 

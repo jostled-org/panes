@@ -1,4 +1,4 @@
-// panes-ratatui — ratatui adapter for panes layout engine
+//! Convert panes layouts into `ratatui::layout::Rect` with pixel-perfect edge rounding.
 
 use panes::{PanelId, ResolvedLayout};
 use ratatui::layout::Rect;

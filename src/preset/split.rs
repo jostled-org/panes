@@ -6,6 +6,7 @@ use crate::layout::Layout;
 use crate::panel::grow;
 use crate::preset::validate_f32_param;
 
+/// Builder for the split preset layout.
 pub struct Split {
     first: Arc<str>,
     second: Arc<str>,
@@ -25,21 +26,25 @@ impl Split {
         }
     }
 
+    /// Set the split ratio.
     pub fn ratio(mut self, ratio: f32) -> Self {
         self.ratio = ratio;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Use vertical split direction.
     pub fn vertical(mut self) -> Self {
         self.is_vertical = true;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_f32_param("ratio", self.ratio)?;
 

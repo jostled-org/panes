@@ -7,6 +7,7 @@ use crate::panel::{fixed, grow};
 use crate::preset::master_stack::row_style;
 use crate::preset::validate_f32_param;
 
+/// Builder for the holy-grail preset layout.
 pub struct HolyGrail {
     header: Arc<str>,
     footer: Arc<str>,
@@ -40,26 +41,31 @@ impl HolyGrail {
         }
     }
 
+    /// Set the header height.
     pub fn header_height(mut self, height: f32) -> Self {
         self.header_height = height;
         self
     }
 
+    /// Set the footer height.
     pub fn footer_height(mut self, height: f32) -> Self {
         self.footer_height = height;
         self
     }
 
+    /// Set the sidebar width.
     pub fn sidebar_width(mut self, width: f32) -> Self {
         self.sidebar_width = width;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_f32_param("header_height", self.header_height)?;
         validate_f32_param("footer_height", self.footer_height)?;

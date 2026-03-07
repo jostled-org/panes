@@ -37,6 +37,7 @@ pub struct LayoutRuntime {
 }
 
 impl LayoutRuntime {
+    /// Create a runtime from an existing tree.
     pub fn new(tree: LayoutTree) -> Self {
         Self {
             tree,

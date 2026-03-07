@@ -10,7 +10,9 @@ use crate::{Constraints, NodeId, PanelIdGenerator};
 /// Relative position for inserting or moving nodes within a container.
 #[derive(Debug, Clone, Copy)]
 pub enum Position {
+    /// Insert after the given panel.
     After(PanelId),
+    /// Insert before the given panel.
     Before(PanelId),
 }
 
@@ -36,6 +38,7 @@ pub struct LayoutTree {
 }
 
 impl LayoutTree {
+    /// Create an empty tree with no nodes.
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),

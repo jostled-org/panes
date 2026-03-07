@@ -8,6 +8,7 @@ use crate::preset::{
     add_active_hidden_panels, collect_kinds, validate_active, validate_f32_param, validate_kinds,
 };
 
+/// Builder for the stacked preset layout.
 pub struct Stacked {
     kinds: Arc<[Arc<str>]>,
     active: usize,
@@ -25,21 +26,25 @@ impl Stacked {
         }
     }
 
+    /// Set which panel index is active (visible).
     pub fn active(mut self, index: usize) -> Self {
         self.active = index;
         self
     }
 
+    /// Set the title bar height.
     pub fn title_height(mut self, height: f32) -> Self {
         self.title_height = height;
         self
     }
 
+    /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_active(self.active, self.kinds.len())?;
