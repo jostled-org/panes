@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "panes"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "rustc-hash",
@@ -578,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "panes-css"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "panes",
  "taffy",
