@@ -7,14 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.2](https://github.com/jostled-org/panes/compare/panes-css-v0.1.1...panes-css-v0.1.2) - 2026-03-07
+## [0.1.1](https://github.com/jostled-org/panes/compare/panes-wasm-v0.1.0...panes-wasm-v0.1.1) - 2026-03-07
 
 ### Other
 
 - add doc comments to all public items and reorganize READMEs
-
-## [0.1.1](https://github.com/jostled-org/panes/compare/panes-css-v0.1.0...panes-css-v0.1.1) - 2026-03-07
-
-### Other
-
-- cargo fmt
