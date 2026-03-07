@@ -4,8 +4,8 @@ use crate::builder::{LayoutBuilder, gap};
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::{fixed, grow};
-use crate::preset::validate_f32_param;
 use crate::preset::master_stack::row_style;
+use crate::preset::validate_f32_param;
 
 pub struct HolyGrail {
     header: Arc<str>,

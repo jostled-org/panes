@@ -4,8 +4,8 @@ use crate::builder::{LayoutBuilder, gap};
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 use crate::preset::master_stack::{col_style, row_style};
+use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 
 pub struct Dwindle {
     kinds: Arc<[Arc<str>]>,

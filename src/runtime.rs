@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::compiler::{compile, compute_layout, CompileResult};
+use crate::compiler::{CompileResult, compile, compute_layout};
 use crate::diff::{self, LayoutDiff};
 use crate::error::PaneError;
 use crate::layout::Layout;

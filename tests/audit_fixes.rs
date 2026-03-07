@@ -101,10 +101,7 @@ fn master_stack_nan_ratio() {
 
 #[test]
 fn split_negative_ratio() {
-    let err = Layout::split("a", "b")
-        .ratio(-0.5)
-        .build()
-        .unwrap_err();
+    let err = Layout::split("a", "b").ratio(-0.5).build().unwrap_err();
     assert!(matches!(err, PaneError::InvalidConstraint(_)));
 }
 
@@ -155,10 +152,7 @@ fn stacked_nan_title_height() {
 
 #[test]
 fn dwindle_negative_ratio() {
-    let err = Layout::dwindle(["a", "b"])
-        .ratio(-1.0)
-        .build()
-        .unwrap_err();
+    let err = Layout::dwindle(["a", "b"]).ratio(-1.0).build().unwrap_err();
     assert!(matches!(err, PaneError::InvalidConstraint(_)));
 }
 

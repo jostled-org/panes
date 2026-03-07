@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::builder::{LayoutBuilder, gap};
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::preset::{collect_kinds, validate_kinds};
 use crate::preset::master_stack::row_style;
+use crate::preset::{collect_kinds, validate_kinds};
 
 pub struct Grid {
     cols: usize,
@@ -42,9 +42,7 @@ impl Grid {
 
         b.col(gap(gap_px), |outer| {
             for chunk in self.kinds.chunks(self.cols) {
-                outer.taffy_node(row_style(1.0, gap_px), |r| {
-                    super::add_grow_panels(r, chunk)
-                })?;
+                outer.taffy_node(row_style(1.0, gap_px), |r| super::add_grow_panels(r, chunk))?;
             }
             Ok(())
         })?;

@@ -235,7 +235,10 @@ fn iter_and_panel_ids_yield_all_entries() {
 
 // -- lerp --
 
-fn two_panel_layouts() -> (panes::resolver::ResolvedLayout, panes::resolver::ResolvedLayout) {
+fn two_panel_layouts() -> (
+    panes::resolver::ResolvedLayout,
+    panes::resolver::ResolvedLayout,
+) {
     let mut tree_a = LayoutTree::new();
     let (_, n1) = tree_a.add_panel("a", grow(1.0)).unwrap();
     let (_, n2) = tree_a.add_panel("b", grow(1.0)).unwrap();

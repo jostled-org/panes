@@ -33,5 +33,5 @@ pub use tabbed::Tabbed;
 
 pub(crate) use common::collect_kinds;
 pub(crate) use common::impl_preset;
-pub(crate) use common::{validate_active, validate_f32_param, validate_kinds};
 pub(super) use common::{add_active_hidden_panels, add_grow_panels, build_single};
+pub(crate) use common::{validate_active, validate_f32_param, validate_kinds};

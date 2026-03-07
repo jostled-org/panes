@@ -6,7 +6,9 @@ use crate::layout::Layout;
 use crate::panel::{fixed, grow};
 
 /// Collect an iterator of string-like items into an `Arc<[Arc<str>]>`.
-pub(crate) fn collect_kinds(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Arc<[Arc<str>]> {
+pub(crate) fn collect_kinds(
+    kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
+) -> Arc<[Arc<str>]> {
     kinds.into_iter().map(Into::into).collect()
 }
 

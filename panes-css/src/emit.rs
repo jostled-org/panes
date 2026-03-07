@@ -47,9 +47,7 @@ fn emit_node(tree: &LayoutTree, nid: NodeId, parent_axis: Axis, is_root: bool, c
             write_container_rule(&sel, "column", *gap, is_root, &mut ctx.css);
             emit_children(tree, children, Axis::Vertical, ctx);
         }
-        Node::TaffyPassthrough { style, children }
-            if style.display == taffy::Display::Grid =>
-        {
+        Node::TaffyPassthrough { style, children } if style.display == taffy::Display::Grid => {
             let sel = container_selector(is_root, &mut ctx.counter);
             write_grid_rule(&sel, style, is_root, &mut ctx.css);
             emit_grid_children(tree, children, &mut ctx.counter, &mut ctx.css);
@@ -121,12 +119,7 @@ fn write_grid_rule(selector: &str, style: &taffy::Style, is_root: bool, css: &mu
     css.push_str(" }\n");
 }
 
-fn emit_grid_children(
-    tree: &LayoutTree,
-    children: &[NodeId],
-    counter: &mut u32,
-    css: &mut String,
-) {
+fn emit_grid_children(tree: &LayoutTree, children: &[NodeId], counter: &mut u32, css: &mut String) {
     for &child_id in children {
         let Some(Node::TaffyPassthrough { style, .. }) = tree.node(child_id) else {
             continue;

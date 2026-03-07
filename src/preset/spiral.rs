@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::builder::{LayoutBuilder, gap};
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 use crate::preset::dwindle::build_recursive;
+use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
 
 pub struct Spiral {
     kinds: Arc<[Arc<str>]>,

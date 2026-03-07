@@ -117,8 +117,7 @@ pub fn resolve(result: &CompileResult, tree: &LayoutTree) -> Result<ResolvedLayo
         .root()
         .ok_or_else(|| PaneError::InvalidTree("root is not set".into()))?;
 
-    let mut rects =
-        FxHashMap::with_capacity_and_hasher(tree.panel_count(), Default::default());
+    let mut rects = FxHashMap::with_capacity_and_hasher(tree.panel_count(), Default::default());
     let mut kinds: FxHashMap<Arc<str>, Vec<PanelId>> =
         FxHashMap::with_capacity_and_hasher(tree.kind_count(), Default::default());
 

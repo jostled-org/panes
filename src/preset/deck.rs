@@ -4,8 +4,10 @@ use crate::builder::{LayoutBuilder, gap};
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::{add_active_hidden_panels, collect_kinds, validate_active, validate_f32_param, validate_kinds};
 use crate::preset::master_stack::col_style;
+use crate::preset::{
+    add_active_hidden_panels, collect_kinds, validate_active, validate_f32_param, validate_kinds,
+};
 
 pub struct Deck {
     kinds: Arc<[Arc<str>]>,
