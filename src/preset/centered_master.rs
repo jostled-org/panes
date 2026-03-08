@@ -81,4 +81,16 @@ fn split_alternating(items: &[Arc<str>]) -> (Vec<Arc<str>>, Vec<Arc<str>>) {
     (left, right)
 }
 
+impl CenteredMaster {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let strategy = crate::strategy::StrategyKind::CenteredMaster {
+            master_ratio: self.master_ratio,
+            gap: self.gap,
+        };
+        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(CenteredMaster);

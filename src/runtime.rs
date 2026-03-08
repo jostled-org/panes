@@ -7,6 +7,8 @@ use crate::layout::Layout;
 use crate::node::PanelId;
 use crate::panel::fixed;
 use crate::resolver::{self, ResolvedLayout};
+use crate::sequence::PanelSequence;
+use crate::strategy::StrategyKind;
 use crate::tree::LayoutTree;
 use crate::viewport::ViewportState;
 
@@ -34,17 +36,63 @@ pub struct LayoutRuntime {
     viewport: ViewportState,
     previous: Option<Arc<ResolvedLayout>>,
     cached_compile: Option<CompileResult>,
+    strategy: Option<StrategyKind>,
+    sequence: PanelSequence,
 }
 
 impl LayoutRuntime {
-    /// Create a runtime from an existing tree.
+    /// Create a runtime from an existing tree (legacy path, no strategy).
     pub fn new(tree: LayoutTree) -> Self {
         Self {
             tree,
             viewport: ViewportState::default(),
             previous: None,
             cached_compile: None,
+            strategy: None,
+            sequence: PanelSequence::default(),
         }
+    }
+
+    /// Create a runtime from a strategy and initial panel kinds.
+    pub fn from_strategy(strategy: StrategyKind, kinds: &[Arc<str>]) -> Result<Self, PaneError> {
+        let mut sequence = PanelSequence::default();
+        let mut viewport = ViewportState::default();
+        let tree = crate::strategy::build_initial(&strategy, kinds, &mut sequence, &mut viewport)?;
+        Ok(Self {
+            tree,
+            viewport,
+            previous: None,
+            cached_compile: None,
+            strategy: Some(strategy),
+            sequence,
+        })
+    }
+
+    /// Create a runtime from a pre-built tree and a strategy.
+    /// Populates the sequence by looking up each kind in the tree.
+    pub fn from_tree_and_strategy(
+        tree: LayoutTree,
+        strategy: StrategyKind,
+        kinds: &[Arc<str>],
+    ) -> Result<Self, PaneError> {
+        let mut sequence = PanelSequence::default();
+        for kind in kinds {
+            for &pid in tree.panels_by_kind(kind) {
+                sequence.push(pid);
+            }
+        }
+        let focus = sequence.get(0);
+        Ok(Self {
+            tree,
+            viewport: ViewportState {
+                focus,
+                ..ViewportState::default()
+            },
+            previous: None,
+            cached_compile: None,
+            strategy: Some(strategy),
+            sequence,
+        })
     }
 
     /// Immutable access to the underlying tree.
@@ -104,12 +152,148 @@ impl LayoutRuntime {
 
     /// Set the active panel.
     pub fn set_active(&mut self, pid: PanelId) {
-        self.viewport.active_panel = Some(pid);
+        self.viewport.focus = Some(pid);
     }
 
     /// Get the currently active panel, if any.
     pub fn active_panel(&self) -> Option<PanelId> {
-        self.viewport.active_panel
+        self.viewport.focus
+    }
+
+    /// The layout strategy, if this runtime was created via `from_strategy`.
+    pub fn strategy(&self) -> Option<&StrategyKind> {
+        self.strategy.as_ref()
+    }
+
+    /// The panel sequence (logical order).
+    pub fn sequence(&self) -> &PanelSequence {
+        &self.sequence
+    }
+
+    /// The currently focused panel.
+    pub fn focused(&self) -> Option<PanelId> {
+        self.viewport.focus
+    }
+
+    /// The kind of the currently focused panel.
+    pub fn focused_kind(&self) -> Option<&str> {
+        let pid = self.viewport.focus?;
+        self.tree.panel_kind(pid).ok()
+    }
+
+    /// Whether `pid` is a decorative panel (tab bar, title bar) for `content_pid`.
+    pub fn is_decoration_for(&self, pid: PanelId, content_pid: PanelId) -> bool {
+        let (Ok(dec_kind), Ok(content_kind)) =
+            (self.tree.panel_kind(pid), self.tree.panel_kind(content_pid))
+        else {
+            return false;
+        };
+        let base = dec_kind
+            .strip_suffix("_tab")
+            .or_else(|| dec_kind.strip_suffix("_title"));
+        matches!(base, Some(b) if b == content_kind)
+    }
+
+    /// Add a panel using the active strategy.
+    pub fn add_panel(&mut self, kind: Arc<str>) -> Result<PanelId, PaneError> {
+        let strategy = self
+            .strategy
+            .as_ref()
+            .ok_or_else(|| PaneError::InvalidMutation("no strategy set".into()))?
+            .clone();
+        crate::strategy::apply_add(
+            &strategy,
+            &mut self.tree,
+            &mut self.sequence,
+            &mut self.viewport,
+            kind,
+        )
+    }
+
+    /// Remove a panel using the active strategy. Returns the new focus panel.
+    pub fn remove_panel(&mut self, pid: PanelId) -> Result<Option<PanelId>, PaneError> {
+        let strategy = self
+            .strategy
+            .as_ref()
+            .ok_or_else(|| PaneError::InvalidMutation("no strategy set".into()))?
+            .clone();
+        crate::strategy::apply_remove(
+            &strategy,
+            &mut self.tree,
+            &mut self.sequence,
+            &mut self.viewport,
+            pid,
+        )
+    }
+
+    /// Move a panel to a new sequence index using the active strategy.
+    pub fn move_panel(&mut self, pid: PanelId, new_index: usize) -> Result<PanelId, PaneError> {
+        let strategy = self
+            .strategy
+            .as_ref()
+            .ok_or_else(|| PaneError::InvalidMutation("no strategy set".into()))?
+            .clone();
+        crate::strategy::apply_move(
+            &strategy,
+            &mut self.tree,
+            &mut self.sequence,
+            &mut self.viewport,
+            pid,
+            new_index,
+        )
+    }
+
+    /// Set focus to a specific panel using the active strategy.
+    pub fn focus(&mut self, pid: PanelId) -> Result<(), PaneError> {
+        match &self.strategy {
+            Some(strategy) => {
+                let strategy = strategy.clone();
+                crate::strategy::apply_focus(
+                    &strategy,
+                    &mut self.tree,
+                    &mut self.sequence,
+                    &mut self.viewport,
+                    pid,
+                )
+            }
+            None => {
+                self.viewport.focus = Some(pid);
+                Ok(())
+            }
+        }
+    }
+
+    /// Move focus to the next panel in the sequence.
+    pub fn focus_next(&mut self) -> Result<(), PaneError> {
+        let next = match self.viewport.focus {
+            Some(current) => {
+                let idx = self.sequence.index_of(current).unwrap_or(0);
+                let next_idx = (idx + 1) % self.sequence.len().max(1);
+                self.sequence.get(next_idx)
+            }
+            None => self.sequence.get(0),
+        };
+        match next {
+            Some(pid) => self.focus(pid),
+            None => Ok(()),
+        }
+    }
+
+    /// Move focus to the previous panel in the sequence.
+    pub fn focus_prev(&mut self) -> Result<(), PaneError> {
+        let prev = match self.viewport.focus {
+            Some(current) => {
+                let len = self.sequence.len().max(1);
+                let idx = self.sequence.index_of(current).unwrap_or(0);
+                let prev_idx = (idx + len - 1) % len;
+                self.sequence.get(prev_idx)
+            }
+            None => self.sequence.get(0),
+        };
+        match prev {
+            Some(pid) => self.focus(pid),
+            None => Ok(()),
+        }
     }
 
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.

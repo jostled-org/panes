@@ -19,6 +19,10 @@ mod rect;
 pub mod resolver;
 /// Stateful runtime with viewport tracking, caching, and frame diffing.
 pub mod runtime;
+/// Ordered panel sequence for focus navigation.
+mod sequence;
+/// Layout mutation strategies mapped to presets.
+mod strategy;
 #[cfg(feature = "toml")]
 mod toml_parse;
 mod tree;
@@ -34,7 +38,9 @@ pub use preset::{
     Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
 };
 pub use rect::Rect;
-pub use resolver::ResolvedLayout;
+pub use resolver::{PanelEntry, ResolvedLayout};
+pub use sequence::PanelSequence;
+pub use strategy::{ActivePanelVariant, Direction, SlotDef, StrategyKind};
 #[cfg(feature = "toml")]
 pub use toml_parse::TomlError;
 pub use tree::{LayoutTree, Position};

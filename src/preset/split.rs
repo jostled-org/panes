@@ -69,4 +69,20 @@ impl Split {
     }
 }
 
+impl Split {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let direction = match self.is_vertical {
+            true => crate::strategy::Direction::Vertical,
+            false => crate::strategy::Direction::Horizontal,
+        };
+        let strategy = crate::strategy::StrategyKind::Sequence {
+            direction,
+            gap: self.gap,
+        };
+        let kinds = [Arc::clone(&self.first), Arc::clone(&self.second)];
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(Split);

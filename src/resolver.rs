@@ -7,6 +7,19 @@ use crate::node::{Node, NodeId, PanelId};
 use crate::rect::Rect;
 use crate::tree::LayoutTree;
 
+/// A single panel's identity and computed rectangle.
+///
+/// Generic over `R` so the core crate yields `PanelEntry<'_, &Rect>` while
+/// output crates yield their own rect type (e.g. `ratatui::Rect`, `egui::Rect`).
+pub struct PanelEntry<'a, R> {
+    /// Panel identifier.
+    pub id: PanelId,
+    /// Panel kind string (e.g. `"editor"`, `"terminal"`).
+    pub kind: &'a str,
+    /// Computed rectangle in the target coordinate system.
+    pub rect: R,
+}
+
 /// Resolved layout mapping each panel to its computed screen rectangle.
 #[derive(Clone)]
 pub struct ResolvedLayout {
@@ -48,6 +61,23 @@ impl ResolvedLayout {
         for rect in self.rects.values_mut() {
             rect.x += dx;
         }
+    }
+
+    /// Iterate all panels in kind-grouped order, yielding identity and rect together.
+    ///
+    /// All panels of one kind appear contiguously, then the next kind, etc.
+    /// No allocation — this is a lazy iterator over the internal index.
+    pub fn panels(&self) -> impl Iterator<Item = PanelEntry<'_, &Rect>> + '_ {
+        let rects = &self.rects;
+        self.kinds.iter().flat_map(move |(kind, pids)| {
+            pids.iter().filter_map(move |&pid| {
+                rects.get(&pid).map(|rect| PanelEntry {
+                    id: pid,
+                    kind: kind.as_ref(),
+                    rect,
+                })
+            })
+        })
     }
 
     /// Linearly interpolate between two resolved layouts.

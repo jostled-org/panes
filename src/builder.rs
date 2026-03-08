@@ -81,6 +81,12 @@ impl LayoutBuilder {
     }
 
     /// Consume the builder, validate the tree, and return a `Layout`.
+    /// Set how many panels the active window shows at once.
+    pub fn set_window_size(&mut self, size: usize) {
+        self.tree.set_window_size(size);
+    }
+
+    /// Validate the tree and produce a [`Layout`](crate::layout::Layout).
     pub fn build(self) -> Result<crate::layout::Layout, PaneError> {
         if !self.root_set {
             return Err(PaneError::InvalidTree("root is not set".into()));

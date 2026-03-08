@@ -124,12 +124,9 @@ fn holy_grail_nan_header() {
 }
 
 #[test]
-fn scrollable_negative_col_width() {
-    let err = Layout::scrollable(["a"])
-        .col_width(-10.0)
-        .build()
-        .unwrap_err();
-    assert!(matches!(err, PaneError::InvalidConstraint(_)));
+fn scrollable_active_out_of_bounds() {
+    let err = Layout::scrollable(["a"]).active(5).build().unwrap_err();
+    assert!(matches!(err, PaneError::InvalidTree(_)));
 }
 
 #[test]

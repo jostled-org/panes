@@ -76,4 +76,16 @@ fn add_stacked_panels(
     add_active_hidden_panels(ctx, kinds, active)
 }
 
+impl Stacked {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let strategy = crate::strategy::StrategyKind::ActivePanel {
+            variant: crate::strategy::ActivePanelVariant::Stacked,
+            bar_height: self.title_height,
+        };
+        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(Stacked);

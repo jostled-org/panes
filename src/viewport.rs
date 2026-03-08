@@ -9,7 +9,9 @@ pub struct ViewportState {
     /// Current horizontal scroll offset.
     pub scroll_offset: f32,
     /// The currently focused panel, if any.
-    pub active_panel: Option<PanelId>,
+    pub focus: Option<PanelId>,
+    /// First visible panel index for Window/ActivePanel strategies.
+    pub window_start: usize,
     /// Panels that have been collapsed to zero size.
     pub collapsed: FxHashSet<PanelId>,
     /// Original constraints saved before collapsing.

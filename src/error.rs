@@ -23,4 +23,12 @@ pub enum PaneError {
     /// Viewport dimensions are invalid (NaN, negative, infinite).
     #[error("invalid viewport: {0}")]
     InvalidViewport(Box<str>),
+
+    /// A mutation is not supported for the current strategy.
+    #[error("invalid mutation: {0}")]
+    InvalidMutation(Box<str>),
+
+    /// A sequence index is out of bounds.
+    #[error("sequence index {0} out of bounds for length {1}")]
+    SequenceOutOfBounds(usize, usize),
 }

@@ -155,7 +155,7 @@ fn scrollable_with_options() {
 [layout]
 strategy = "scrollable"
 panels = ["a", "b"]
-col_width = 60.0
+active = 1
 gap = 2.0
 "#;
     let layout = Layout::from_toml(toml).unwrap();

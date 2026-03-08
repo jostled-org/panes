@@ -58,4 +58,31 @@ impl Sidebar {
     }
 }
 
+impl Sidebar {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let slots: Arc<[crate::strategy::SlotDef]> = vec![
+            crate::strategy::SlotDef {
+                kind: Arc::clone(&self.sidebar_kind),
+                constraints: crate::panel::fixed(self.sidebar_width),
+            },
+            crate::strategy::SlotDef {
+                kind: Arc::clone(&self.content_kind),
+                constraints: crate::panel::grow(1.0),
+            },
+        ]
+        .into();
+        let strategy = crate::strategy::StrategyKind::Slotted {
+            slots,
+            gap: self.gap,
+            direction: crate::strategy::Direction::Horizontal,
+        };
+        let kinds = [
+            Arc::clone(&self.sidebar_kind),
+            Arc::clone(&self.content_kind),
+        ];
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(Sidebar);

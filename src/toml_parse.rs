@@ -58,7 +58,6 @@ struct LayoutDef {
     master_ratio: Option<f32>,
     ratio: Option<f32>,
     active: Option<usize>,
-    col_width: Option<f32>,
     tab_height: Option<f32>,
     title_height: Option<f32>,
     sidebar_width: Option<f32>,
@@ -197,8 +196,8 @@ fn build_monocle(def: LayoutDef) -> Result<Layout, TomlError> {
 fn build_scrollable(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::scrollable(panels.iter().map(Box::as_ref));
-    if let Some(w) = def.col_width {
-        preset = preset.col_width(w);
+    if let Some(a) = def.active {
+        preset = preset.active(a);
     }
     if let Some(g) = def.gap {
         preset = preset.gap(g);

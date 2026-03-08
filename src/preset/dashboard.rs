@@ -111,4 +111,18 @@ fn add_cards(ctx: &mut crate::ContainerCtx, cards: &[(Arc<str>, usize)]) -> Resu
     Ok(())
 }
 
+impl Dashboard {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let spans: Arc<[usize]> = self.cards.iter().map(|(_, s)| *s).collect();
+        let kinds: Vec<Arc<str>> = self.cards.iter().map(|(k, _)| Arc::clone(k)).collect();
+        let strategy = crate::strategy::StrategyKind::Dashboard {
+            columns: self.columns,
+            gap: self.gap,
+            spans,
+        };
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(Dashboard);

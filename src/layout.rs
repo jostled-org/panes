@@ -31,6 +31,11 @@ impl Layout {
         &self.tree
     }
 
+    /// How many panels the active window shows at once.
+    pub fn window_size(&self) -> usize {
+        self.tree.window_size()
+    }
+
     /// Compile, compute, and resolve the layout at the given viewport size.
     pub fn resolve(&self, width: f32, height: f32) -> Result<ResolvedLayout, PaneError> {
         self.tree.resolve(width, height)
@@ -56,6 +61,36 @@ impl Layout {
         b.col(gap(0.0), |r| {
             for kind in &kinds {
                 r.panel(Arc::clone(kind), grow(1.0))?;
+            }
+            Ok(())
+        })?;
+        b.build()
+    }
+
+    /// Panels in a row with explicit constraints per panel.
+    pub fn row_with(
+        panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
+    ) -> Result<Self, PaneError> {
+        let panels: Vec<_> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        let mut b = LayoutBuilder::new();
+        b.row(gap(0.0), |r| {
+            for (kind, constraints) in &panels {
+                r.panel(Arc::clone(kind), *constraints)?;
+            }
+            Ok(())
+        })?;
+        b.build()
+    }
+
+    /// Panels in a column with explicit constraints per panel.
+    pub fn col_with(
+        panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
+    ) -> Result<Self, PaneError> {
+        let panels: Vec<_> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        let mut b = LayoutBuilder::new();
+        b.col(gap(0.0), |c| {
+            for (kind, constraints) in &panels {
+                c.panel(Arc::clone(kind), *constraints)?;
             }
             Ok(())
         })?;

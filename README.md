@@ -43,22 +43,26 @@ Layout::master_stack(["editor", "chat", "status"]).master_ratio(0.6).gap(1.0)
 ```
 
 ```rust
-// Builder — nest rows, columns, constraints
-let mut b = LayoutBuilder::new();
-b.row(gap(8.0), |r| {
-    r.panel("editor", grow(2.0))?;
-    r.col(gap(0.0), |c| {
-        c.panel("chat", grow(1.0))?;
-        c.panel("status", fixed(3.0))?;
-        Ok(())
-    })
-})?;
+// Macro — declarative shorthand
+let layout = layout! {
+    row(gap: 8.0) {
+        panel("editor", grow: 2.0)
+        col {
+            panel("chat")
+            panel("status", fixed: 3.0)
+        }
+    }
+}?;
 ```
 
 ```rust
-// Runtime — mutations, viewport, frame diffing
-let mut rt = LayoutRuntime::from(layout);
-rt.tree_mut().add_panel("terminal", grow(1.0))?;
+// Runtime — strategy-driven mutations, focus, frame diffing
+let mut rt = Layout::master_stack(["editor", "chat", "status"])
+    .master_ratio(0.6).gap(1.0).into_runtime()?;
+
+rt.add_panel("terminal".into())?;
+rt.focus_next()?;
+
 let frame = rt.resolve(80.0, 24.0)?;
 let diff = frame.diff();
 ```
@@ -71,6 +75,14 @@ Adapters convert rects to renderer-native types:
 | [`panes-egui`](https://crates.io/crates/panes-egui) | egui | `egui::Rect` (f32) |
 | [`panes-css`](https://crates.io/crates/panes-css) | Browser | CSS declarations (browser solves layout) |
 | [`panes-wasm`](https://crates.io/crates/panes-wasm) | Canvas/JS | `WasmRect` (f64) |
+
+Each adapter provides a `panels()` iterator that yields `PanelEntry { id, kind, rect }` — no hashmap, no cross-referencing:
+
+```rust
+for entry in panes_ratatui::panels(&resolved) {
+    println!("{}: {} at {:?}", entry.id, entry.kind, entry.rect);
+}
+```
 
 ## Documentation
 

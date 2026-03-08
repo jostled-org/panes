@@ -768,9 +768,9 @@ fn stacked_switch() {
 }
 
 #[test]
-fn scrollable_basic() {
-    // 3 panels at 80px each = 240px total, viewport is only 100px wide
+fn scrollable_focus_zero_shows_first_pair() {
     let resolved = Layout::scrollable(["a", "b", "c"])
+        .active(0)
         .resolve(100.0, 24.0)
         .unwrap();
 
@@ -778,21 +778,49 @@ fn scrollable_basic() {
     let b = resolved.by_kind("b")[0];
     let c = resolved.by_kind("c")[0];
 
-    assert_eq!(resolved.get(a).unwrap().w, 80.0);
-    assert_eq!(resolved.get(b).unwrap().w, 80.0);
-    assert_eq!(resolved.get(c).unwrap().w, 80.0);
-    // Total width exceeds viewport
-    let total =
-        resolved.get(a).unwrap().w + resolved.get(b).unwrap().w + resolved.get(c).unwrap().w;
-    assert!(total > 100.0);
+    // focus=0: window=0, showing (a, b)
+    assert!(resolved.get(a).unwrap().w > 0.0);
+    assert!(resolved.get(b).unwrap().w > 0.0);
+    assert_eq!(resolved.get(c).unwrap().w, 0.0);
 }
 
 #[test]
-fn scrollable_custom_col_width() {
-    let resolved = Layout::scrollable(["a", "b"])
-        .col_width(100.0)
-        .resolve(80.0, 24.0)
+fn scrollable_focus_one_stays_in_first_pair() {
+    let resolved = Layout::scrollable(["a", "b", "c"])
+        .active(1)
+        .resolve(100.0, 24.0)
         .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let b = resolved.by_kind("b")[0];
+    let c = resolved.by_kind("c")[0];
+
+    // focus=1: window=0, still showing (a, b)
+    assert!(resolved.get(a).unwrap().w > 0.0);
+    assert!(resolved.get(b).unwrap().w > 0.0);
+    assert_eq!(resolved.get(c).unwrap().w, 0.0);
+}
+
+#[test]
+fn scrollable_focus_two_shifts_window() {
+    let resolved = Layout::scrollable(["a", "b", "c"])
+        .active(2)
+        .resolve(100.0, 24.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let b = resolved.by_kind("b")[0];
+    let c = resolved.by_kind("c")[0];
+
+    // focus=2: window=1, showing (b, c)
+    assert_eq!(resolved.get(a).unwrap().w, 0.0);
+    assert!(resolved.get(b).unwrap().w > 0.0);
+    assert!(resolved.get(c).unwrap().w > 0.0);
+}
+
+#[test]
+fn scrollable_single_panel_fills_viewport() {
+    let resolved = Layout::scrollable(["a"]).resolve(100.0, 24.0).unwrap();
 
     let a = resolved.by_kind("a")[0];
     assert_eq!(resolved.get(a).unwrap().w, 100.0);

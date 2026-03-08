@@ -156,74 +156,32 @@ fn uncollapse_restores_size() {
 
 #[test]
 fn scroll_by_shifts_x() {
-    let layout = Layout::scrollable(["a", "b", "c"])
-        .col_width(80.0)
-        .build()
-        .unwrap();
+    let layout = Layout::split("a", "b").build().unwrap();
     let mut rt = LayoutRuntime::from(layout);
 
-    // Resolve with no scroll
     let frame = rt.resolve(100.0, 100.0).unwrap();
-    let pids: Vec<PanelId> = {
-        let mut ids: Vec<_> = frame.layout().by_kind("a").to_vec();
-        ids.extend(frame.layout().by_kind("b"));
-        ids.extend(frame.layout().by_kind("c"));
-        ids
-    };
+    let a_pid = frame.layout().by_kind("a")[0];
+    let base_x = frame.layout().get(a_pid).unwrap().x;
 
-    let base_positions: Vec<f32> = pids
-        .iter()
-        .map(|&pid| frame.layout().get(pid).unwrap().x)
-        .collect();
-
-    // Scroll by 40
     rt.scroll_by(40.0);
     let frame = rt.resolve(100.0, 100.0).unwrap();
-
-    for (i, &pid) in pids.iter().enumerate() {
-        let new_x = frame.layout().get(pid).unwrap().x;
-        let expected = base_positions[i] - 40.0;
-        assert!(
-            (new_x - expected).abs() < 0.1,
-            "panel {i}: expected x={expected}, got x={new_x}"
-        );
-    }
+    let new_x = frame.layout().get(a_pid).unwrap().x;
+    assert!((new_x - (base_x - 40.0)).abs() < 0.1);
 }
 
 #[test]
 fn scroll_to_absolute() {
-    let layout = Layout::scrollable(["a", "b", "c"])
-        .col_width(80.0)
-        .build()
-        .unwrap();
+    let layout = Layout::split("a", "b").build().unwrap();
     let mut rt = LayoutRuntime::from(layout);
 
-    // Resolve to get base positions
     let frame = rt.resolve(100.0, 100.0).unwrap();
-    let pids: Vec<PanelId> = {
-        let mut ids: Vec<_> = frame.layout().by_kind("a").to_vec();
-        ids.extend(frame.layout().by_kind("b"));
-        ids.extend(frame.layout().by_kind("c"));
-        ids
-    };
+    let a_pid = frame.layout().by_kind("a")[0];
+    let base_x = frame.layout().get(a_pid).unwrap().x;
 
-    let base_positions: Vec<f32> = pids
-        .iter()
-        .map(|&pid| frame.layout().get(pid).unwrap().x)
-        .collect();
-
-    // scroll_to(80.0)
     rt.scroll_to(80.0);
     let frame = rt.resolve(100.0, 100.0).unwrap();
-
-    for (i, &pid) in pids.iter().enumerate() {
-        let new_x = frame.layout().get(pid).unwrap().x;
-        let expected = base_positions[i] - 80.0;
-        assert!(
-            (new_x - expected).abs() < 0.1,
-            "panel {i}: expected x={expected}, got x={new_x}"
-        );
-    }
+    let new_x = frame.layout().get(a_pid).unwrap().x;
+    assert!((new_x - (base_x - 80.0)).abs() < 0.1);
 }
 
 #[test]

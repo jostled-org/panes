@@ -445,23 +445,45 @@ fixed = 3.0
 
 ## Runtime
 
-`LayoutRuntime` wraps a mutable tree with viewport state, compile caching, and frame diffing.
+`LayoutRuntime` wraps a layout tree with viewport state, compile caching, and frame diffing.
+
+### Strategy-based runtime
+
+Every preset has an `into_runtime()` method that creates a runtime with a mutation strategy. The strategy defines how panels are added, removed, moved, and focused.
 
 ```rust
-use panes::{Layout, LayoutRuntime, grow};
-
-let layout = Layout::master_stack(["editor", "chat"]).build()?;
-let mut rt = LayoutRuntime::from(layout);
+let mut rt = Layout::master_stack(["editor", "chat", "status"])
+    .master_ratio(0.6)
+    .gap(1.0)
+    .into_runtime()?;
 
 // Resolve produces a Frame with layout + diff
 let frame = rt.resolve(80.0, 24.0)?;
 let resolved = frame.layout();
+```
 
-// Mutate the tree
-let (pid, _) = rt.tree_mut().add_panel("terminal", grow(1.0))?;
+### Panel mutations
 
-// Next resolve detects changes via diff
-let frame = rt.resolve(80.0, 24.0)?;
+Add, remove, move, and focus panels at runtime. The strategy handles the spatial rules — where new panels go, how focus shifts, whether the tree rebuilds or just adjusts constraints.
+
+```rust
+// Add a panel — focus shifts to the new panel
+let pid = rt.add_panel("terminal".into())?;
+
+// Remove the focused panel — focus shifts to neighbor
+rt.remove_panel(pid)?;
+
+// Move a panel to a new position in the sequence
+rt.move_panel(pid, 0)?;
+
+// Focus navigation
+rt.focus_next()?;
+rt.focus_prev()?;
+rt.focus(pid)?;
+
+// Query focus state
+let focused: Option<PanelId> = rt.focused();
+let kind: Option<&str> = rt.focused_kind();
 ```
 
 ### Viewport operations
@@ -473,31 +495,20 @@ rt.toggle_collapsed(panel_id)?;
 // Scroll (for scrollable layouts)
 rt.scroll_by(10.0);
 rt.scroll_to(0.0);
-
-// Track active panel
-rt.set_active(panel_id);
-let active = rt.active_panel();
 ```
 
-### Tree mutations
+### Legacy runtime
 
-The runtime exposes `tree_mut()` for structural changes:
+For layouts built with the builder API or macro, wrap them in a runtime without a strategy. Mutations go through `tree_mut()` directly.
 
 ```rust
+let layout = Layout::master_stack(["editor", "chat"]).build()?;
+let mut rt = LayoutRuntime::from(layout);
+
 let tree = rt.tree_mut();
-
-// Add panels
-let (pid, nid) = tree.add_panel("new_panel", grow(1.0))?;
-
-// Update constraints
+let (pid, _) = tree.add_panel("terminal", grow(1.0))?;
 tree.set_constraints(pid, fixed(30.0))?;
-
-// Remove panels
 tree.remove_panel(pid)?;
-
-// Move panels relative to others
-tree.move_panel(pid, Position::After(other_pid))?;
-tree.move_panel(pid, Position::Before(other_pid))?;
 ```
 
 The runtime recompiles automatically when the tree is dirty.
@@ -558,6 +569,10 @@ let interpolated = rect_a.lerp(rect_b, t);
 
 panes computes abstract `Rect { x, y, w, h }` values. Adapter crates convert these to renderer-native types.
 
+Each adapter provides two APIs:
+- `convert()` — returns a `FxHashMap<PanelId, TargetRect>` for random access
+- `panels()` — returns a lazy iterator of `PanelEntry { id, kind, rect }` for rendering loops
+
 ### panes-ratatui
 
 ```toml
@@ -567,10 +582,19 @@ panes-ratatui = "0.1"
 
 ```rust
 let resolved = layout.resolve(80.0, 24.0)?;
+
+// Iterator — preferred for render loops
+for entry in panes_ratatui::panels(&resolved) {
+    println!("{}: {} at {:?}", entry.id, entry.kind, entry.rect);
+}
+
+// Hashmap — for random access by PanelId
 let rects: FxHashMap<PanelId, ratatui::layout::Rect> = panes_ratatui::convert(&resolved);
 ```
 
 Uses edge-rounding quantization: adjacent panels sharing a float boundary produce matching integer edges. No gaps, no overlaps.
+
+`panels_at()` and `convert_at()` offset rects by a parent origin, for rendering a panes layout inside another panel.
 
 ### panes-egui
 
@@ -581,6 +605,12 @@ panes-egui = "0.1"
 
 ```rust
 let resolved = layout.resolve(width, height)?;
+
+for entry in panes_egui::panels(&resolved) {
+    ui.put(entry.rect, egui::Label::new(entry.kind));
+}
+
+// Or hashmap access
 let rects: FxHashMap<PanelId, egui::Rect> = panes_egui::convert(&resolved);
 ```
 
@@ -608,8 +638,12 @@ panes-wasm = "0.1"
 
 ```rust
 let resolved = layout.resolve(width, height)?;
+
+for entry in panes_wasm::panels(&resolved) {
+    // entry.rect is WasmRect with f64 fields for JavaScript interop
+}
+
 let rects: FxHashMap<PanelId, WasmRect> = panes_wasm::convert(&resolved);
-// WasmRect has f64 fields for JavaScript interop
 ```
 
 ---
@@ -645,13 +679,18 @@ Raw Taffy nodes compose freely with panes nodes in the same tree. Use this when 
 ```rust
 let resolved = layout.resolve(80.0, 24.0)?;
 
+// Iterate with identity — id, kind, and rect together
+for entry in resolved.panels() {
+    println!("{}: {} at {:?}", entry.id, entry.kind, entry.rect);
+}
+
 // By PanelId
 let rect: Option<&Rect> = resolved.get(panel_id);
 
 // By kind — returns all PanelIds with that kind
 let editors: &[PanelId] = resolved.by_kind("editor");
 
-// Iterate all panels
+// Iterate all (PanelId, Rect) pairs
 for (pid, rect) in resolved.iter() {
     println!("{pid}: x={} y={} w={} h={}", rect.x, rect.y, rect.w, rect.h);
 }

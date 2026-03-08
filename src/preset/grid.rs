@@ -54,4 +54,16 @@ impl Grid {
     }
 }
 
+impl Grid {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let strategy = crate::strategy::StrategyKind::ColumnGrid {
+            columns: self.cols,
+            gap: self.gap,
+        };
+        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(Grid);

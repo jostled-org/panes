@@ -35,6 +35,7 @@ pub struct LayoutTree {
     parent_map: FxHashMap<NodeId, NodeId>,
     dirty: bool,
     live_count: usize,
+    window_size: usize,
 }
 
 impl LayoutTree {
@@ -49,6 +50,7 @@ impl LayoutTree {
             parent_map: FxHashMap::default(),
             dirty: true,
             live_count: 0,
+            window_size: 1,
         }
     }
 
@@ -167,6 +169,17 @@ impl LayoutTree {
     /// Total number of panel nodes in the tree.
     pub fn panel_count(&self) -> usize {
         self.panel_to_node.len()
+    }
+
+    /// How many panels the active window shows at once.
+    /// Default is 1. Scrollable sets this to 2.
+    pub fn window_size(&self) -> usize {
+        self.window_size
+    }
+
+    /// Set the active window size.
+    pub fn set_window_size(&mut self, size: usize) {
+        self.window_size = size;
     }
 
     /// Total number of distinct panel kinds.
@@ -289,7 +302,7 @@ impl LayoutTree {
     }
 
     /// Insert a child into a container at the given index, updating parent_map.
-    fn insert_child(
+    pub fn insert_child_at(
         &mut self,
         container: NodeId,
         idx: usize,
@@ -364,7 +377,7 @@ impl LayoutTree {
         let idx = self.anchor_index(target_container, anchor, offset)?;
 
         self.dirty = true;
-        self.insert_child(target_container, idx, nid)
+        self.insert_child_at(target_container, idx, nid)
     }
 
     /// Check structural integrity of the tree.
@@ -449,7 +462,7 @@ impl LayoutTree {
         let (anchor, offset) = position.anchor_and_offset();
         let idx = self.anchor_index(container_id, anchor, offset)?;
         self.dirty = true;
-        self.insert_child(container_id, idx, node_id)
+        self.insert_child_at(container_id, idx, node_id)
     }
 
     /// Compile, compute, and resolve in one call.

@@ -3,13 +3,17 @@ use std::sync::Arc;
 use crate::builder::{LayoutBuilder, gap};
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::panel::fixed;
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
+use crate::panel::{fixed, grow};
+use crate::preset::{collect_kinds, validate_active, validate_kinds};
 
 /// Builder for the scrollable preset layout.
+///
+/// NIRI-style scrolling: shows two panels side by side, filling the viewport.
+/// The `active` index is the focused panel. The window position is derived
+/// so that the focused panel is always visible.
 pub struct Scrollable {
     kinds: Arc<[Arc<str>]>,
-    col_width: f32,
+    active: usize,
     gap: f32,
 }
 
@@ -17,14 +21,14 @@ impl Scrollable {
     pub(crate) fn new(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Self {
         Self {
             kinds: collect_kinds(kinds),
-            col_width: 80.0,
+            active: 0,
             gap: 0.0,
         }
     }
 
-    /// Set the column width.
-    pub fn col_width(mut self, width: f32) -> Self {
-        self.col_width = width;
+    /// Set the focused panel index. The visible window is derived from focus.
+    pub fn active(mut self, index: usize) -> Self {
+        self.active = index;
         self
     }
 
@@ -37,48 +41,59 @@ impl Scrollable {
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
-        validate_f32_param("col_width", self.col_width)?;
+        validate_active(self.active, self.kinds.len())?;
 
+        match self.kinds.len() {
+            1 => super::build_single(Arc::clone(&self.kinds[0])),
+            _ => self.build_scroll(),
+        }
+    }
+
+    fn build_scroll(&self) -> Result<Layout, PaneError> {
         let mut b = LayoutBuilder::new();
-        let col_width = self.col_width;
+        let window_start = window_start_from_focus(self.active, self.kinds.len(), 2);
         let gap_px = self.gap;
+        let kinds = &self.kinds;
 
-        // Root is a TaffyPassthrough row with flex_shrink: 0 so children don't shrink
-        let root_style = scrollable_root_style(gap_px);
-
-        b.row(gap(0.0), |r| {
-            r.taffy_node(root_style, |inner| {
-                add_fixed_panels(inner, &self.kinds, col_width)
-            })
-        })?;
+        b.row(gap(gap_px), |r| add_scroll_panels(r, kinds, window_start))?;
 
         b.build()
     }
 }
 
-fn scrollable_root_style(gap_px: f32) -> taffy::Style {
-    taffy::Style {
-        flex_direction: taffy::FlexDirection::Row,
-        flex_grow: 1.0,
-        flex_basis: taffy::Dimension::length(0.0),
-        flex_shrink: 0.0,
-        gap: taffy::Size {
-            width: taffy::LengthPercentage::length(gap_px),
-            height: taffy::LengthPercentage::length(0.0),
-        },
-        ..Default::default()
-    }
+/// Derive the window start so that `focus` is visible in a window of `size` panels.
+fn window_start_from_focus(focus: usize, len: usize, size: usize) -> usize {
+    let start = (focus + 1).saturating_sub(size);
+    start.min(len.saturating_sub(size))
 }
 
-fn add_fixed_panels(
+/// Show panels at `window` and `window + 1`; hide everything else.
+fn add_scroll_panels(
     ctx: &mut crate::ContainerCtx,
     kinds: &[Arc<str>],
-    col_width: f32,
+    window: usize,
 ) -> Result<(), PaneError> {
-    for kind in kinds {
-        ctx.panel(Arc::clone(kind), fixed(col_width))?;
+    for (i, kind) in kinds.iter().enumerate() {
+        let visible = i == window || i == window + 1;
+        let constraint = match visible {
+            true => grow(1.0),
+            false => fixed(0.0),
+        };
+        ctx.panel(Arc::clone(kind), constraint)?;
     }
     Ok(())
+}
+
+impl Scrollable {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let strategy = crate::strategy::StrategyKind::Window {
+            size: 2,
+            gap: self.gap,
+        };
+        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
 }
 
 super::impl_preset!(Scrollable);

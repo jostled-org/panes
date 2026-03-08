@@ -67,4 +67,16 @@ fn distribute_round_robin(items: &[Arc<str>], n: usize) -> Vec<Vec<Arc<str>>> {
     buckets
 }
 
+impl Columns {
+    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
+        let strategy = crate::strategy::StrategyKind::Sequence {
+            direction: crate::strategy::Direction::Horizontal,
+            gap: self.gap,
+        };
+        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+    }
+}
+
 super::impl_preset!(Columns);

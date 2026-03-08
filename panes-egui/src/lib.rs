@@ -1,6 +1,6 @@
 //! Convert panes layouts into `egui::Rect` values.
 
-use panes::{PanelId, ResolvedLayout};
+use panes::{PanelEntry, PanelId, ResolvedLayout};
 use rustc_hash::FxHashMap;
 
 /// Convert a resolved panes layout into egui rects.
@@ -14,4 +14,18 @@ pub fn convert(resolved: &ResolvedLayout) -> FxHashMap<PanelId, egui::Rect> {
             (pid, rect)
         })
         .collect()
+}
+
+/// Iterate all panels in kind-grouped order, yielding identity and egui rect.
+///
+/// No hashmap allocation — produces entries lazily from the resolved layout.
+pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, egui::Rect>> {
+    resolved.panels().map(|e| PanelEntry {
+        id: e.id,
+        kind: e.kind,
+        rect: egui::Rect::from_min_size(
+            egui::pos2(e.rect.x, e.rect.y),
+            egui::vec2(e.rect.w, e.rect.h),
+        ),
+    })
 }
