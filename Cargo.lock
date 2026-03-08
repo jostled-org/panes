@@ -569,6 +569,7 @@ name = "panes"
 version = "0.2.0"
 dependencies = [
  "criterion",
+ "ratatui",
  "rustc-hash",
  "serde",
  "taffy",

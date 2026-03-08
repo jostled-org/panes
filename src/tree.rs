@@ -161,6 +161,16 @@ impl LayoutTree {
         self.dirty = false;
     }
 
+    /// One past the highest issued `PanelId`. Used to size Vec-indexed storage.
+    pub fn panel_id_high_water(&self) -> u32 {
+        self.panel_gen.high_water()
+    }
+
+    /// Total slots in the node arena (including tombstones).
+    pub fn arena_len(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// Total number of live nodes in the arena.
     pub fn node_count(&self) -> usize {
         self.live_count

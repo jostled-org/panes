@@ -4,6 +4,7 @@
 
 - [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
+- [Layout vs LayoutRuntime](#layout-vs-layoutruntime)
 - [Constraints](#constraints)
 - [Presets](#presets)
 - [Builder API](#builder-api)
@@ -49,6 +50,31 @@ panes computes rectangles. You render them however you want.
 **ResolvedLayout** — The output: a map from `PanelId` to `Rect`. Look up panels by id or by kind.
 
 **Rect** — `{ x, y, w, h }` in f32. Origin is top-left.
+
+---
+
+## Layout vs LayoutRuntime
+
+Two ways to resolve a layout. Pick based on how often you resolve.
+
+**`Layout::resolve()`** — Stateless. Compiles and resolves from scratch every call. No caching, no diffing. Use for one-shot rendering: CLI tools, static output, tests, or any case where you resolve once and discard.
+
+```rust
+let resolved = Layout::row(["a", "b", "c"])?.resolve(80.0, 24.0)?;
+```
+
+**`LayoutRuntime::resolve()`** — Stateful. Caches the compiled tree, reuses allocations across frames, and returns a diff against the previous frame. Use for render loops: TUI apps, game UIs, or anything that resolves repeatedly with mutations between frames.
+
+```rust
+let mut rt = Layout::master_stack(["editor", "chat"])
+    .into_runtime()?;
+
+// Each call reuses cached state and produces a diff
+let frame = rt.resolve(80.0, 24.0)?;
+let diff = frame.diff();  // what changed since last frame
+```
+
+Start with `Layout`. Switch to `LayoutRuntime` when you need per-frame updates, mutations, or diffing. The conversion is one line: `Layout::preset(...).into_runtime()`.
 
 ---
 

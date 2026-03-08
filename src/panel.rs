@@ -13,6 +13,11 @@ impl PanelIdGenerator {
         Self::default()
     }
 
+    /// The number of IDs generated so far (one past the last issued ID).
+    pub fn high_water(&self) -> u32 {
+        self.counter
+    }
+
     /// Produce the next unique `PanelId`.
     ///
     /// Returns an error if the counter reaches `u32::MAX`.

@@ -1,5 +1,3 @@
-use rustc_hash::FxHashMap;
-
 use crate::error::PaneError;
 use crate::node::{Node, NodeId, PanelId};
 use crate::panel::Constraints;
@@ -18,8 +16,8 @@ pub enum Axis {
 pub struct CompileResult {
     /// The Taffy tree backing layout computation.
     pub taffy_tree: taffy::TaffyTree,
-    /// Mapping from panes `NodeId` to Taffy `NodeId`.
-    pub node_map: FxHashMap<NodeId, taffy::NodeId>,
+    /// Mapping from panes `NodeId` to Taffy `NodeId`, indexed by `NodeId::raw()`.
+    pub node_map: Vec<Option<taffy::NodeId>>,
     /// The Taffy root node.
     pub root: taffy::NodeId,
 }
@@ -27,7 +25,7 @@ pub struct CompileResult {
 /// Mutable state threaded through recursive compilation.
 struct CompileCtx {
     taffy_tree: taffy::TaffyTree,
-    node_map: FxHashMap<NodeId, taffy::NodeId>,
+    node_map: Vec<Option<taffy::NodeId>>,
 }
 
 /// Map panes `Constraints` to a Taffy `Style` for a child along the given axis.
@@ -157,7 +155,7 @@ pub fn compile(tree: &LayoutTree) -> Result<CompileResult, PaneError> {
 
     let mut ctx = CompileCtx {
         taffy_tree: taffy::TaffyTree::new(),
-        node_map: FxHashMap::with_capacity_and_hasher(tree.node_count(), Default::default()),
+        node_map: vec![None; tree.arena_len()],
     };
 
     let root_node = tree.node(root_id).ok_or(PaneError::NodeNotFound(root_id))?;
@@ -197,7 +195,7 @@ fn compile_node(
         }
     };
 
-    ctx.node_map.insert(nid, taffy_id);
+    ctx.node_map[nid.raw() as usize] = Some(taffy_id);
     Ok(taffy_id)
 }
 
@@ -261,6 +259,6 @@ pub fn panel_layout<'a>(
     pid: PanelId,
 ) -> Option<&'a taffy::Layout> {
     let nid = tree.node_for_panel(pid)?;
-    let taffy_id = result.node_map.get(&nid)?;
+    let taffy_id = result.node_map.get(nid.raw() as usize)?.as_ref()?;
     result.taffy_tree.layout(*taffy_id).ok()
 }

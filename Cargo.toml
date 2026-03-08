@@ -58,7 +58,13 @@ incremental = true
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+ratatui = { version = "0.30", default-features = false }
+taffy = "0.9"
 
 [[bench]]
 name = "resolve"
+harness = false
+
+[[bench]]
+name = "compare"
 harness = false

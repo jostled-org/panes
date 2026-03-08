@@ -6,7 +6,8 @@ use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::node::PanelId;
 use crate::panel::fixed;
-use crate::resolver::{self, ResolvedLayout};
+use crate::rect::Rect;
+use crate::resolver::{self, ResolveScratch, ResolvedLayout};
 use crate::sequence::PanelSequence;
 use crate::strategy::StrategyKind;
 use crate::tree::LayoutTree;
@@ -36,6 +37,10 @@ pub struct LayoutRuntime {
     viewport: ViewportState,
     previous: Option<Arc<ResolvedLayout>>,
     cached_compile: Option<CompileResult>,
+    cached_kinds: Option<resolver::KindIndex>,
+    rects_buf: Option<Vec<Option<Rect>>>,
+    diff_scratch: diff::DiffScratch,
+    resolve_scratch: ResolveScratch,
     strategy: Option<StrategyKind>,
     sequence: PanelSequence,
 }
@@ -48,6 +53,10 @@ impl LayoutRuntime {
             viewport: ViewportState::default(),
             previous: None,
             cached_compile: None,
+            cached_kinds: None,
+            rects_buf: None,
+            diff_scratch: diff::DiffScratch::default(),
+            resolve_scratch: ResolveScratch::default(),
             strategy: None,
             sequence: PanelSequence::default(),
         }
@@ -63,6 +72,10 @@ impl LayoutRuntime {
             viewport,
             previous: None,
             cached_compile: None,
+            cached_kinds: None,
+            rects_buf: None,
+            diff_scratch: diff::DiffScratch::default(),
+            resolve_scratch: ResolveScratch::default(),
             strategy: Some(strategy),
             sequence,
         })
@@ -90,6 +103,10 @@ impl LayoutRuntime {
             },
             previous: None,
             cached_compile: None,
+            cached_kinds: None,
+            rects_buf: None,
+            diff_scratch: diff::DiffScratch::default(),
+            resolve_scratch: ResolveScratch::default(),
             strategy: Some(strategy),
             sequence,
         })
@@ -298,7 +315,9 @@ impl LayoutRuntime {
 
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.
     pub fn resolve(&mut self, width: f32, height: f32) -> Result<Frame, PaneError> {
-        let mut result = match (self.tree.is_dirty(), self.cached_compile.take()) {
+        let tree_dirty = self.tree.is_dirty();
+
+        let mut result = match (tree_dirty, self.cached_compile.take()) {
             (false, Some(cached)) => cached,
             _ => {
                 self.tree.clear_dirty();
@@ -308,19 +327,36 @@ impl LayoutRuntime {
 
         compute_layout(&mut result, width, height)?;
 
-        let mut layout = resolver::resolve(&result, &self.tree)?;
+        let mut layout = match (tree_dirty, self.cached_kinds.take()) {
+            (false, Some(kinds)) => resolver::resolve_with_cached_kinds(
+                &result,
+                &self.tree,
+                kinds,
+                &mut self.resolve_scratch,
+                self.rects_buf.take(),
+            )?,
+            _ => resolver::resolve(&result, &self.tree)?,
+        };
 
+        self.cached_kinds = Some(Arc::clone(layout.kinds_arc()));
         self.cached_compile = Some(result);
 
         apply_scroll_offset(&mut layout, self.viewport.scroll_offset);
 
-        let diff = match self.previous.as_deref() {
-            Some(prev) => diff::diff(prev, &layout),
-            None => diff::first_frame(&layout),
+        let prev_arc = self.previous.take();
+        let diff = match (tree_dirty, prev_arc.as_deref()) {
+            (_, None) => diff::first_frame(&layout),
+            (false, Some(prev)) => diff::diff_same_panels(prev, &layout),
+            (true, Some(prev)) => diff::diff_reuse(prev, &layout, &mut self.diff_scratch),
         };
 
         let layout = Arc::new(layout);
         self.previous = Some(Arc::clone(&layout));
+
+        // Reclaim the previous frame's rects buffer if no other consumers hold a reference.
+        if let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) {
+            self.rects_buf = Some(prev_layout.take_rects());
+        }
 
         Ok(Frame { layout, diff })
     }
