@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jostled-org/panes/compare/panes-css-v0.1.5...panes-css-v0.2.0) - 2026-03-08
+
+### Other
+
+- [**breaking**] ergonomic builder API with infallible closures and method splits
+
 ## [0.1.5](https://github.com/jostled-org/panes/compare/panes-css-v0.1.4...panes-css-v0.1.5) - 2026-03-08
 
 ### Other
