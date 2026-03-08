@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/jostled-org/panes/compare/panes-v0.4.0...panes-v0.5.0) - 2026-03-08
+
+### Other
+
+- [**breaking**] ergonomic builder API with infallible closures and method splits
+
 ## [0.4.0](https://github.com/jostled-org/panes/compare/panes-v0.3.0...panes-v0.4.0) - 2026-03-08
 
 ### Added
