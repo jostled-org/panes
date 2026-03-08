@@ -41,6 +41,7 @@ pub use preset::{
 };
 pub use rect::Rect;
 pub use resolver::{PanelEntry, ResolvedLayout};
+pub use runtime::Placement;
 pub use sequence::PanelSequence;
 pub use strategy::{ActivePanelVariant, Direction, SlotDef, StrategyKind};
 #[cfg(feature = "toml")]

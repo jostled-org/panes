@@ -303,7 +303,7 @@ impl LayoutTree {
     }
 
     /// Detach a node from its parent container. Returns the parent id.
-    fn detach(&mut self, node_id: NodeId) -> Option<NodeId> {
+    pub(crate) fn detach(&mut self, node_id: NodeId) -> Option<NodeId> {
         let parent_id = self.parent_map.remove(&node_id)?;
         if let Some(children) = self.children_mut(parent_id) {
             children.retain(|&c| c != node_id);

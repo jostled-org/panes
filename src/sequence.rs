@@ -35,6 +35,11 @@ impl PanelSequence {
         self.ids.push(pid);
     }
 
+    /// Insert a panel at the given index.
+    pub fn insert(&mut self, index: usize, pid: PanelId) {
+        self.ids.insert(index, pid);
+    }
+
     /// Remove a panel by id. Returns its former index, or `None` if absent.
     pub fn remove(&mut self, pid: PanelId) -> Option<usize> {
         let idx = self.index_of(pid)?;

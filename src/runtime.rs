@@ -5,14 +5,24 @@ use crate::diff::{self, LayoutDiff};
 use crate::error::PaneError;
 use crate::focus::{self, FocusDirection};
 use crate::layout::Layout;
-use crate::node::PanelId;
+use crate::node::{Node, PanelId};
 use crate::panel::fixed;
 use crate::rect::Rect;
 use crate::resolver::{self, ResolveScratch, ResolvedLayout};
 use crate::sequence::PanelSequence;
-use crate::strategy::StrategyKind;
+use crate::strategy::{Direction, StrategyKind};
 use crate::tree::LayoutTree;
 use crate::viewport::ViewportState;
+
+/// Where to place the new panel relative to the focused panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Placement {
+    /// New panel goes before focused (left or above).
+    Before,
+    /// New panel goes after focused (right or below).
+    #[default]
+    After,
+}
 
 /// Result of a single resolve call: the resolved layout and its diff against the previous frame.
 pub struct Frame {
@@ -350,6 +360,128 @@ impl LayoutRuntime {
             PaneError::InvalidViewport("no resolved layout; call resolve() first".into())
         })?);
         self.focus_direction(&layout, direction)
+    }
+
+    /// Pick a split direction from the focused panel's aspect ratio.
+    /// Splits the longer axis: wider → horizontal, taller → vertical.
+    /// Falls back to horizontal if no layout is cached or no panel is focused.
+    fn auto_direction(&self) -> Direction {
+        let rect = self
+            .viewport
+            .focus
+            .and_then(|pid| self.previous.as_ref()?.get(pid));
+        match rect {
+            Some(r) if r.h > r.w => Direction::Vertical,
+            _ => Direction::Horizontal,
+        }
+    }
+
+    /// Add a panel adjacent to the currently focused panel.
+    ///
+    /// Auto-picks the split direction from the focused panel's aspect ratio:
+    /// wider panels split horizontal, taller panels split vertical. Falls
+    /// back to horizontal if no layout has been resolved yet.
+    ///
+    /// Uses `grow(1.0)` constraints and [`Placement::After`].
+    pub fn add_panel_adjacent(&mut self, kind: Arc<str>) -> Result<PanelId, PaneError> {
+        let direction = self.auto_direction();
+        self.add_panel_adjacent_with(kind, direction, crate::panel::grow(1.0), Placement::After)
+    }
+
+    /// Add a panel adjacent to the currently focused panel with full control.
+    ///
+    /// This is strategy-independent: it works directly on tree topology.
+    /// `placement` controls whether the new panel appears before or after
+    /// the focused panel. If `direction` matches the parent container's
+    /// axis, the new panel is inserted as a sibling. If it conflicts, the
+    /// focused panel is wrapped in a new sub-container oriented along
+    /// `direction`, and the new panel is added beside it.
+    pub fn add_panel_adjacent_with(
+        &mut self,
+        kind: Arc<str>,
+        direction: Direction,
+        constraints: crate::Constraints,
+        placement: Placement,
+    ) -> Result<PanelId, PaneError> {
+        let focused = self
+            .focused()
+            .ok_or_else(|| PaneError::InvalidMutation("no focused panel".into()))?;
+        let focused_nid = self
+            .tree
+            .node_for_panel(focused)
+            .ok_or(PaneError::PanelNotFound(focused))?;
+        let parent_id = self
+            .tree
+            .parent(focused_nid)?
+            .ok_or_else(|| PaneError::InvalidMutation("focused panel has no parent".into()))?;
+
+        let (new_pid, new_nid) = self.tree.add_panel(kind, constraints)?;
+
+        let parent_axis = match self.tree.node(parent_id) {
+            Some(Node::Col { .. }) => Direction::Vertical,
+            Some(Node::TaffyPassthrough { style, .. })
+                if matches!(
+                    style.flex_direction,
+                    taffy::FlexDirection::Column | taffy::FlexDirection::ColumnReverse
+                ) =>
+            {
+                Direction::Vertical
+            }
+            Some(Node::Row { .. }) | Some(Node::TaffyPassthrough { .. }) => Direction::Horizontal,
+            Some(Node::Panel { .. }) | None => {
+                return Err(PaneError::InvalidMutation(
+                    "parent is not a container".into(),
+                ));
+            }
+        };
+
+        let focused_idx = self
+            .tree
+            .children(parent_id)?
+            .iter()
+            .position(|&c| c == focused_nid)
+            .ok_or(PaneError::PanelNotFound(focused))?;
+
+        let insert_idx = match placement {
+            Placement::Before => focused_idx,
+            Placement::After => focused_idx + 1,
+        };
+
+        match (parent_axis == direction, direction, placement) {
+            (true, _, _) => {
+                self.tree.insert_child_at(parent_id, insert_idx, new_nid)?;
+            }
+            (false, Direction::Horizontal, Placement::Before) => {
+                self.tree.detach(focused_nid);
+                let c = self.tree.add_row(0.0, vec![new_nid, focused_nid])?;
+                self.tree.insert_child_at(parent_id, focused_idx, c)?;
+            }
+            (false, Direction::Horizontal, Placement::After) => {
+                self.tree.detach(focused_nid);
+                let c = self.tree.add_row(0.0, vec![focused_nid, new_nid])?;
+                self.tree.insert_child_at(parent_id, focused_idx, c)?;
+            }
+            (false, Direction::Vertical, Placement::Before) => {
+                self.tree.detach(focused_nid);
+                let c = self.tree.add_col(0.0, vec![new_nid, focused_nid])?;
+                self.tree.insert_child_at(parent_id, focused_idx, c)?;
+            }
+            (false, Direction::Vertical, Placement::After) => {
+                self.tree.detach(focused_nid);
+                let c = self.tree.add_col(0.0, vec![focused_nid, new_nid])?;
+                self.tree.insert_child_at(parent_id, focused_idx, c)?;
+            }
+        }
+
+        let seq_idx = match (self.sequence.index_of(focused), placement) {
+            (Some(idx), Placement::Before) => idx,
+            (Some(idx), Placement::After) => idx + 1,
+            (None, _) => self.sequence.len(),
+        };
+        self.sequence.insert(seq_idx, new_pid);
+
+        self.viewport.focus = Some(new_pid);
+        Ok(new_pid)
     }
 
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.

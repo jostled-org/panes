@@ -67,7 +67,8 @@ Layout::master_stack(["editor", "chat", "status"]).master_ratio(0.6).gap(1.0)
 let mut rt = Layout::master_stack(["editor", "chat", "status"])
     .master_ratio(0.6).gap(1.0).into_runtime()?;
 
-rt.add_panel("terminal".into())?;
+rt.add_panel("terminal".into())?;          // strategy-managed
+rt.add_panel_adjacent("split".into())?;    // auto-splits focused panel
 rt.focus_next()?;
 rt.focus_direction_current(FocusDirection::Right)?;
 

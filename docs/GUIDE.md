@@ -638,8 +638,21 @@ let resolved = frame.layout();
 Add, remove, move, and focus panels at runtime. The strategy handles the spatial rules — where new panels go, how focus shifts, whether the tree rebuilds or just adjusts constraints.
 
 ```rust
-// Add a panel — focus shifts to the new panel
+// Add a panel — strategy decides placement, focus shifts to new panel
 let pid = rt.add_panel("terminal".into())?;
+
+// Add adjacent to focused panel — strategy-independent tree surgery
+// Auto-picks split direction from the focused panel's aspect ratio
+let new = rt.add_panel_adjacent("sidebar".into())?;
+
+// Full control: explicit direction, constraints, and placement
+use panes::{Placement, Direction, fixed};
+let new = rt.add_panel_adjacent_with(
+    "sidebar".into(),
+    Direction::Horizontal,
+    fixed(30.0),
+    Placement::Before,  // insert left of / above focused
+)?;
 
 // Remove the focused panel — focus shifts to neighbor
 rt.remove_panel(pid)?;
