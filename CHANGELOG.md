@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/jostled-org/panes/compare/panes-v0.2.0...panes-v0.3.0) - 2026-03-08
+
+### Other
+
+- [**breaking**] replace FxHashMap with Vec-indexed storage for rects and node_map
+
 ## [0.2.0](https://github.com/jostled-org/panes/compare/panes-v0.1.2...panes-v0.2.0) - 2026-03-08
 
 ### Added
