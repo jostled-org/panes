@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/jostled-org/panes/compare/panes-v0.5.2...panes-v0.6.0) - 2026-03-08
+
+### Added
+
+- [**breaking**] add strategy-independent panel splitting with auto direction
+
 ## [0.5.2](https://github.com/jostled-org/panes/compare/panes-v0.5.1...panes-v0.5.2) - 2026-03-08
 
 ### Added
