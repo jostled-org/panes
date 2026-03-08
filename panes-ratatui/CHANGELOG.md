@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.3.0...panes-ratatui-v0.3.1) - 2026-03-08
+
+### Added
+
+- *(ratatui)* add focus-enriched panel iterators
+
 ## [0.3.0](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.2.0...panes-ratatui-v0.3.0) - 2026-03-08
 
 ### Other
