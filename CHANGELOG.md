@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/jostled-org/panes/compare/panes-v0.5.1...panes-v0.5.2) - 2026-03-08
+
+### Added
+
+- add directional focus navigation
+
 ## [0.5.1](https://github.com/jostled-org/panes/compare/panes-v0.5.0...panes-v0.5.1) - 2026-03-08
 
 ### Added
