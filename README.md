@@ -69,6 +69,7 @@ let mut rt = Layout::master_stack(["editor", "chat", "status"])
 
 rt.add_panel("terminal".into())?;
 rt.focus_next()?;
+rt.focus_direction_current(FocusDirection::Right)?;
 
 let frame = rt.resolve(80.0, 24.0)?;
 let diff = frame.diff();

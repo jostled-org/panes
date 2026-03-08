@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::compiler::{CompileResult, compile, compute_layout};
 use crate::diff::{self, LayoutDiff};
 use crate::error::PaneError;
+use crate::focus::{self, FocusDirection};
 use crate::layout::Layout;
 use crate::node::PanelId;
 use crate::panel::fixed;
@@ -311,6 +312,44 @@ impl LayoutRuntime {
             Some(pid) => self.focus(pid),
             None => Ok(()),
         }
+    }
+
+    /// Move focus to the nearest panel in a spatial direction.
+    ///
+    /// Returns `Ok(Some(target))` when focus moved, `Ok(None)` when no
+    /// candidate exists in that direction or no panel is focused.
+    pub fn focus_direction(
+        &mut self,
+        layout: &ResolvedLayout,
+        direction: FocusDirection,
+    ) -> Result<Option<PanelId>, PaneError> {
+        let focused = match self.focused() {
+            Some(pid) => pid,
+            None => return Ok(None),
+        };
+        match focus::find_nearest(layout, focused, &self.sequence, direction) {
+            Some(target) => {
+                self.focus(target)?;
+                Ok(Some(target))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Move focus to the nearest panel in a spatial direction, using the
+    /// most recently resolved layout.
+    ///
+    /// Equivalent to [`focus_direction`](Self::focus_direction) but reads
+    /// geometry from the cached layout so the caller doesn't need to pass it.
+    /// Requires at least one prior [`resolve`](Self::resolve) call.
+    pub fn focus_direction_current(
+        &mut self,
+        direction: FocusDirection,
+    ) -> Result<Option<PanelId>, PaneError> {
+        let layout = Arc::clone(self.previous.as_ref().ok_or_else(|| {
+            PaneError::InvalidViewport("no resolved layout; call resolve() first".into())
+        })?);
+        self.focus_direction(&layout, direction)
     }
 
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.

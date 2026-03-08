@@ -9,6 +9,7 @@ pub mod compiler;
 /// Frame-to-frame diffing of resolved layouts.
 pub mod diff;
 mod error;
+mod focus;
 mod layout;
 mod macros;
 mod node;
@@ -30,6 +31,7 @@ mod viewport;
 
 pub use builder::{ContainerCtx, LayoutBuilder};
 pub use error::PaneError;
+pub use focus::FocusDirection;
 pub use layout::Layout;
 pub use node::{Node, NodeId, PanelId};
 pub use panel::{Constraints, PanelIdGenerator, fixed, grow};

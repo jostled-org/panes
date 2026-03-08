@@ -647,10 +647,21 @@ rt.remove_panel(pid)?;
 // Move a panel to a new position in the sequence
 rt.move_panel(pid, 0)?;
 
-// Focus navigation
+// Sequential focus navigation
 rt.focus_next()?;
 rt.focus_prev()?;
 rt.focus(pid)?;
+
+// Spatial focus navigation — move to nearest panel in a direction
+use panes::FocusDirection;
+rt.focus_direction_current(FocusDirection::Left)?;
+rt.focus_direction_current(FocusDirection::Right)?;
+rt.focus_direction_current(FocusDirection::Up)?;
+rt.focus_direction_current(FocusDirection::Down)?;
+
+// Or pass an explicit layout (e.g. during animation)
+let frame = rt.resolve(80.0, 24.0)?;
+rt.focus_direction(frame.layout(), FocusDirection::Right)?;
 
 // Query focus state
 let focused: Option<PanelId> = rt.focused();
