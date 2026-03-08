@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
@@ -45,8 +45,8 @@ impl Dwindle {
         let ratio = self.ratio;
         let gap_px = self.gap;
 
-        b.row(gap(gap_px), |r| {
-            build_recursive(r, kinds, 0, ratio, gap_px, false)
+        b.row_gap(gap_px, |r| {
+            build_recursive(r, kinds, 0, ratio, gap_px, false);
         })?;
 
         b.build()
@@ -62,12 +62,11 @@ pub(crate) fn build_recursive(
     ratio: f32,
     gap_px: f32,
     reverse_even: bool,
-) -> Result<(), PaneError> {
+) {
     match kinds.len() {
-        0 => Ok(()),
+        0 => {}
         1 => {
-            ctx.panel(Arc::clone(&kinds[0]), grow(1.0))?;
-            Ok(())
+            ctx.panel(Arc::clone(&kinds[0]));
         }
         2 => add_pair(ctx, kinds, depth, ratio, reverse_even),
         _ => add_nested(ctx, kinds, depth, ratio, gap_px, reverse_even),
@@ -80,20 +79,19 @@ fn add_pair(
     depth: usize,
     ratio: f32,
     reverse_even: bool,
-) -> Result<(), PaneError> {
+) {
     let (first, second) = (Arc::clone(&kinds[0]), Arc::clone(&kinds[1]));
     let should_reverse = reverse_even && depth >= 2 && depth.is_multiple_of(2);
     match should_reverse {
         true => {
-            ctx.panel(second, grow(1.0 - ratio))?;
-            ctx.panel(first, grow(ratio))?;
+            ctx.panel_with(second, grow(1.0 - ratio));
+            ctx.panel_with(first, grow(ratio));
         }
         false => {
-            ctx.panel(first, grow(ratio))?;
-            ctx.panel(second, grow(1.0 - ratio))?;
+            ctx.panel_with(first, grow(ratio));
+            ctx.panel_with(second, grow(1.0 - ratio));
         }
     }
-    Ok(())
 }
 
 fn add_nested(
@@ -103,7 +101,7 @@ fn add_nested(
     ratio: f32,
     gap_px: f32,
     reverse_even: bool,
-) -> Result<(), PaneError> {
+) {
     let first = Arc::clone(&kinds[0]);
     let rest = &kinds[1..];
     let should_reverse = reverse_even && depth >= 2 && depth.is_multiple_of(2);
@@ -118,18 +116,17 @@ fn add_nested(
     match should_reverse {
         true => {
             ctx.taffy_node(nest_style, |inner| {
-                build_recursive(inner, rest, next_depth, ratio, gap_px, reverse_even)
-            })?;
-            ctx.panel(first, grow(ratio))?;
+                build_recursive(inner, rest, next_depth, ratio, gap_px, reverse_even);
+            });
+            ctx.panel_with(first, grow(ratio));
         }
         false => {
-            ctx.panel(first, grow(ratio))?;
+            ctx.panel_with(first, grow(ratio));
             ctx.taffy_node(nest_style, |inner| {
-                build_recursive(inner, rest, next_depth, ratio, gap_px, reverse_even)
-            })?;
+                build_recursive(inner, rest, next_depth, ratio, gap_px, reverse_even);
+            });
         }
     }
-    Ok(())
 }
 
 impl Dwindle {

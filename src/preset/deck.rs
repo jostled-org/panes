@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
@@ -57,11 +57,11 @@ impl Deck {
         let master_kind = Arc::clone(&self.kinds[0]);
         let active = self.active;
 
-        b.row(gap(gap_px), |r| {
-            r.panel(master_kind, grow(ratio))?;
+        b.row_gap(gap_px, |r| {
+            r.panel_with(master_kind, grow(ratio));
             r.taffy_node(col_style(1.0 - ratio, 0.0), |c| {
-                add_active_hidden_panels(c, &self.kinds[1..], active)
-            })
+                add_active_hidden_panels(c, &self.kinds[1..], active);
+            });
         })?;
 
         b.build()

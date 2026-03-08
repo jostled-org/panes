@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::{ContainerCtx, LayoutBuilder};
 use crate::compiler::compile;
 use crate::error::PaneError;
-use crate::panel::grow;
 use crate::preset::PresetInfo;
 use crate::resolver::ResolvedLayout;
 use crate::tree::LayoutTree;
@@ -42,15 +41,44 @@ impl Layout {
         self.tree.resolve(width, height)
     }
 
+    // -- Convenience constructors --
+
+    /// Build a row layout from a closure.
+    pub fn build_row(f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
+        let mut b = LayoutBuilder::new();
+        b.row(f)?;
+        b.build()
+    }
+
+    /// Build a column layout from a closure.
+    pub fn build_col(f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
+        let mut b = LayoutBuilder::new();
+        b.col(f)?;
+        b.build()
+    }
+
+    /// Build a row layout with gap from a closure.
+    pub fn build_row_gap(gap: f32, f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
+        let mut b = LayoutBuilder::new();
+        b.row_gap(gap, f)?;
+        b.build()
+    }
+
+    /// Build a column layout with gap from a closure.
+    pub fn build_col_gap(gap: f32, f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
+        let mut b = LayoutBuilder::new();
+        b.col_gap(gap, f)?;
+        b.build()
+    }
+
     /// Equal-grow panels in a row, zero gap.
     pub fn row(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Result<Self, PaneError> {
         let kinds: Vec<Arc<str>> = kinds.into_iter().map(Into::into).collect();
         let mut b = LayoutBuilder::new();
-        b.row(gap(0.0), |r| {
+        b.row(|r| {
             for kind in &kinds {
-                r.panel(Arc::clone(kind), grow(1.0))?;
+                r.panel(Arc::clone(kind));
             }
-            Ok(())
         })?;
         b.build()
     }
@@ -59,11 +87,10 @@ impl Layout {
     pub fn col(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Result<Self, PaneError> {
         let kinds: Vec<Arc<str>> = kinds.into_iter().map(Into::into).collect();
         let mut b = LayoutBuilder::new();
-        b.col(gap(0.0), |r| {
+        b.col(|r| {
             for kind in &kinds {
-                r.panel(Arc::clone(kind), grow(1.0))?;
+                r.panel(Arc::clone(kind));
             }
-            Ok(())
         })?;
         b.build()
     }
@@ -74,11 +101,10 @@ impl Layout {
     ) -> Result<Self, PaneError> {
         let panels: Vec<_> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
         let mut b = LayoutBuilder::new();
-        b.row(gap(0.0), |r| {
+        b.row(|r| {
             for (kind, constraints) in &panels {
-                r.panel(Arc::clone(kind), *constraints)?;
+                r.panel_with(Arc::clone(kind), *constraints);
             }
-            Ok(())
         })?;
         b.build()
     }
@@ -89,11 +115,10 @@ impl Layout {
     ) -> Result<Self, PaneError> {
         let panels: Vec<_> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
         let mut b = LayoutBuilder::new();
-        b.col(gap(0.0), |c| {
+        b.col(|c| {
             for (kind, constraints) in &panels {
-                c.panel(Arc::clone(kind), *constraints)?;
+                c.panel_with(Arc::clone(kind), *constraints);
             }
-            Ok(())
         })?;
         b.build()
     }

@@ -6,9 +6,9 @@
 - [Core Concepts](#core-concepts)
 - [Layout vs LayoutRuntime](#layout-vs-layoutruntime)
 - [Constraints](#constraints)
-- [Presets](#presets)
 - [Builder API](#builder-api)
 - [Layout Macro](#layout-macro)
+- [Presets](#presets)
 - [TOML Configuration](#toml-configuration)
 - [Runtime](#runtime)
 - [Frame Diffing](#frame-diffing)
@@ -20,8 +20,11 @@
 
 ## Quick Start
 
+Pick a preset or build from scratch. Either way you get a bag of rectangles.
+
 ```rust
-use panes::{Layout, Rect};
+// Preset: one-liner for common patterns
+use panes::Layout;
 
 let resolved = Layout::master_stack(["editor", "chat", "status"])
     .master_ratio(0.6)
@@ -33,7 +36,24 @@ for (id, rect) in resolved.iter() {
 }
 ```
 
-panes computes rectangles. You render them however you want.
+```rust
+// Custom: full control with the layout macro
+use panes::{layout, grow, fixed};
+
+let layout = layout! {
+    col {
+        panel("viewport", grow: 1.0)
+        row(gap: 4.0) {
+            panel("health", fixed: 40.0)
+            panel("inventory", grow: 1.0)
+            panel("minimap", fixed: 48.0)
+        }
+    }
+}?;
+let resolved = layout.resolve(800.0, 600.0)?;
+```
+
+Pass any units to `resolve()` — pixels, logical points, terminal cells. panes doesn't care.
 
 ---
 
@@ -80,7 +100,7 @@ Start with `Layout`. Switch to `LayoutRuntime` when you need per-frame updates, 
 
 ## Constraints
 
-Two primary sizing modes, plus optional bounds.
+Two sizing modes. Use `fixed` when you know the size. Use `grow` when you want the panel to fill available space.
 
 ```rust
 use panes::{grow, fixed};
@@ -97,6 +117,162 @@ fixed(50.0).min(30.0) // fixed 50, floor at 30
 `grow` and `fixed` are mutually exclusive. `min` and `max` can be added to either.
 
 A bare panel in the macro (no constraint specified) defaults to `grow(1.0)`.
+
+### When to use which
+
+**`fixed`** — panels with a known size: toolbars, status bars, sidebars, health bars, tab headers. The panel gets exactly the size you specify, in whatever units you pass to `resolve()`.
+
+**`grow`** — panels that fill remaining space after fixed panels are placed. The weight controls how leftover space is divided. In a row with `grow(2.0)` and `grow(1.0)`, the first panel gets 2/3 and the second gets 1/3 of the space not consumed by fixed panels or gaps.
+
+### Mixing fixed and grow
+
+Fixed panels are allocated first. Grow panels split what remains.
+
+```rust
+// 100px wide row: sidebar gets 30, editor gets 70
+row {
+    panel("sidebar", fixed: 30.0)
+    panel("editor", grow: 1.0)
+}
+```
+
+```rust
+// 100px wide row with gap: sidebar=30, gap=4, editor=66
+row(gap: 4.0) {
+    panel("sidebar", fixed: 30.0)
+    panel("editor", grow: 1.0)
+}
+```
+
+```rust
+// Three grow panels with weights: 50, 25, 25
+row {
+    panel("main", grow: 2.0)
+    panel("left", grow: 1.0)
+    panel("right", grow: 1.0)
+}
+```
+
+---
+
+## Builder API
+
+For layouts that don't fit a preset, use `LayoutBuilder` directly. Think of it as nested flexbox: `row` lays out children horizontally, `col` lays out children vertically.
+
+```rust
+use panes::{LayoutBuilder, grow, fixed};
+
+let mut b = LayoutBuilder::new();
+b.row_gap(8.0, |r| {
+    r.panel_with("editor", grow(2.0));
+    r.col(|c| {
+        c.panel("chat");
+        c.panel_with("status", fixed(3.0));
+    });
+})?;
+let layout = b.build()?;
+let resolved = layout.resolve(80.0, 24.0)?;
+```
+
+Or use the convenience constructors on `Layout`:
+
+```rust
+use panes::{Layout, fixed};
+
+let layout = Layout::build_row_gap(8.0, |r| {
+    r.panel_with("editor", panes::grow(2.0));
+    r.col(|c| {
+        c.panel("chat");
+        c.panel_with("status", fixed(3.0));
+    });
+})?;
+```
+
+Key rules:
+- The root must be a single `row` or `col`
+- Containers nest freely — rows inside columns, columns inside rows
+- `row_gap(n, ...)` / `col_gap(n, ...)` sets spacing; bare `row(...)` / `col(...)` uses zero gap
+- Bare `panel("kind")` defaults to `grow(1.0)`; use `panel_with("kind", constraints)` for explicit sizing
+- Every `build()` validates the tree and returns `Result<Layout, PaneError>`
+
+### Example: game HUD
+
+A viewport that fills most of the screen, a fixed bottom bar with health, inventory, and minimap, and a fixed right column for a quest log:
+
+```rust
+//  ┌─────────────────────────┬──────────┐
+//  │                         │          │
+//  │       viewport          │  quest   │
+//  │       (grow)            │  (fixed) │
+//  │                         │          │
+//  ├────────┬────────┬───────┤          │
+//  │ health │ inven  │ mini  │          │
+//  │ (fixed)│ (grow) │(fixed)│          │
+//  └────────┴────────┴───────┴──────────┘
+
+let mut b = LayoutBuilder::new();
+b.row(|r| {
+    r.col_gap(2.0, |c| {
+        c.panel("viewport");
+        c.row_gap(4.0, |bar| {
+            bar.panel_with("health", fixed(120.0));
+            bar.panel("inventory");
+            bar.panel_with("minimap", fixed(120.0));
+        });
+    });
+    r.panel_with("quest_log", fixed(200.0));
+})?;
+let resolved = b.build()?.resolve(1920.0, 1080.0)?;
+```
+
+The same layout works at any resolution — pass `800.0, 600.0` and the fixed panels keep their sizes while grow panels absorb the difference.
+
+---
+
+## Layout Macro
+
+The `layout!` macro provides a declarative shorthand for the builder API.
+
+```rust
+use panes::layout;
+
+let layout = layout! {
+    row(gap: 8.0) {
+        panel("editor", grow: 2.0, min: 40.0)
+        col {
+            panel("chat")
+            panel("status", fixed: 3.0)
+        }
+    }
+}?;
+```
+
+Syntax:
+- Root is a single `row` or `col`, with optional `(gap: N)`
+- `panel("kind")` — defaults to `grow(1.0)`
+- `panel("kind", grow: N)` or `panel("kind", fixed: N)`
+- Optional `min:` and `max:` after the primary constraint
+- Nested `row { ... }` and `col { ... }` containers
+
+The macro returns `Result<Layout, PaneError>`.
+
+The same game HUD from the Builder API section:
+
+```rust
+let layout = layout! {
+    row {
+        col(gap: 2.0) {
+            panel("viewport", grow: 1.0)
+            row(gap: 4.0) {
+                panel("health", fixed: 120.0)
+                panel("inventory", grow: 1.0)
+                panel("minimap", fixed: 120.0)
+            }
+        }
+        panel("quest_log", fixed: 200.0)
+    }
+}?;
+```
 
 ---
 
@@ -129,6 +305,16 @@ Each `PresetInfo` has three fields:
 - `description` — one-line summary
 
 The three `FixedSlots` presets are `sidebar`, `holy-grail`, and `split`. All others accept a dynamic list.
+
+### Simple Layouts
+
+```rust
+// Equal-grow panels in a row
+Layout::row(["a", "b", "c"])?;
+
+// Equal-grow panels in a column
+Layout::col(["a", "b", "c"])?;
+```
 
 ### Tiling Presets
 
@@ -312,73 +498,6 @@ Layout::scrollable(["project-a", "project-b", "project-c"])
     .gap(1.0)
     .resolve(100.0, 24.0)?;
 ```
-
-### Simple Layouts
-
-```rust
-// Equal-grow panels in a row
-Layout::row(["a", "b", "c"])?;
-
-// Equal-grow panels in a column
-Layout::col(["a", "b", "c"])?;
-```
-
----
-
-## Builder API
-
-For layouts that don't fit a preset, use `LayoutBuilder` directly.
-
-```rust
-use panes::{LayoutBuilder, gap, grow, fixed};
-
-let mut b = LayoutBuilder::new();
-b.row(gap(8.0), |r| {
-    r.panel("editor", grow(2.0))?;
-    r.col(gap(0.0), |c| {
-        c.panel("chat", grow(1.0))?;
-        c.panel("status", fixed(3.0))?;
-        Ok(())
-    })
-})?;
-let layout = b.build()?;
-let resolved = layout.resolve(80.0, 24.0)?;
-```
-
-Key rules:
-- The root must be a single `row` or `col`
-- Containers nest freely — rows inside columns, columns inside rows
-- `gap(n)` sets spacing between children of a container
-- Every `build()` validates the tree and returns `Result<Layout, PaneError>`
-
----
-
-## Layout Macro
-
-The `layout!` macro provides a declarative shorthand for the builder API.
-
-```rust
-use panes::layout;
-
-let layout = layout! {
-    row(gap: 8.0) {
-        panel("editor", grow: 2.0, min: 40.0)
-        col {
-            panel("chat")
-            panel("status", fixed: 3.0)
-        }
-    }
-}?;
-```
-
-Syntax:
-- Root is a single `row` or `col`, with optional `(gap: N)`
-- `panel("kind")` — defaults to `grow(1.0)`
-- `panel("kind", grow: N)` or `panel("kind", fixed: N)`
-- Optional `min:` and `max:` after the primary constraint
-- Nested `row { ... }` and `col { ... }` containers
-
-The macro returns `Result<Layout, PaneError>`.
 
 ---
 
@@ -739,13 +858,12 @@ let custom_style = taffy::Style {
 };
 
 let mut b = LayoutBuilder::new();
-b.row(gap(0.0), |r| {
+b.row(|r| {
     r.taffy_node(custom_style, |grid| {
-        grid.panel("a", grow(1.0))?;
-        grid.panel("b", grow(1.0))?;
-        grid.panel("c", grow(1.0))?;
-        Ok(())
-    })
+        grid.panel("a");
+        grid.panel("b");
+        grid.panel("c");
+    });
 })?;
 ```
 

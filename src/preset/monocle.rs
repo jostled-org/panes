@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::{add_active_hidden_panels, collect_kinds, validate_active, validate_kinds};
@@ -33,8 +33,8 @@ impl Monocle {
         let mut b = LayoutBuilder::new();
         let active = self.active;
 
-        b.col(gap(0.0), |c| {
-            add_active_hidden_panels(c, &self.kinds, active)
+        b.col(|c| {
+            add_active_hidden_panels(c, &self.kinds, active);
         })?;
 
         b.build()

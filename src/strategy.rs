@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::node::PanelId;
 use crate::panel::{Constraints, fixed, grow};
@@ -230,13 +230,12 @@ fn build_sequence_tree(
     let mut b = LayoutBuilder::new();
     let add = |ctx: &mut crate::ContainerCtx| {
         for kind in kinds {
-            ctx.panel(Arc::clone(kind), grow(1.0))?;
+            ctx.panel(Arc::clone(kind));
         }
-        Ok(())
     };
     match direction {
-        Direction::Horizontal => b.row(gap(gap_px), add)?,
-        Direction::Vertical => b.col(gap(gap_px), add)?,
+        Direction::Horizontal => b.row_gap(gap_px, add)?,
+        Direction::Vertical => b.col_gap(gap_px, add)?,
     }
     Ok(LayoutTree::from(b.build()?))
 }
@@ -375,13 +374,12 @@ fn build_slotted_tree(
     let mut b = LayoutBuilder::new();
     let add = |ctx: &mut crate::ContainerCtx| {
         for slot in slots {
-            ctx.panel(Arc::clone(&slot.kind), slot.constraints)?;
+            ctx.panel_with(Arc::clone(&slot.kind), slot.constraints);
         }
-        Ok(())
     };
     match direction {
-        Direction::Horizontal => b.row(gap(gap_px), add)?,
-        Direction::Vertical => b.col(gap(gap_px), add)?,
+        Direction::Horizontal => b.row_gap(gap_px, add)?,
+        Direction::Vertical => b.col_gap(gap_px, add)?,
     }
     Ok(LayoutTree::from(b.build()?))
 }

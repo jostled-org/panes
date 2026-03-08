@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::master_stack::row_style;
@@ -43,11 +43,12 @@ impl Grid {
         let mut b = LayoutBuilder::new();
         let gap_px = self.gap;
 
-        b.col(gap(gap_px), |outer| {
+        b.col_gap(gap_px, |outer| {
             for chunk in self.kinds.chunks(self.cols) {
-                outer.taffy_node(row_style(1.0, gap_px), |r| super::add_grow_panels(r, chunk))?;
+                outer.taffy_node(row_style(1.0, gap_px), |r| {
+                    super::add_grow_panels(r, chunk);
+                });
             }
-            Ok(())
         })?;
 
         b.build()

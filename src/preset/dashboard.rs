@@ -5,7 +5,6 @@ use taffy::prelude::fr;
 use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::panel::grow;
 
 /// Builder for the grid-based dashboard preset layout.
 pub struct Dashboard {
@@ -61,8 +60,8 @@ impl Dashboard {
         let grid_style = self.grid_root_style();
         let cards = self.cards.to_vec();
 
-        b.row(crate::builder::gap(0.0), |r| {
-            r.taffy_node(grid_style, |grid| add_cards(grid, &cards))
+        b.row(|r| {
+            r.taffy_node(grid_style, |grid| add_cards(grid, &cards));
         })?;
 
         b.build()
@@ -100,15 +99,20 @@ fn card_style(span: usize) -> Result<taffy::Style, PaneError> {
     })
 }
 
-fn add_cards(ctx: &mut crate::ContainerCtx, cards: &[(Arc<str>, usize)]) -> Result<(), PaneError> {
+fn add_cards(ctx: &mut crate::ContainerCtx, cards: &[(Arc<str>, usize)]) {
     for (kind, span) in cards {
-        let style = card_style(*span)?;
-        ctx.taffy_node(style, |inner| {
-            inner.panel(Arc::clone(kind), grow(1.0))?;
-            Ok(())
-        })?;
+        match card_style(*span) {
+            Ok(style) => {
+                ctx.taffy_node(style, |inner| {
+                    inner.panel(Arc::clone(kind));
+                });
+            }
+            Err(e) => {
+                ctx.set_error(e);
+                return;
+            }
+        }
     }
-    Ok(())
 }
 
 impl Dashboard {

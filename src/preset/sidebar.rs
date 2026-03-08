@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::panel::{fixed, grow};
+use crate::panel::fixed;
 use crate::preset::validate_f32_param;
 
 /// Builder for the sidebar preset layout.
@@ -48,10 +48,9 @@ impl Sidebar {
         let content_kind = Arc::clone(&self.content_kind);
         let width = self.sidebar_width;
 
-        b.row(gap(self.gap), |r| {
-            r.panel(sidebar_kind, fixed(width))?;
-            r.panel(content_kind, grow(1.0))?;
-            Ok(())
+        b.row_gap(self.gap, |r| {
+            r.panel_with(sidebar_kind, fixed(width));
+            r.panel(content_kind);
         })?;
 
         b.build()

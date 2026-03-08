@@ -395,12 +395,12 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
 
 fn build_custom(def: LayoutDef) -> Result<Layout, TomlError> {
     let root = def.root.ok_or(TomlError::MissingField("root".into()))?;
-    let gap_val = crate::builder::gap(root.gap.unwrap_or(0.0));
+    let gap_val = root.gap.unwrap_or(0.0);
     let children = root.children;
     let mut builder = crate::builder::LayoutBuilder::new();
     match root.node_type.as_deref() {
-        Some("row") => builder.row(gap_val, |ctx| add_tree_children(ctx, children)),
-        Some("col") => builder.col(gap_val, |ctx| add_tree_children(ctx, children)),
+        Some("row") => builder.row_gap(gap_val, |ctx| add_tree_children(ctx, children)),
+        Some("col") => builder.col_gap(gap_val, |ctx| add_tree_children(ctx, children)),
         Some(other) => {
             return Err(TomlError::InvalidValue {
                 field: "root.type".into(),
@@ -418,43 +418,43 @@ fn build_custom(def: LayoutDef) -> Result<Layout, TomlError> {
     builder.build().map_err(into_toml_error)
 }
 
-fn add_tree_children(
-    ctx: &mut crate::ContainerCtx,
-    children: Vec<TreeNodeDef>,
-) -> Result<(), crate::error::PaneError> {
+fn add_tree_children(ctx: &mut crate::ContainerCtx, children: Vec<TreeNodeDef>) {
     for child in children {
-        add_tree_node(ctx, child)?;
+        add_tree_node(ctx, child);
     }
-    Ok(())
 }
 
-fn add_tree_node(
-    ctx: &mut crate::ContainerCtx,
-    node: TreeNodeDef,
-) -> Result<(), crate::error::PaneError> {
+fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
     match (node.kind.as_deref(), node.node_type.as_deref()) {
-        (Some(_), Some(_)) => Err(crate::error::PaneError::InvalidTree(
-            "node has both 'kind' and 'type'; use one or the other".into(),
-        )),
+        (Some(_), Some(_)) => {
+            ctx.set_error(crate::error::PaneError::InvalidTree(
+                "node has both 'kind' and 'type'; use one or the other".into(),
+            ));
+        }
         (Some(kind), None) => {
             let constraints = node_constraints(&node);
-            ctx.panel(kind, constraints)?;
-            Ok(())
+            ctx.panel_with(kind, constraints);
         }
         (None, Some("row")) => {
-            let gap_val = crate::builder::gap(node.gap.unwrap_or(0.0));
-            ctx.row(gap_val, |inner| add_tree_children(inner, node.children))
+            ctx.row_gap(node.gap.unwrap_or(0.0), |inner| {
+                add_tree_children(inner, node.children);
+            });
         }
         (None, Some("col")) => {
-            let gap_val = crate::builder::gap(node.gap.unwrap_or(0.0));
-            ctx.col(gap_val, |inner| add_tree_children(inner, node.children))
+            ctx.col_gap(node.gap.unwrap_or(0.0), |inner| {
+                add_tree_children(inner, node.children);
+            });
         }
-        (None, Some(other)) => Err(crate::error::PaneError::InvalidTree(
-            format!("unknown node type '{other}'; expected 'row' or 'col'").into(),
-        )),
-        (None, None) => Err(crate::error::PaneError::InvalidTree(
-            "node must have either 'kind' (panel) or 'type' (container)".into(),
-        )),
+        (None, Some(other)) => {
+            ctx.set_error(crate::error::PaneError::InvalidTree(
+                format!("unknown node type '{other}'; expected 'row' or 'col'").into(),
+            ));
+        }
+        (None, None) => {
+            ctx.set_error(crate::error::PaneError::InvalidTree(
+                "node must have either 'kind' (panel) or 'type' (container)".into(),
+            ));
+        }
     }
 }
 

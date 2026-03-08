@@ -1,4 +1,4 @@
-use panes::{LayoutBuilder, Rect, fixed, gap, grow};
+use panes::{LayoutBuilder, Rect, fixed, grow};
 
 // -- Step 1: Basic row/col/panel macro with grow and fixed --
 
@@ -137,14 +137,12 @@ fn equivalence_with_builder_api() {
 
     // Build with builder API
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("editor", grow(2.0))?;
-        r.col(gap(0.0), |c| {
-            c.panel("chat", grow(1.0))?;
-            c.panel("status", fixed(3.0))?;
-            Ok(())
-        })?;
-        Ok(())
+    b.row(|r| {
+        r.panel_with("editor", grow(2.0));
+        r.col(|c| {
+            c.panel("chat");
+            c.panel_with("status", fixed(3.0));
+        });
     })
     .unwrap();
     let builder_layout = b.build().unwrap();
@@ -291,10 +289,9 @@ fn equivalence_gap_with_builder() {
 
     // Build with builder API
     let mut b = LayoutBuilder::new();
-    b.row(gap(8.0), |r| {
-        r.panel("left", grow(2.0))?;
-        r.panel("right", grow(1.0))?;
-        Ok(())
+    b.row_gap(8.0, |r| {
+        r.panel_with("left", grow(2.0));
+        r.panel("right");
     })
     .unwrap();
     let builder_layout = b.build().unwrap();

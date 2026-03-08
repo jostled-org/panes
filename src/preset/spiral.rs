@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::dwindle::build_recursive;
@@ -44,8 +44,8 @@ impl Spiral {
         let ratio = self.ratio;
         let gap_px = self.gap;
 
-        b.row(gap(gap_px), |r| {
-            build_recursive(r, kinds, 0, ratio, gap_px, true)
+        b.row_gap(gap_px, |r| {
+            build_recursive(r, kinds, 0, ratio, gap_px, true);
         })?;
 
         b.build()

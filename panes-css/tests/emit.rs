@@ -1,4 +1,4 @@
-use panes::{Layout, LayoutBuilder, fixed, gap, grow};
+use panes::{Layout, LayoutBuilder, fixed, grow};
 
 #[test]
 fn simple_row_emits_flex_row() {
@@ -22,10 +22,9 @@ fn simple_row_emits_flex_row() {
 #[test]
 fn col_with_gap_emits_gap() {
     let mut b = LayoutBuilder::new();
-    b.col(gap(4.0), |c| {
-        c.panel("top", grow(1.0))?;
-        c.panel("bot", grow(1.0))?;
-        Ok(())
+    b.col_gap(4.0, |c| {
+        c.panel("top");
+        c.panel("bot");
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -41,10 +40,9 @@ fn col_with_gap_emits_gap() {
 #[test]
 fn fixed_panel_emits_flex_basis() {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("sidebar", fixed(20.0))?;
-        r.panel("content", grow(1.0))?;
-        Ok(())
+    b.row(|r| {
+        r.panel_with("sidebar", fixed(20.0));
+        r.panel("content");
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -68,10 +66,9 @@ fn fixed_panel_emits_flex_basis() {
 #[test]
 fn grow_panel_emits_flex_grow() {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("main", grow(2.0))?;
-        r.panel("side", grow(1.0))?;
-        Ok(())
+    b.row(|r| {
+        r.panel_with("main", grow(2.0));
+        r.panel("side");
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -85,14 +82,12 @@ fn grow_panel_emits_flex_grow() {
 #[test]
 fn nested_layout_emits_container_selectors() {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("left", grow(1.0))?;
-        r.col(gap(0.0), |c| {
-            c.panel("top", grow(1.0))?;
-            c.panel("bot", grow(1.0))?;
-            Ok(())
-        })?;
-        Ok(())
+    b.row(|r| {
+        r.panel("left");
+        r.col(|c| {
+            c.panel("top");
+            c.panel("bot");
+        });
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -119,9 +114,8 @@ fn nested_layout_emits_container_selectors() {
 #[test]
 fn min_max_constraints_emit_correctly() {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("panel", grow(1.0).min(20.0).max(80.0))?;
-        Ok(())
+    b.row(|r| {
+        r.panel_with("panel", grow(1.0).min(20.0).max(80.0));
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -134,9 +128,8 @@ fn min_max_constraints_emit_correctly() {
 #[test]
 fn col_min_max_uses_height() {
     let mut b = LayoutBuilder::new();
-    b.col(gap(0.0), |c| {
-        c.panel("panel", grow(1.0).min(10.0).max(50.0))?;
-        Ok(())
+    b.col(|c| {
+        c.panel_with("panel", grow(1.0).min(10.0).max(50.0));
     })
     .unwrap();
     let layout = b.build().unwrap();

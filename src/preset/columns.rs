@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::collect_kinds;
@@ -45,13 +45,12 @@ impl Columns {
         let mut b = LayoutBuilder::new();
         let gap_px = self.gap;
 
-        b.row(gap(gap_px), |outer| {
+        b.row_gap(gap_px, |outer| {
             for bucket in &buckets {
                 outer.taffy_node(col_style(1.0, gap_px), |c| {
-                    super::add_grow_panels(c, bucket)
-                })?;
+                    super::add_grow_panels(c, bucket);
+                });
             }
-            Ok(())
         })?;
 
         b.build()

@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::panel::grow;
 use crate::preset::{
     add_active_hidden_panels, collect_kinds, validate_active, validate_f32_param, validate_kinds,
 };
@@ -52,13 +51,12 @@ impl Tabbed {
 
         let mut b = LayoutBuilder::new();
         let gap_px = self.gap;
-        let tab_height = self.tab_height;
+        let tab_bar_style = tab_bar_fixed_style(self.tab_height);
         let active = self.active;
-        let tab_bar_style = tab_bar_fixed_style(tab_height);
 
-        b.col(gap(gap_px), |outer| {
-            outer.taffy_node(tab_bar_style, |bar| add_tab_panels(bar, &self.kinds))?;
-            add_active_hidden_panels(outer, &self.kinds, active)
+        b.col_gap(gap_px, |outer| {
+            outer.taffy_node(tab_bar_style, |bar| add_tab_panels(bar, &self.kinds));
+            add_active_hidden_panels(outer, &self.kinds, active);
         })?;
 
         b.build()
@@ -76,12 +74,11 @@ fn tab_bar_fixed_style(height: f32) -> taffy::Style {
     }
 }
 
-fn add_tab_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>]) -> Result<(), PaneError> {
+fn add_tab_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>]) {
     for kind in kinds {
         let tab_kind: Arc<str> = format!("{kind}_tab").into();
-        ctx.panel(tab_kind, grow(1.0))?;
+        ctx.panel(tab_kind);
     }
-    Ok(())
 }
 
 impl Tabbed {

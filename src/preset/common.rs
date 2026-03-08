@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::{fixed, grow};
@@ -15,22 +15,17 @@ pub(crate) fn collect_kinds(
 /// Build a single-panel layout. Shared by presets that degenerate when given one kind.
 pub(crate) fn build_single(kind: Arc<str>) -> Result<Layout, PaneError> {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel(kind, grow(1.0))?;
-        Ok(())
+    b.row(|r| {
+        r.panel(kind);
     })?;
     b.build()
 }
 
 /// Add one grow(1.0) panel per kind. Shared by columns and grid presets.
-pub(crate) fn add_grow_panels(
-    ctx: &mut crate::ContainerCtx,
-    kinds: &[Arc<str>],
-) -> Result<(), PaneError> {
+pub(crate) fn add_grow_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>]) {
     for kind in kinds {
-        ctx.panel(Arc::clone(kind), grow(1.0))?;
+        ctx.panel(Arc::clone(kind));
     }
-    Ok(())
 }
 
 /// Validate that at least one kind was provided.
@@ -74,15 +69,14 @@ pub(crate) fn add_active_hidden_panels(
     ctx: &mut crate::ContainerCtx,
     kinds: &[Arc<str>],
     active: usize,
-) -> Result<(), PaneError> {
+) {
     for (i, kind) in kinds.iter().enumerate() {
         let constraint = match i == active {
             true => grow(1.0),
             false => fixed(0.0),
         };
-        ctx.panel(Arc::clone(kind), constraint)?;
+        ctx.panel_with(Arc::clone(kind), constraint);
     }
-    Ok(())
 }
 
 /// Shared implementation for all preset types: `resolve()` shorthand and `TryFrom` conversion.

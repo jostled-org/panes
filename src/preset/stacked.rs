@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::fixed;
@@ -55,8 +55,8 @@ impl Stacked {
         let title_h = self.title_height;
         let active = self.active;
 
-        b.col(gap(gap_px), |c| {
-            add_stacked_panels(c, &self.kinds, active, title_h)
+        b.col_gap(gap_px, |c| {
+            add_stacked_panels(c, &self.kinds, active, title_h);
         })?;
 
         b.build()
@@ -68,12 +68,12 @@ fn add_stacked_panels(
     kinds: &[Arc<str>],
     active: usize,
     title_height: f32,
-) -> Result<(), PaneError> {
+) {
     for kind in kinds {
         let title_kind: Arc<str> = format!("{kind}_title").into();
-        ctx.panel(title_kind, fixed(title_height))?;
+        ctx.panel_with(title_kind, fixed(title_height));
     }
-    add_active_hidden_panels(ctx, kinds, active)
+    add_active_hidden_panels(ctx, kinds, active);
 }
 
 impl Stacked {

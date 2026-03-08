@@ -12,19 +12,26 @@ Describe panels in rows, columns, and presets. panes solves the geometry via Taf
 ## Proof
 
 ```rust
-use panes::{Layout, Rect};
+use panes::{layout, grow, fixed};
 
-let resolved = Layout::master_stack(["editor", "chat", "status"])
-    .master_ratio(0.6)
-    .gap(1.0)
-    .resolve(80.0, 24.0)?;
+// Game HUD: health bar pinned at 40px, viewport fills the rest
+let layout = layout! {
+    col {
+        row {
+            panel("viewport", grow: 1.0)
+        }
+        row(gap: 4.0) {
+            panel("health", fixed: 40.0)
+            panel("inventory", grow: 1.0)
+            panel("minimap", fixed: 48.0)
+        }
+    }
+}?;
 
-for (id, rect) in resolved.iter() {
-    println!("{id}: {rect:?}");
+let resolved = layout.resolve(800.0, 600.0)?;
+for entry in resolved.panels() {
+    println!("{}: {:?}", entry.kind, entry.rect);
 }
-// PanelId(0): Rect { x: 0.0, y: 0.0, w: 47.5, h: 24.0 }
-// PanelId(1): Rect { x: 48.5, y: 0.0, w: 31.5, h: 11.5 }
-// PanelId(2): Rect { x: 48.5, y: 12.5, w: 31.5, h: 11.5 }
 ```
 
 ## Install
@@ -35,15 +42,10 @@ cargo add panes
 
 ## Usage
 
-Pick a preset, build custom, or mutate at runtime.
+Build custom layouts or pick from 15 presets. Pass any coordinate system — pixels, logical points, terminal cells.
 
 ```rust
-// Preset — 15 built-in strategies
-Layout::master_stack(["editor", "chat", "status"]).master_ratio(0.6).gap(1.0)
-```
-
-```rust
-// Macro — declarative shorthand
+// Custom — full control with the layout macro
 let layout = layout! {
     row(gap: 8.0) {
         panel("editor", grow: 2.0)
@@ -56,7 +58,12 @@ let layout = layout! {
 ```
 
 ```rust
-// Runtime — strategy-driven mutations, focus, frame diffing
+// Preset — one-liner for common patterns
+Layout::master_stack(["editor", "chat", "status"]).master_ratio(0.6).gap(1.0)
+```
+
+```rust
+// Runtime — add/remove panels, focus navigation, frame diffing
 let mut rt = Layout::master_stack(["editor", "chat", "status"])
     .master_ratio(0.6).gap(1.0).into_runtime()?;
 

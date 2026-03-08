@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
@@ -46,14 +46,13 @@ impl MasterStack {
 
     fn build_master_stack(&self) -> Result<Layout, PaneError> {
         let mut b = LayoutBuilder::new();
-        let gap_val = gap(self.gap);
         let ratio = self.master_ratio;
         let master_kind = Arc::clone(&self.kinds[0]);
         let stack_style = col_style(1.0 - ratio, self.gap);
 
-        b.row(gap_val, |r| {
-            r.panel(master_kind, grow(ratio))?;
-            r.taffy_node(stack_style, |c| add_panels(c, &self.kinds[1..], grow(1.0)))
+        b.row_gap(self.gap, |r| {
+            r.panel_with(master_kind, grow(ratio));
+            r.taffy_node(stack_style, |c| add_panels(c, &self.kinds[1..], grow(1.0)));
         })?;
 
         b.build()
@@ -94,11 +93,10 @@ pub(crate) fn add_panels(
     ctx: &mut crate::ContainerCtx,
     kinds: &[Arc<str>],
     constraints: crate::Constraints,
-) -> Result<(), PaneError> {
+) {
     for kind in kinds {
-        ctx.panel(Arc::clone(kind), constraints)?;
+        ctx.panel_with(Arc::clone(kind), constraints);
     }
-    Ok(())
 }
 
 impl MasterStack {

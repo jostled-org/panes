@@ -1,4 +1,4 @@
-use panes::{Layout, LayoutBuilder, fixed, gap, grow};
+use panes::{Layout, LayoutBuilder, fixed};
 use rustc_hash::FxHashMap;
 
 fn to_ratatui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, ratatui::layout::Rect> {
@@ -9,12 +9,11 @@ fn to_ratatui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, rata
 #[test]
 fn two_equal_panels_no_gap() {
     let mut b = LayoutBuilder::new();
-    let left = b.panel("left", grow(1.0)).unwrap();
-    let right = b.panel("right", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(left)?;
-        r.add(right)?;
-        Ok(())
+    let left = b.panel("left").unwrap();
+    let right = b.panel("right").unwrap();
+    b.row(|r| {
+        r.add(left);
+        r.add(right);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -34,14 +33,13 @@ fn two_equal_panels_no_gap() {
 #[test]
 fn fractional_positions_round_correctly() {
     let mut b = LayoutBuilder::new();
-    let p0 = b.panel("a", grow(1.0)).unwrap();
-    let p1 = b.panel("b", grow(1.0)).unwrap();
-    let p2 = b.panel("c", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(p0)?;
-        r.add(p1)?;
-        r.add(p2)?;
-        Ok(())
+    let p0 = b.panel("a").unwrap();
+    let p1 = b.panel("b").unwrap();
+    let p2 = b.panel("c").unwrap();
+    b.row(|r| {
+        r.add(p0);
+        r.add(p1);
+        r.add(p2);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -63,12 +61,11 @@ fn fractional_positions_round_correctly() {
 #[test]
 fn fixed_panel_quantizes() {
     let mut b = LayoutBuilder::new();
-    let sidebar = b.panel("sidebar", fixed(20.0)).unwrap();
-    let content = b.panel("content", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(sidebar)?;
-        r.add(content)?;
-        Ok(())
+    let sidebar = b.panel_with("sidebar", fixed(20.0)).unwrap();
+    let content = b.panel("content").unwrap();
+    b.row(|r| {
+        r.add(sidebar);
+        r.add(content);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -106,17 +103,15 @@ fn zero_size_panel() {
 #[test]
 fn nested_layout_quantizes() {
     let mut b = LayoutBuilder::new();
-    let left = b.panel("left", grow(1.0)).unwrap();
-    let top_right = b.panel("top_right", grow(1.0)).unwrap();
-    let bot_right = b.panel("bot_right", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(left)?;
-        r.col(gap(0.0), |c| {
-            c.add(top_right)?;
-            c.add(bot_right)?;
-            Ok(())
-        })?;
-        Ok(())
+    let left = b.panel("left").unwrap();
+    let top_right = b.panel("top_right").unwrap();
+    let bot_right = b.panel("bot_right").unwrap();
+    b.row(|r| {
+        r.add(left);
+        r.col(|c| {
+            c.add(top_right);
+            c.add(bot_right);
+        });
     })
     .unwrap();
     let layout = b.build().unwrap();

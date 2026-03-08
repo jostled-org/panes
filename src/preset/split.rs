@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
@@ -52,17 +52,15 @@ impl Split {
         let first = Arc::clone(&self.first);
         let second = Arc::clone(&self.second);
         let ratio = self.ratio;
-        let gap_val = gap(self.gap);
 
         let add_children = |ctx: &mut crate::ContainerCtx| {
-            ctx.panel(first, grow(ratio))?;
-            ctx.panel(second, grow(1.0 - ratio))?;
-            Ok(())
+            ctx.panel_with(first, grow(ratio));
+            ctx.panel_with(second, grow(1.0 - ratio));
         };
 
         match self.is_vertical {
-            true => b.col(gap_val, add_children)?,
-            false => b.row(gap_val, add_children)?,
+            true => b.col_gap(self.gap, add_children)?,
+            false => b.row_gap(self.gap, add_children)?,
         }
 
         b.build()

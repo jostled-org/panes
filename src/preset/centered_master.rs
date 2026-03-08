@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
@@ -53,14 +53,14 @@ impl CenteredMaster {
         let gap_px = self.gap;
         let master_kind = Arc::clone(&self.kinds[0]);
 
-        b.row(gap(gap_px), |r| {
+        b.row_gap(gap_px, |r| {
             r.taffy_node(col_style(side_ratio, gap_px), |c| {
-                add_panels(c, &left_kinds, grow(1.0))
-            })?;
-            r.panel(master_kind, grow(ratio))?;
+                add_panels(c, &left_kinds, grow(1.0));
+            });
+            r.panel_with(master_kind, grow(ratio));
             r.taffy_node(col_style(side_ratio, gap_px), |c| {
-                add_panels(c, &right_kinds, grow(1.0))
-            })
+                add_panels(c, &right_kinds, grow(1.0));
+            });
         })?;
 
         b.build()

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::panel::{fixed, grow};
+use crate::panel::fixed;
 use crate::preset::master_stack::row_style;
 use crate::preset::validate_f32_param;
 
@@ -82,13 +82,12 @@ impl HolyGrail {
         let hh = self.header_height;
         let fh = self.footer_height;
 
-        b.col(gap(gap_px), |outer| {
-            outer.panel(header, fixed(hh))?;
+        b.col_gap(gap_px, |outer| {
+            outer.panel_with(header, fixed(hh));
             outer.taffy_node(row_style(1.0, gap_px), |mid| {
-                build_middle(mid, left, main_kind, right, sw)
-            })?;
-            outer.panel(footer, fixed(fh))?;
-            Ok(())
+                build_middle(mid, left, main_kind, right, sw);
+            });
+            outer.panel_with(footer, fixed(fh));
         })?;
 
         b.build()
@@ -101,11 +100,10 @@ fn build_middle(
     main_kind: Arc<str>,
     right: Arc<str>,
     sidebar_width: f32,
-) -> Result<(), PaneError> {
-    ctx.panel(left, fixed(sidebar_width))?;
-    ctx.panel(main_kind, grow(1.0))?;
-    ctx.panel(right, fixed(sidebar_width))?;
-    Ok(())
+) {
+    ctx.panel_with(left, fixed(sidebar_width));
+    ctx.panel(main_kind);
+    ctx.panel_with(right, fixed(sidebar_width));
 }
 
 impl HolyGrail {

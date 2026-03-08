@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::builder::{LayoutBuilder, gap};
+use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::{fixed, grow};
@@ -55,7 +55,7 @@ impl Scrollable {
         let gap_px = self.gap;
         let kinds = &self.kinds;
 
-        b.row(gap(gap_px), |r| add_scroll_panels(r, kinds, window_start))?;
+        b.row_gap(gap_px, |r| add_scroll_panels(r, kinds, window_start))?;
 
         b.build()
     }
@@ -68,20 +68,15 @@ fn window_start_from_focus(focus: usize, len: usize, size: usize) -> usize {
 }
 
 /// Show panels at `window` and `window + 1`; hide everything else.
-fn add_scroll_panels(
-    ctx: &mut crate::ContainerCtx,
-    kinds: &[Arc<str>],
-    window: usize,
-) -> Result<(), PaneError> {
+fn add_scroll_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>], window: usize) {
     for (i, kind) in kinds.iter().enumerate() {
         let visible = i == window || i == window + 1;
         let constraint = match visible {
             true => grow(1.0),
             false => fixed(0.0),
         };
-        ctx.panel(Arc::clone(kind), constraint)?;
+        ctx.panel_with(Arc::clone(kind), constraint);
     }
-    Ok(())
 }
 
 impl Scrollable {

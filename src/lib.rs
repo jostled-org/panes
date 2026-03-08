@@ -28,7 +28,7 @@ mod toml_parse;
 mod tree;
 mod viewport;
 
-pub use builder::{ContainerCtx, Gap, LayoutBuilder, gap};
+pub use builder::{ContainerCtx, LayoutBuilder};
 pub use error::PaneError;
 pub use layout::Layout;
 pub use node::{Node, NodeId, PanelId};

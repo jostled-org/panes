@@ -1,4 +1,4 @@
-use panes::{Layout, LayoutBuilder, gap, grow};
+use panes::{Layout, LayoutBuilder};
 use rustc_hash::FxHashMap;
 
 fn to_egui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, egui::Rect> {
@@ -9,12 +9,11 @@ fn to_egui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, egui::R
 #[test]
 fn egui_two_panels_correct_rects() {
     let mut b = LayoutBuilder::new();
-    let left = b.panel("left", grow(1.0)).unwrap();
-    let right = b.panel("right", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(left)?;
-        r.add(right)?;
-        Ok(())
+    let left = b.panel("left").unwrap();
+    let right = b.panel("right").unwrap();
+    b.row(|r| {
+        r.add(left);
+        r.add(right);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -32,14 +31,13 @@ fn egui_two_panels_correct_rects() {
 #[test]
 fn egui_preserves_fractional_values() {
     let mut b = LayoutBuilder::new();
-    let p0 = b.panel("a", grow(1.0)).unwrap();
-    let p1 = b.panel("b", grow(1.0)).unwrap();
-    let p2 = b.panel("c", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(p0)?;
-        r.add(p1)?;
-        r.add(p2)?;
-        Ok(())
+    let p0 = b.panel("a").unwrap();
+    let p1 = b.panel("b").unwrap();
+    let p2 = b.panel("c").unwrap();
+    b.row(|r| {
+        r.add(p0);
+        r.add(p1);
+        r.add(p2);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -61,17 +59,15 @@ fn egui_preserves_fractional_values() {
 #[test]
 fn egui_nested_layout() {
     let mut b = LayoutBuilder::new();
-    let left = b.panel("left", grow(1.0)).unwrap();
-    let top_right = b.panel("top_right", grow(1.0)).unwrap();
-    let bot_right = b.panel("bot_right", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(left)?;
-        r.col(gap(0.0), |c| {
-            c.add(top_right)?;
-            c.add(bot_right)?;
-            Ok(())
-        })?;
-        Ok(())
+    let left = b.panel("left").unwrap();
+    let top_right = b.panel("top_right").unwrap();
+    let bot_right = b.panel("bot_right").unwrap();
+    b.row(|r| {
+        r.add(left);
+        r.col(|c| {
+            c.add(top_right);
+            c.add(bot_right);
+        });
     })
     .unwrap();
     let layout = b.build().unwrap();

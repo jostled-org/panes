@@ -1,18 +1,17 @@
 use panes::compiler::{compile, compute_layout};
 use panes::resolver::resolve;
-use panes::{Layout, LayoutBuilder, LayoutTree, Rect, fixed, gap, grow};
+use panes::{Layout, LayoutBuilder, LayoutTree, Rect, fixed, grow};
 
 // -- Step 1: Builder end-to-end pipeline --
 
 #[test]
 fn builder_two_equal_panels_row() {
     let mut b = LayoutBuilder::new();
-    let left = b.panel("left", grow(1.0)).unwrap();
-    let right = b.panel("right", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(left)?;
-        r.add(right)?;
-        Ok(())
+    let left = b.panel("left").unwrap();
+    let right = b.panel("right").unwrap();
+    b.row(|r| {
+        r.add(left);
+        r.add(right);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -41,12 +40,11 @@ fn builder_two_equal_panels_row() {
 #[test]
 fn builder_grow_ratio() {
     let mut b = LayoutBuilder::new();
-    let a = b.panel("a", grow(2.0)).unwrap();
-    let bb = b.panel("b", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(a)?;
-        r.add(bb)?;
-        Ok(())
+    let a = b.panel_with("a", grow(2.0)).unwrap();
+    let bb = b.panel("b").unwrap();
+    b.row(|r| {
+        r.add(a);
+        r.add(bb);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -60,12 +58,11 @@ fn builder_grow_ratio() {
 #[test]
 fn builder_fixed_plus_grow() {
     let mut b = LayoutBuilder::new();
-    let side = b.panel("side", fixed(20.0)).unwrap();
-    let main = b.panel("main", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(side)?;
-        r.add(main)?;
-        Ok(())
+    let side = b.panel_with("side", fixed(20.0)).unwrap();
+    let main = b.panel("main").unwrap();
+    b.row(|r| {
+        r.add(side);
+        r.add(main);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -78,12 +75,11 @@ fn builder_fixed_plus_grow() {
 #[test]
 fn builder_gap_reduces_space() {
     let mut b = LayoutBuilder::new();
-    let a = b.panel("a", grow(1.0)).unwrap();
-    let bb = b.panel("b", grow(1.0)).unwrap();
-    b.row(gap(10.0), |r| {
-        r.add(a)?;
-        r.add(bb)?;
-        Ok(())
+    let a = b.panel("a").unwrap();
+    let bb = b.panel("b").unwrap();
+    b.row_gap(10.0, |r| {
+        r.add(a);
+        r.add(bb);
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -98,17 +94,15 @@ fn builder_gap_reduces_space() {
 #[test]
 fn builder_nested_row_col() {
     let mut b = LayoutBuilder::new();
-    let editor = b.panel("editor", grow(2.0)).unwrap();
-    let chat = b.panel("chat", grow(1.0)).unwrap();
-    let status = b.panel("status", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(editor)?;
-        r.col(gap(0.0), |c| {
-            c.add(chat)?;
-            c.add(status)?;
-            Ok(())
-        })?;
-        Ok(())
+    let editor = b.panel_with("editor", grow(2.0)).unwrap();
+    let chat = b.panel("chat").unwrap();
+    let status = b.panel("status").unwrap();
+    b.row(|r| {
+        r.add(editor);
+        r.col(|c| {
+            c.add(chat);
+            c.add(status);
+        });
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -146,10 +140,9 @@ fn builder_nested_row_col() {
 #[test]
 fn builder_inline_panel_creation() {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("a", grow(1.0))?;
-        r.panel("b", grow(1.0))?;
-        Ok(())
+    b.row(|r| {
+        r.panel("a");
+        r.panel("b");
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -166,15 +159,13 @@ fn builder_inline_panel_creation() {
 #[test]
 fn builder_mixed_pre_created_and_inline() {
     let mut b = LayoutBuilder::new();
-    let editor = b.panel("editor", grow(2.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(editor)?;
-        r.col(gap(0.0), |c| {
-            c.panel("chat", grow(1.0))?;
-            c.panel("status", grow(1.0))?;
-            Ok(())
-        })?;
-        Ok(())
+    let editor = b.panel_with("editor", grow(2.0)).unwrap();
+    b.row(|r| {
+        r.add(editor);
+        r.col(|c| {
+            c.panel("chat");
+            c.panel("status");
+        });
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -214,16 +205,13 @@ fn builder_mixed_pre_created_and_inline() {
 #[test]
 fn builder_deeply_nested() {
     let mut b = LayoutBuilder::new();
-    let deep = b.panel("deep", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.col(gap(0.0), |c| {
-            c.row(gap(0.0), |r2| {
-                r2.add(deep)?;
-                Ok(())
-            })?;
-            Ok(())
-        })?;
-        Ok(())
+    let deep = b.panel("deep").unwrap();
+    b.row(|r| {
+        r.col(|c| {
+            c.row(|r2| {
+                r2.add(deep);
+            });
+        });
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -311,10 +299,10 @@ fn tree_resolve_shorthand() {
 #[test]
 fn builder_taffy_escape_hatch() {
     let mut b = LayoutBuilder::new();
-    let a = b.panel("a", grow(1.0)).unwrap();
-    let b_panel = b.panel("b", grow(1.0)).unwrap();
-    b.row(gap(0.0), |r| {
-        r.add(a)?;
+    let a = b.panel("a").unwrap();
+    let b_panel = b.panel("b").unwrap();
+    b.row(|r| {
+        r.add(a);
         r.taffy_node(
             taffy::Style {
                 flex_grow: 2.0,
@@ -323,11 +311,9 @@ fn builder_taffy_escape_hatch() {
                 ..Default::default()
             },
             |inner| {
-                inner.add(b_panel)?;
-                Ok(())
+                inner.add(b_panel);
             },
-        )?;
-        Ok(())
+        );
     })
     .unwrap();
     let layout = b.build().unwrap();
@@ -341,7 +327,7 @@ fn builder_taffy_escape_hatch() {
 #[test]
 fn builder_no_root_errors() {
     let mut b = LayoutBuilder::new();
-    b.panel("orphan", grow(1.0)).unwrap();
+    b.panel("orphan").unwrap();
     let err = b.build().unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidTree(_)));
 }
@@ -349,21 +335,21 @@ fn builder_no_root_errors() {
 #[test]
 fn builder_reject_nan_gap() {
     let mut b = LayoutBuilder::new();
-    let err = b.row(gap(f32::NAN), |_| Ok(())).unwrap_err();
+    let err = b.row_gap(f32::NAN, |_| {}).unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidConstraint(_)));
 }
 
 #[test]
 fn builder_reject_negative_gap() {
     let mut b = LayoutBuilder::new();
-    let err = b.row(gap(-1.0), |_| Ok(())).unwrap_err();
+    let err = b.row_gap(-1.0, |_| {}).unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidConstraint(_)));
 }
 
 #[test]
 fn builder_reject_infinite_gap() {
     let mut b = LayoutBuilder::new();
-    let err = b.row(gap(f32::INFINITY), |_| Ok(())).unwrap_err();
+    let err = b.row_gap(f32::INFINITY, |_| {}).unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidConstraint(_)));
 }
 
@@ -371,9 +357,8 @@ fn builder_reject_infinite_gap() {
 fn builder_closure_error_propagation() {
     let mut b = LayoutBuilder::new();
     let err = b
-        .row(gap(0.0), |r| {
-            r.panel("bad", grow(-1.0))?;
-            Ok(())
+        .row(|r| {
+            r.panel_with("bad", grow(-1.0));
         })
         .unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidConstraint(_)));
@@ -382,15 +367,13 @@ fn builder_closure_error_propagation() {
 #[test]
 fn builder_duplicate_root_errors() {
     let mut b = LayoutBuilder::new();
-    b.row(gap(0.0), |r| {
-        r.panel("a", grow(1.0))?;
-        Ok(())
+    b.row(|r| {
+        r.panel("a");
     })
     .unwrap();
     let err = b
-        .row(gap(0.0), |r| {
-            r.panel("b", grow(1.0))?;
-            Ok(())
+        .row(|r| {
+            r.panel("b");
         })
         .unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidTree(_)));
