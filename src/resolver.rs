@@ -11,6 +11,7 @@ use crate::tree::LayoutTree;
 ///
 /// Generic over `R` so the core crate yields `PanelEntry<'_, &Rect>` while
 /// output crates yield their own rect type (e.g. `ratatui::Rect`, `egui::Rect`).
+#[non_exhaustive]
 pub struct PanelEntry<'a, R> {
     /// Panel identifier.
     pub id: PanelId,
@@ -18,6 +19,20 @@ pub struct PanelEntry<'a, R> {
     pub kind: &'a str,
     /// Computed rectangle in the target coordinate system.
     pub rect: R,
+    /// Zero-based index of this panel's kind group in iteration order.
+    pub kind_index: usize,
+}
+
+impl<'a, R> PanelEntry<'a, R> {
+    /// Transform the rect while preserving identity fields.
+    pub fn map_rect<R2>(self, f: impl FnOnce(R) -> R2) -> PanelEntry<'a, R2> {
+        PanelEntry {
+            id: self.id,
+            kind: self.kind,
+            rect: f(self.rect),
+            kind_index: self.kind_index,
+        }
+    }
 }
 
 /// Shared index mapping panel kind strings to their panel IDs.
@@ -77,15 +92,19 @@ impl ResolvedLayout {
     /// All panels of one kind appear contiguously, then the next kind, etc.
     /// No allocation — this is a lazy iterator over the internal index.
     pub fn panels(&self) -> impl Iterator<Item = PanelEntry<'_, &Rect>> + '_ {
-        self.kinds.iter().flat_map(move |(kind, pids)| {
-            pids.iter().filter_map(move |&pid| {
-                self.get(pid).map(|rect| PanelEntry {
-                    id: pid,
-                    kind: kind.as_ref(),
-                    rect,
+        self.kinds
+            .iter()
+            .enumerate()
+            .flat_map(move |(kind_index, (kind, pids))| {
+                pids.iter().filter_map(move |&pid| {
+                    self.get(pid).map(|rect| PanelEntry {
+                        id: pid,
+                        kind: kind.as_ref(),
+                        rect,
+                        kind_index,
+                    })
                 })
             })
-        })
     }
 
     /// Borrow the shared kinds index.

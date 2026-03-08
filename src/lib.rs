@@ -35,7 +35,7 @@ pub use node::{Node, NodeId, PanelId};
 pub use panel::{Constraints, PanelIdGenerator, fixed, grow};
 pub use preset::{
     CenteredMaster, Columns, Dashboard, Deck, Dwindle, Grid, HolyGrail, MasterStack, Monocle,
-    Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
+    PanelInputKind, PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
 };
 pub use rect::Rect;
 pub use resolver::{PanelEntry, ResolvedLayout};

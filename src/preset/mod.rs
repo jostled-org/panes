@@ -1,3 +1,4 @@
+pub(crate) mod catalog;
 mod centered_master;
 mod columns;
 mod common;
@@ -30,6 +31,8 @@ pub use spiral::Spiral;
 pub use split::Split;
 pub use stacked::Stacked;
 pub use tabbed::Tabbed;
+
+pub use catalog::{PanelInputKind, PresetInfo};
 
 pub(crate) use common::collect_kinds;
 pub(crate) use common::impl_preset;

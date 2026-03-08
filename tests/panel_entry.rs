@@ -59,3 +59,30 @@ fn panels_empty_layout_yields_nothing() {
     let count = resolved.panels().count();
     assert_eq!(count, 1);
 }
+
+#[test]
+fn panels_kind_index_increments_per_group() {
+    let layout = Layout::row(["x", "y", "x"]).unwrap();
+    let resolved = layout.resolve(300.0, 100.0).unwrap();
+
+    let entries: Vec<_> = resolved.panels().collect();
+
+    // All entries of the same kind share one kind_index
+    let mut seen_indices = std::collections::HashMap::new();
+    for entry in &entries {
+        let idx = *seen_indices.entry(entry.kind).or_insert(entry.kind_index);
+        // First time seeing this kind: assign its index
+        // Subsequent: must match
+        assert_eq!(
+            idx, entry.kind_index,
+            "kind {:?} had inconsistent kind_index",
+            entry.kind
+        );
+        // kind_index should be less than total distinct kinds
+        assert!(entry.kind_index < 2, "kind_index out of range");
+    }
+
+    // Distinct kinds get distinct indices
+    let indices: std::collections::HashSet<usize> = entries.iter().map(|e| e.kind_index).collect();
+    assert_eq!(indices.len(), 2);
+}

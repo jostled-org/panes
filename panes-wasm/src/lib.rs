@@ -39,14 +39,12 @@ pub fn convert(resolved: &ResolvedLayout) -> FxHashMap<PanelId, WasmRect> {
 ///
 /// No hashmap allocation — produces entries lazily from the resolved layout.
 pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, WasmRect>> {
-    resolved.panels().map(|e| PanelEntry {
-        id: e.id,
-        kind: e.kind,
-        rect: WasmRect {
-            x: f64::from(e.rect.x),
-            y: f64::from(e.rect.y),
-            w: f64::from(e.rect.w),
-            h: f64::from(e.rect.h),
-        },
+    resolved.panels().map(|e| {
+        e.map_rect(|r| WasmRect {
+            x: f64::from(r.x),
+            y: f64::from(r.y),
+            w: f64::from(r.w),
+            h: f64::from(r.h),
+        })
     })
 }

@@ -104,6 +104,32 @@ A bare panel in the macro (no constraint specified) defaults to `grow(1.0)`.
 
 Every preset follows the same pattern: construct via `Layout::preset_name(...)`, optionally chain configuration methods, then call `.build()` for a `Layout` or `.resolve(w, h)` directly.
 
+### Preset Catalog
+
+`Layout::presets()` returns metadata for all 15 built-in presets — name, input style, and description. Use it to build preset browsers, populate selection menus, or generate documentation without hard-coding the list.
+
+```rust
+use panes::{Layout, PanelInputKind};
+
+for preset in Layout::presets() {
+    println!("{}: {}", preset.name, preset.description);
+}
+
+// Filter by input style
+let dynamic: Vec<_> = Layout::presets()
+    .iter()
+    .filter(|p| p.input == PanelInputKind::DynamicList)
+    .collect();
+```
+
+Each `PresetInfo` has three fields:
+
+- `name` — kebab-case identifier matching the TOML `strategy` field (e.g. `"master-stack"`)
+- `input` — `DynamicList` (accepts N panels) or `FixedSlots` (accepts named slots)
+- `description` — one-line summary
+
+The three `FixedSlots` presets are `sidebar`, `holy-grail`, and `split`. All others accept a dynamic list.
+
 ### Tiling Presets
 
 #### master_stack
@@ -597,7 +623,34 @@ panes computes abstract `Rect { x, y, w, h }` values. Adapter crates convert the
 
 Each adapter provides two APIs:
 - `convert()` — returns a `FxHashMap<PanelId, TargetRect>` for random access
-- `panels()` — returns a lazy iterator of `PanelEntry { id, kind, rect }` for rendering loops
+- `panels()` — returns a lazy iterator of `PanelEntry { id, kind, rect, kind_index }` for rendering loops
+
+### PanelEntry
+
+`PanelEntry` carries four fields:
+
+- `id` — the `PanelId` for this panel
+- `kind` — the kind string (e.g. `"editor"`)
+- `rect` — the computed rectangle in the target coordinate system
+- `kind_index` — zero-based index of this panel's kind group in iteration order
+
+`kind_index` lets you apply per-kind styling without reconstructing group boundaries. All panels sharing a kind have the same `kind_index`; distinct kinds get distinct indices.
+
+```rust
+for entry in resolved.panels() {
+    let color = PALETTE[entry.kind_index % PALETTE.len()];
+    draw(entry.rect, color);
+}
+```
+
+`PanelEntry` is `#[non_exhaustive]`, so it cannot be constructed outside the crate. Use `map_rect` to transform the rectangle type while preserving identity fields:
+
+```rust
+let entries: Vec<_> = resolved
+    .panels()
+    .map(|e| e.map_rect(|r| my_rect_from(r)))
+    .collect();
+```
 
 ### panes-ratatui
 
@@ -705,9 +758,9 @@ Raw Taffy nodes compose freely with panes nodes in the same tree. Use this when 
 ```rust
 let resolved = layout.resolve(80.0, 24.0)?;
 
-// Iterate with identity — id, kind, and rect together
+// Iterate with identity — id, kind, rect, and kind group index
 for entry in resolved.panels() {
-    println!("{}: {} at {:?}", entry.id, entry.kind, entry.rect);
+    println!("{}: {} [group {}] at {:?}", entry.id, entry.kind, entry.kind_index, entry.rect);
 }
 
 // By PanelId

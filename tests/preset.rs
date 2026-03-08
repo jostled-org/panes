@@ -1,4 +1,4 @@
-use panes::{Layout, Rect};
+use panes::{Layout, PanelInputKind, Rect};
 
 // -- Step 1: master_stack, sidebar, split --
 
@@ -824,4 +824,30 @@ fn scrollable_single_panel_fills_viewport() {
 
     let a = resolved.by_kind("a")[0];
     assert_eq!(resolved.get(a).unwrap().w, 100.0);
+}
+
+// -- Preset catalog --
+
+#[test]
+fn presets_returns_15_entries() {
+    assert_eq!(Layout::presets().len(), 15);
+}
+
+#[test]
+fn presets_names_are_sorted() {
+    let names: Vec<&str> = Layout::presets().iter().map(|p| p.name).collect();
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    assert_eq!(names, sorted);
+}
+
+#[test]
+fn presets_fixed_slots_are_sidebar_holy_grail_split() {
+    let mut fixed: Vec<&str> = Layout::presets()
+        .iter()
+        .filter(|p| p.input == PanelInputKind::FixedSlots)
+        .map(|p| p.name)
+        .collect();
+    fixed.sort_unstable();
+    assert_eq!(fixed, vec!["holy-grail", "sidebar", "split"]);
 }

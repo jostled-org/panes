@@ -4,6 +4,7 @@ use crate::builder::{LayoutBuilder, gap};
 use crate::compiler::compile;
 use crate::error::PaneError;
 use crate::panel::grow;
+use crate::preset::PresetInfo;
 use crate::resolver::ResolvedLayout;
 use crate::tree::LayoutTree;
 
@@ -95,6 +96,11 @@ impl Layout {
             Ok(())
         })?;
         b.build()
+    }
+
+    /// Return metadata for all built-in presets, sorted alphabetically by name.
+    pub fn presets() -> &'static [PresetInfo] {
+        &crate::preset::catalog::PRESETS
     }
 
     // -- Preset constructors --

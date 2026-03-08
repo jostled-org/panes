@@ -3,7 +3,7 @@
 [![CI](https://github.com/jostled-org/panes/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/panes/actions)
 [![license](https://img.shields.io/crates/l/panes.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
 
-Every layout engine you've found is welded to a renderer. You need the math without the framework.
+You keep solving the same panel layout problem — splits, stacks, grids, resize — from scratch in every project.
 
 **panes** is a spatial layout engine that computes rectangles without rendering them.
 
@@ -76,7 +76,7 @@ Adapters convert rects to renderer-native types:
 | [`panes-css`](https://crates.io/crates/panes-css) | Browser | CSS declarations (browser solves layout) |
 | [`panes-wasm`](https://crates.io/crates/panes-wasm) | Canvas/JS | `WasmRect` (f64) |
 
-Each adapter provides a `panels()` iterator that yields `PanelEntry { id, kind, rect }` — no hashmap, no cross-referencing:
+Each adapter provides a `panels()` iterator that yields `PanelEntry { id, kind, rect, kind_index }` — no hashmap, no cross-referencing:
 
 ```rust
 for entry in panes_ratatui::panels(&resolved) {

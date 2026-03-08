@@ -20,12 +20,7 @@ pub fn convert(resolved: &ResolvedLayout) -> FxHashMap<PanelId, egui::Rect> {
 ///
 /// No hashmap allocation — produces entries lazily from the resolved layout.
 pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, egui::Rect>> {
-    resolved.panels().map(|e| PanelEntry {
-        id: e.id,
-        kind: e.kind,
-        rect: egui::Rect::from_min_size(
-            egui::pos2(e.rect.x, e.rect.y),
-            egui::vec2(e.rect.w, e.rect.h),
-        ),
+    resolved.panels().map(|e| {
+        e.map_rect(|r| egui::Rect::from_min_size(egui::pos2(r.x, r.y), egui::vec2(r.w, r.h)))
     })
 }

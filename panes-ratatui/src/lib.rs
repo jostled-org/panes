@@ -33,11 +33,7 @@ pub fn convert_at(resolved: &ResolvedLayout, origin: Rect) -> FxHashMap<PanelId,
 ///
 /// No hashmap allocation — produces entries lazily from the resolved layout.
 pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, Rect>> {
-    resolved.panels().map(|e| PanelEntry {
-        id: e.id,
-        kind: e.kind,
-        rect: quantize(e.rect),
-    })
+    resolved.panels().map(|e| e.map_rect(quantize))
 }
 
 /// Iterate all panels with quantized rects offset by a parent rect's origin.
@@ -48,14 +44,12 @@ pub fn panels_at(
     origin: Rect,
 ) -> impl Iterator<Item = PanelEntry<'_, Rect>> {
     resolved.panels().map(move |e| {
-        let mut rect = quantize(e.rect);
-        rect.x += origin.x;
-        rect.y += origin.y;
-        PanelEntry {
-            id: e.id,
-            kind: e.kind,
-            rect,
-        }
+        e.map_rect(|r| {
+            let mut rect = quantize(r);
+            rect.x += origin.x;
+            rect.y += origin.y;
+            rect
+        })
     })
 }
 
