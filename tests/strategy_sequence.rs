@@ -38,7 +38,7 @@ fn sequence_add_shifts_focus() {
 fn sequence_remove_focused_shifts_to_neighbor() {
     let mut rt = sequence_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
-    rt.focus(p1).unwrap();
+    rt.focus(p1);
     let new_focus = rt.remove_panel(p1).unwrap();
     assert!(new_focus.is_some());
     assert_ne!(new_focus, Some(p1));
@@ -58,8 +58,8 @@ fn sequence_focus_next_wraps() {
     let mut rt = sequence_runtime(3);
     let p2 = rt.sequence().get(2).unwrap();
     let p0 = rt.sequence().get(0).unwrap();
-    rt.focus(p2).unwrap();
-    rt.focus_next().unwrap();
+    rt.focus(p2);
+    rt.focus_next();
     assert_eq!(rt.focused(), Some(p0));
 }
 
@@ -69,7 +69,7 @@ fn sequence_focus_prev_wraps() {
     let p0 = rt.sequence().get(0).unwrap();
     let p2 = rt.sequence().get(2).unwrap();
     assert_eq!(rt.focused(), Some(p0));
-    rt.focus_prev().unwrap();
+    rt.focus_prev();
     assert_eq!(rt.focused(), Some(p2));
 }
 
@@ -145,7 +145,7 @@ fn deck_focus_changes_visibility() {
     let mut rt = deck_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
     let p2 = rt.sequence().get(2).unwrap();
-    rt.focus(p2).unwrap();
+    rt.focus(p2);
     assert_eq!(rt.focused(), Some(p2));
     // p1 should be hidden (stack panel), p2 visible
     let c1 = rt.tree().panel_constraints(p1).unwrap();

@@ -801,17 +801,21 @@ fn rebuild_from_sequence(
 // apply_focus
 // ---------------------------------------------------------------------------
 
-/// Update focus to a specific panel, mutating constraints as needed.
-pub fn apply_focus(
+/// Try to focus a specific panel, mutating constraints as needed.
+///
+/// Returns `true` if focus was applied, `false` if `pid` is not in the
+/// sequence or the panel is missing from the tree.
+pub fn try_apply_focus(
     strategy: &StrategyKind,
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
     viewport: &mut ViewportState,
     pid: PanelId,
-) -> Result<(), PaneError> {
-    sequence
-        .index_of(pid)
-        .ok_or(PaneError::PanelNotFound(pid))?;
+) -> bool {
+    match sequence.index_of(pid) {
+        Some(_) => {}
+        None => return false,
+    }
 
     match strategy {
         StrategyKind::ActivePanel { .. } => focus_active_panel(tree, viewport, pid),
@@ -819,24 +823,36 @@ pub fn apply_focus(
         StrategyKind::Window { size, .. } => focus_window(tree, sequence, viewport, pid, *size),
         _ => {
             viewport.focus = Some(pid);
-            Ok(())
+            true
         }
     }
 }
 
-fn focus_active_panel(
+/// Set constraints on a panel if it exists in the tree.
+/// Only call with known-valid constraints (fixed(0.0), grow(1.0)).
+fn set_constraints_if_present(
     tree: &mut LayoutTree,
-    viewport: &mut ViewportState,
     pid: PanelId,
-) -> Result<(), PaneError> {
+    constraints: Constraints,
+) -> bool {
+    tree.set_constraints(pid, constraints).is_ok()
+}
+
+fn focus_active_panel(tree: &mut LayoutTree, viewport: &mut ViewportState, pid: PanelId) -> bool {
     match viewport.focus {
-        Some(prev) if prev == pid => return Ok(()),
-        Some(prev) => tree.set_constraints(prev, fixed(0.0))?,
+        Some(prev) if prev == pid => return true,
+        Some(prev) => {
+            set_constraints_if_present(tree, prev, fixed(0.0));
+        }
         None => {}
     }
-    tree.set_constraints(pid, grow(1.0))?;
-    viewport.focus = Some(pid);
-    Ok(())
+    match set_constraints_if_present(tree, pid, grow(1.0)) {
+        true => {
+            viewport.focus = Some(pid);
+            true
+        }
+        false => false,
+    }
 }
 
 fn focus_deck(
@@ -844,21 +860,24 @@ fn focus_deck(
     sequence: &PanelSequence,
     viewport: &mut ViewportState,
     pid: PanelId,
-) -> Result<(), PaneError> {
+) -> bool {
     match viewport.focus {
-        Some(prev) if prev == pid => return Ok(()),
+        Some(prev) if prev == pid => return true,
         _ => {}
     }
-    // Hide all stack panels, then show the target
     for (i, spid) in sequence.iter().enumerate() {
         match (i > 0, spid == pid) {
-            (true, false) => tree.set_constraints(spid, fixed(0.0))?,
-            (true, true) => tree.set_constraints(spid, grow(1.0))?,
+            (true, false) => {
+                set_constraints_if_present(tree, spid, fixed(0.0));
+            }
+            (true, true) => {
+                set_constraints_if_present(tree, spid, grow(1.0));
+            }
             _ => {}
         }
     }
     viewport.focus = Some(pid);
-    Ok(())
+    true
 }
 
 fn focus_window(
@@ -867,10 +886,11 @@ fn focus_window(
     viewport: &mut ViewportState,
     pid: PanelId,
     size: usize,
-) -> Result<(), PaneError> {
-    let index = sequence
-        .index_of(pid)
-        .ok_or(PaneError::PanelNotFound(pid))?;
+) -> bool {
+    let index = match sequence.index_of(pid) {
+        Some(i) => i,
+        None => return false,
+    };
     let ws = viewport.window_start;
     let in_window = index >= ws && index < ws + size;
 
@@ -880,12 +900,29 @@ fn focus_window(
             let len = sequence.len();
             let raw_start = window_start_for_index(index, ws, size);
             viewport.window_start = raw_start.min(len.saturating_sub(size));
-            apply_window_constraints(tree, sequence, viewport.window_start, size)?;
+            apply_window_constraints_best_effort(tree, sequence, viewport.window_start, size);
         }
     }
 
     viewport.focus = Some(pid);
-    Ok(())
+    true
+}
+
+/// Best-effort window constraints: skips panels that are missing from the tree.
+fn apply_window_constraints_best_effort(
+    tree: &mut LayoutTree,
+    sequence: &PanelSequence,
+    start: usize,
+    size: usize,
+) {
+    for (i, pid) in sequence.iter().enumerate() {
+        let visible = i >= start && i < start + size;
+        let constraint = match visible {
+            true => grow(1.0),
+            false => fixed(0.0),
+        };
+        set_constraints_if_present(tree, pid, constraint);
+    }
 }
 
 // ---------------------------------------------------------------------------

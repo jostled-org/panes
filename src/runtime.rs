@@ -98,7 +98,7 @@ impl LayoutRuntime {
         tree: LayoutTree,
         strategy: StrategyKind,
         kinds: &[Arc<str>],
-    ) -> Result<Self, PaneError> {
+    ) -> Self {
         let mut sequence = PanelSequence::default();
         for kind in kinds {
             for &pid in tree.panels_by_kind(kind) {
@@ -106,7 +106,7 @@ impl LayoutRuntime {
             }
         }
         let focus = sequence.get(0);
-        Ok(Self {
+        Self {
             tree,
             viewport: ViewportState {
                 focus,
@@ -120,7 +120,7 @@ impl LayoutRuntime {
             resolve_scratch: ResolveScratch::default(),
             strategy: Some(strategy),
             sequence,
-        })
+        }
     }
 
     /// Immutable access to the underlying tree.
@@ -271,12 +271,15 @@ impl LayoutRuntime {
         )
     }
 
-    /// Set focus to a specific panel using the active strategy.
-    pub fn focus(&mut self, pid: PanelId) -> Result<(), PaneError> {
+    /// Set focus to a specific panel.
+    ///
+    /// Returns `true` if focus was set, `false` if `pid` is not in the
+    /// sequence (strategy path) or not a known panel.
+    pub fn focus(&mut self, pid: PanelId) -> bool {
         match &self.strategy {
             Some(strategy) => {
                 let strategy = strategy.clone();
-                crate::strategy::apply_focus(
+                crate::strategy::try_apply_focus(
                     &strategy,
                     &mut self.tree,
                     &mut self.sequence,
@@ -286,13 +289,14 @@ impl LayoutRuntime {
             }
             None => {
                 self.viewport.focus = Some(pid);
-                Ok(())
+                true
             }
         }
     }
 
     /// Move focus to the next panel in the sequence.
-    pub fn focus_next(&mut self) -> Result<(), PaneError> {
+    /// No-op if the sequence is empty.
+    pub fn focus_next(&mut self) {
         let next = match self.viewport.focus {
             Some(current) => {
                 let idx = self.sequence.index_of(current).unwrap_or(0);
@@ -301,14 +305,14 @@ impl LayoutRuntime {
             }
             None => self.sequence.get(0),
         };
-        match next {
-            Some(pid) => self.focus(pid),
-            None => Ok(()),
+        if let Some(pid) = next {
+            self.focus(pid);
         }
     }
 
     /// Move focus to the previous panel in the sequence.
-    pub fn focus_prev(&mut self) -> Result<(), PaneError> {
+    /// No-op if the sequence is empty.
+    pub fn focus_prev(&mut self) {
         let prev = match self.viewport.focus {
             Some(current) => {
                 let len = self.sequence.len().max(1);
@@ -318,47 +322,33 @@ impl LayoutRuntime {
             }
             None => self.sequence.get(0),
         };
-        match prev {
-            Some(pid) => self.focus(pid),
-            None => Ok(()),
+        if let Some(pid) = prev {
+            self.focus(pid);
         }
     }
 
     /// Move focus to the nearest panel in a spatial direction.
     ///
-    /// Returns `Ok(Some(target))` when focus moved, `Ok(None)` when no
-    /// candidate exists in that direction or no panel is focused.
+    /// Returns `Some(target)` when focus moved, `None` when no candidate
+    /// exists in that direction or no panel is focused.
     pub fn focus_direction(
         &mut self,
         layout: &ResolvedLayout,
         direction: FocusDirection,
-    ) -> Result<Option<PanelId>, PaneError> {
-        let focused = match self.focused() {
-            Some(pid) => pid,
-            None => return Ok(None),
-        };
-        match focus::find_nearest(layout, focused, &self.sequence, direction) {
-            Some(target) => {
-                self.focus(target)?;
-                Ok(Some(target))
-            }
-            None => Ok(None),
-        }
+    ) -> Option<PanelId> {
+        let focused = self.focused()?;
+        let target = focus::find_nearest(layout, focused, &self.sequence, direction)?;
+        self.focus(target);
+        Some(target)
     }
 
     /// Move focus to the nearest panel in a spatial direction, using the
     /// most recently resolved layout.
     ///
-    /// Equivalent to [`focus_direction`](Self::focus_direction) but reads
-    /// geometry from the cached layout so the caller doesn't need to pass it.
-    /// Requires at least one prior [`resolve`](Self::resolve) call.
-    pub fn focus_direction_current(
-        &mut self,
-        direction: FocusDirection,
-    ) -> Result<Option<PanelId>, PaneError> {
-        let layout = Arc::clone(self.previous.as_ref().ok_or_else(|| {
-            PaneError::InvalidViewport("no resolved layout; call resolve() first".into())
-        })?);
+    /// Returns `Some(target)` when focus moved, `None` when no layout has
+    /// been resolved, no panel is focused, or no candidate exists.
+    pub fn focus_direction_current(&mut self, direction: FocusDirection) -> Option<PanelId> {
+        let layout = Arc::clone(self.previous.as_ref()?);
         self.focus_direction(&layout, direction)
     }
 

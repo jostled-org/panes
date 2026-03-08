@@ -36,12 +36,10 @@ fn right_from_leftmost() {
     let mut rt = row_runtime(3);
     let p0 = rt.sequence().get(0).unwrap();
     let p1 = rt.sequence().get(1).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert_eq!(result, Some(p1));
     assert_eq!(rt.focused(), Some(p1));
 }
@@ -51,12 +49,10 @@ fn left_from_rightmost() {
     let mut rt = row_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
     let p2 = rt.sequence().get(2).unwrap();
-    rt.focus(p2).unwrap();
+    rt.focus(p2);
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Left)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
     assert_eq!(result, Some(p1));
     assert_eq!(rt.focused(), Some(p1));
 }
@@ -65,12 +61,10 @@ fn left_from_rightmost() {
 fn no_candidate_in_direction() {
     let mut rt = row_runtime(3);
     let p0 = rt.sequence().get(0).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Left)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
     assert_eq!(result, None);
     assert_eq!(rt.focused(), Some(p0));
 }
@@ -80,12 +74,10 @@ fn down_in_column() {
     let mut rt = col_runtime(3);
     let p0 = rt.sequence().get(0).unwrap();
     let p1 = rt.sequence().get(1).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     let frame = rt.resolve(100.0, 300.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Down)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Down);
     assert_eq!(result, Some(p1));
 }
 
@@ -94,12 +86,10 @@ fn up_in_column() {
     let mut rt = col_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
     let p2 = rt.sequence().get(2).unwrap();
-    rt.focus(p2).unwrap();
+    rt.focus(p2);
     let frame = rt.resolve(100.0, 300.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Up)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Up);
     assert_eq!(result, Some(p1));
 }
 
@@ -127,33 +117,24 @@ fn grid_navigation() {
             gap: 0.0,
         },
         &k,
-    )
-    .unwrap();
-    rt.focus(p0).unwrap();
+    );
+    rt.focus(p0);
     let frame = rt.resolve(200.0, 200.0).unwrap();
 
     // Right from p0 -> p2 (top-right)
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert_eq!(result, Some(p2));
 
     // Down from p2 -> p3
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Down)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Down);
     assert_eq!(result, Some(p3));
 
     // Left from p3 -> p1
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Left)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
     assert_eq!(result, Some(p1));
 
     // Up from p1 -> p0
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Up)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Up);
     assert_eq!(result, Some(p0));
 }
 
@@ -169,12 +150,10 @@ fn master_stack_right() {
     )
     .unwrap();
     let master = rt.sequence().get(0).unwrap();
-    rt.focus(master).unwrap();
+    rt.focus(master);
     let frame = rt.resolve(200.0, 200.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert!(result.is_some());
     assert_ne!(result.unwrap(), master);
 }
@@ -192,12 +171,10 @@ fn master_stack_left() {
     .unwrap();
     let master = rt.sequence().get(0).unwrap();
     let stack0 = rt.sequence().get(1).unwrap();
-    rt.focus(stack0).unwrap();
+    rt.focus(stack0);
     let frame = rt.resolve(200.0, 200.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Left)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
     assert_eq!(result, Some(master));
 }
 
@@ -215,9 +192,7 @@ fn no_focused_panel() {
     // No focus set — focus_direction should return Ok(None)
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert_eq!(result, None);
 }
 
@@ -225,7 +200,7 @@ fn no_focused_panel() {
 fn single_panel() {
     let mut rt = row_runtime(1);
     let p0 = rt.sequence().get(0).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     let frame = rt.resolve(100.0, 100.0).unwrap();
 
     for dir in [
@@ -234,7 +209,7 @@ fn single_panel() {
         FocusDirection::Up,
         FocusDirection::Down,
     ] {
-        let result = rt.focus_direction(frame.layout(), dir).unwrap();
+        let result = rt.focus_direction(frame.layout(), dir);
         assert_eq!(result, None);
     }
 }
@@ -252,9 +227,7 @@ fn zero_area_skipped() {
     .unwrap();
     let frame = rt.resolve(100.0, 100.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert_eq!(result, None);
 }
 
@@ -286,14 +259,11 @@ fn diagonal_tiebreak() {
             gap: 0.0,
         },
         &k,
-    )
-    .unwrap();
-    rt.focus(s0).unwrap();
+    );
+    rt.focus(s0);
     let frame = rt.resolve(200.0, 300.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert_eq!(result, Some(s2));
 }
 
@@ -305,13 +275,11 @@ fn collapsed_middle_skipped() {
     let p0 = rt.sequence().get(0).unwrap();
     let p1 = rt.sequence().get(1).unwrap();
     let p2 = rt.sequence().get(2).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     rt.toggle_collapsed(p1).unwrap();
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt
-        .focus_direction(frame.layout(), FocusDirection::Right)
-        .unwrap();
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert_eq!(result, Some(p2));
 }
 
@@ -320,20 +288,20 @@ fn focus_direction_current_uses_cached_layout() {
     let mut rt = row_runtime(3);
     let p0 = rt.sequence().get(0).unwrap();
     let p1 = rt.sequence().get(1).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction_current(FocusDirection::Right).unwrap();
+    let result = rt.focus_direction_current(FocusDirection::Right);
     assert_eq!(result, Some(p1));
     assert_eq!(rt.focused(), Some(p1));
 }
 
 #[test]
-fn focus_direction_current_without_resolve_errors() {
+fn focus_direction_current_without_resolve_returns_none() {
     let mut rt = row_runtime(3);
     let p0 = rt.sequence().get(0).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
 
     let result = rt.focus_direction_current(FocusDirection::Right);
-    assert!(result.is_err());
+    assert!(result.is_none());
 }

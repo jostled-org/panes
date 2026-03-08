@@ -42,7 +42,7 @@ fn spiral_focus_order_matches_input() {
         let pid = rt.focused().unwrap();
         let kind = rt.tree().panel_kind(pid).unwrap().to_string();
         visited.push(kind);
-        rt.focus_next().unwrap();
+        rt.focus_next();
     }
     assert_eq!(visited, vec!["a", "b", "c", "d", "e"]);
 }

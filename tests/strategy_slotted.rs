@@ -120,7 +120,7 @@ fn holy_grail_focus_cycles_all_panels() {
     let mut seen = std::collections::HashSet::new();
     for _ in 0..5 {
         seen.insert(rt.focused().unwrap());
-        rt.focus_next().unwrap();
+        rt.focus_next();
     }
     assert_eq!(seen.len(), 5);
 }

@@ -147,7 +147,9 @@ impl HolyGrail {
         // Build the real nested tree (header, [left|main|right] row, footer)
         // instead of the flat slotted builder which can't represent nesting.
         let tree = crate::tree::LayoutTree::from(self.build()?);
-        crate::runtime::LayoutRuntime::from_tree_and_strategy(tree, strategy, &kinds)
+        Ok(crate::runtime::LayoutRuntime::from_tree_and_strategy(
+            tree, strategy, &kinds,
+        ))
     }
 }
 

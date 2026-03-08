@@ -30,7 +30,7 @@ fn monocle_focus_change_is_constraint_only() {
     assert!(c0.grow.is_some());
 
     // Focus p1
-    rt.focus(p1).unwrap();
+    rt.focus(p1);
     assert_eq!(rt.focused(), Some(p1));
 
     // p0 should now be hidden, p1 visible
@@ -54,7 +54,7 @@ fn monocle_add_hides_previous() {
 fn monocle_remove_focused_shows_neighbor() {
     let mut rt = monocle_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
-    rt.focus(p1).unwrap();
+    rt.focus(p1);
     let new_focus = rt.remove_panel(p1).unwrap();
     assert!(new_focus.is_some());
     let focus = new_focus.unwrap();
@@ -66,7 +66,7 @@ fn monocle_remove_focused_shows_neighbor() {
 fn monocle_focus_same_panel_is_noop() {
     let mut rt = monocle_runtime(2);
     let p0 = rt.sequence().get(0).unwrap();
-    rt.focus(p0).unwrap();
+    rt.focus(p0);
     assert_eq!(rt.focused(), Some(p0));
 }
 
@@ -117,11 +117,11 @@ fn tabbed_focus_cycles_content_only() {
     assert_eq!(rt.tree().panel_kind(p0).unwrap(), "editor");
 
     // Tab through all panels — each should be a content panel
-    rt.focus_next().unwrap();
+    rt.focus_next();
     let f1 = rt.focused().unwrap();
     assert_eq!(rt.tree().panel_kind(f1).unwrap(), "terminal");
 
-    rt.focus_next().unwrap();
+    rt.focus_next();
     let f2 = rt.focused().unwrap();
     assert_eq!(rt.tree().panel_kind(f2).unwrap(), "logs");
 
@@ -178,7 +178,7 @@ fn stacked_focus_cycles_content_only() {
     let p0 = rt.sequence().get(0).unwrap();
     assert_eq!(rt.tree().panel_kind(p0).unwrap(), "editor");
 
-    rt.focus_next().unwrap();
+    rt.focus_next();
     let f1 = rt.focused().unwrap();
     assert_eq!(rt.tree().panel_kind(f1).unwrap(), "terminal");
 
@@ -209,7 +209,7 @@ fn window_focus_within_pair_no_constraint_change() {
     assert!(c1.grow.is_some());
 
     // Focus p1 — still in window, no constraint changes
-    rt.focus(p1).unwrap();
+    rt.focus(p1);
     assert_eq!(rt.focused(), Some(p1));
     assert_eq!(rt.viewport().window_start, 0);
 }
@@ -219,7 +219,7 @@ fn window_focus_past_edge_slides() {
     let mut rt = window_runtime(4);
     let p3 = rt.sequence().get(3).unwrap();
 
-    rt.focus(p3).unwrap();
+    rt.focus(p3);
     assert_eq!(rt.focused(), Some(p3));
 
     // Window should have shifted
