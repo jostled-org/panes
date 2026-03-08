@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.1.3...panes-ratatui-v0.2.0) - 2026-03-08
+
+### Added
+
+- [**breaking**] add preset catalog and kind-group index to PanelEntry
+
 ## [0.1.3](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.1.2...panes-ratatui-v0.1.3) - 2026-03-08
 
 ### Other
