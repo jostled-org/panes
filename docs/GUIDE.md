@@ -794,6 +794,17 @@ Uses edge-rounding quantization: adjacent panels sharing a float boundary produc
 
 `panels_at()` and `convert_at()` offset rects by a parent origin, for rendering a panes layout inside another panel.
 
+`focused_panels()` pairs each entry with a focus `bool`. A panel is focused when its id matches the given `PanelId`, or when its kind is a decoration (`_tab` / `_title` suffix) of the focused panel's kind. Pass `runtime.focused()` or any `Option<PanelId>`:
+
+```rust
+for (entry, is_focused) in panes_ratatui::focused_panels(&resolved, rt.focused()) {
+    let style = if is_focused { focused_style } else { normal_style };
+    frame.render_widget(styled_block(entry.kind, style), entry.rect);
+}
+```
+
+`focused_panels_at()` combines focus logic with origin offset.
+
 ### panes-egui
 
 ```toml

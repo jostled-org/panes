@@ -91,6 +91,8 @@ for entry in panes_ratatui::panels(&resolved) {
 }
 ```
 
+`panes-ratatui` also provides `focused_panels()`, which pairs each entry with a focus bool — decorations (`_tab` / `_title`) light up automatically when their content panel is focused.
+
 ## Performance
 
 `LayoutRuntime` resolves a 100-panel flat layout in ~1µs on the hot path — roughly 3x over raw Taffy. The abstraction layer (tree compilation, rect resolution, frame diffing) adds minimal overhead.

@@ -30,6 +30,19 @@ for (pid, rect) in &rects {
 
 Adjacent panels sharing a float boundary produce matching integer edges. No gaps, no overlaps.
 
+### Focus-aware iteration
+
+`focused_panels` pairs each entry with a `bool` indicating focus. A panel is focused when its id matches the given `PanelId`, or when its kind is a decoration (`_tab` / `_title` suffix) of the focused panel's kind.
+
+```rust
+for (entry, is_focused) in panes_ratatui::focused_panels(&resolved, runtime.focused()) {
+    let style = if is_focused { focused_style } else { normal_style };
+    frame.render_widget(styled_block(entry.kind, style), entry.rect);
+}
+```
+
+`focused_panels_at` adds origin offset for nested layouts.
+
 ## License
 
 MIT or Apache 2.0, at your option. See [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-APACHE](../LICENSE-APACHE).
