@@ -137,8 +137,7 @@ impl Dwindle {
             ratio: self.ratio,
             gap: self.gap,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

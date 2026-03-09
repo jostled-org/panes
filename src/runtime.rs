@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use crate::compiler::{CompileResult, compile, compute_layout};
 use crate::diff::{self, LayoutDiff};
-use crate::error::PaneError;
+use crate::error::{ConstraintError, MutationError, PaneError, ViewportError};
 use crate::focus::{self, FocusDirection};
 use crate::layout::Layout;
-use crate::node::{Node, PanelId};
-use crate::panel::fixed;
+use crate::node::{Node, NodeId, PanelId};
+use crate::panel::{Constraints, fixed};
 use crate::rect::Rect;
 use crate::resolver::{self, ResolveScratch, ResolvedLayout};
 use crate::sequence::PanelSequence;
@@ -145,15 +145,9 @@ impl LayoutRuntime {
     pub fn toggle_collapsed(&mut self, pid: PanelId) -> Result<(), PaneError> {
         match self.viewport.collapsed.contains(&pid) {
             true => {
-                let saved = self
-                    .viewport
-                    .saved_constraints
-                    .remove(&pid)
-                    .ok_or_else(|| {
-                        PaneError::InvalidViewport(
-                            format!("no saved constraints for panel {pid}").into(),
-                        )
-                    })?;
+                let saved = self.viewport.saved_constraints.remove(&pid).ok_or(
+                    PaneError::InvalidViewport(ViewportError::NoSavedConstraints(pid)),
+                )?;
                 self.tree.set_constraints(pid, saved)?;
                 self.viewport.collapsed.remove(&pid);
                 Ok(())
@@ -227,10 +221,9 @@ impl LayoutRuntime {
         let strategy = self
             .strategy
             .as_ref()
-            .ok_or_else(|| PaneError::InvalidMutation("no strategy set".into()))?
-            .clone();
+            .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))?;
         crate::strategy::apply_add(
-            &strategy,
+            strategy,
             &mut self.tree,
             &mut self.sequence,
             &mut self.viewport,
@@ -243,10 +236,9 @@ impl LayoutRuntime {
         let strategy = self
             .strategy
             .as_ref()
-            .ok_or_else(|| PaneError::InvalidMutation("no strategy set".into()))?
-            .clone();
+            .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))?;
         crate::strategy::apply_remove(
-            &strategy,
+            strategy,
             &mut self.tree,
             &mut self.sequence,
             &mut self.viewport,
@@ -259,10 +251,9 @@ impl LayoutRuntime {
         let strategy = self
             .strategy
             .as_ref()
-            .ok_or_else(|| PaneError::InvalidMutation("no strategy set".into()))?
-            .clone();
+            .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))?;
         crate::strategy::apply_move(
-            &strategy,
+            strategy,
             &mut self.tree,
             &mut self.sequence,
             &mut self.viewport,
@@ -276,34 +267,31 @@ impl LayoutRuntime {
     /// Returns `true` if focus was set, `false` if `pid` is not in the
     /// sequence (strategy path) or not a known panel.
     pub fn focus(&mut self, pid: PanelId) -> bool {
-        match &self.strategy {
-            Some(strategy) => {
-                let strategy = strategy.clone();
-                crate::strategy::try_apply_focus(
-                    &strategy,
-                    &mut self.tree,
-                    &mut self.sequence,
-                    &mut self.viewport,
-                    pid,
-                )
-            }
-            None => {
-                self.viewport.focus = Some(pid);
-                true
-            }
-        }
+        let Some(strategy) = self.strategy.as_ref() else {
+            self.viewport.focus = Some(pid);
+            return true;
+        };
+        crate::strategy::try_apply_focus(
+            strategy,
+            &mut self.tree,
+            &mut self.sequence,
+            &mut self.viewport,
+            pid,
+        )
     }
 
     /// Move focus to the next panel in the sequence.
     /// No-op if the sequence is empty.
     pub fn focus_next(&mut self) {
-        let next = match self.viewport.focus {
-            Some(current) => {
-                let idx = self.sequence.index_of(current).unwrap_or(0);
+        let next = match (
+            self.viewport.focus,
+            self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
+        ) {
+            (Some(_), Some(idx)) => {
                 let next_idx = (idx + 1) % self.sequence.len().max(1);
                 self.sequence.get(next_idx)
             }
-            None => self.sequence.get(0),
+            _ => self.sequence.get(0),
         };
         if let Some(pid) = next {
             self.focus(pid);
@@ -313,14 +301,16 @@ impl LayoutRuntime {
     /// Move focus to the previous panel in the sequence.
     /// No-op if the sequence is empty.
     pub fn focus_prev(&mut self) {
-        let prev = match self.viewport.focus {
-            Some(current) => {
+        let prev = match (
+            self.viewport.focus,
+            self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
+        ) {
+            (Some(_), Some(idx)) => {
                 let len = self.sequence.len().max(1);
-                let idx = self.sequence.index_of(current).unwrap_or(0);
                 let prev_idx = (idx + len - 1) % len;
                 self.sequence.get(prev_idx)
             }
-            None => self.sequence.get(0),
+            _ => self.sequence.get(0),
         };
         if let Some(pid) = prev {
             self.focus(pid);
@@ -395,7 +385,7 @@ impl LayoutRuntime {
     ) -> Result<PanelId, PaneError> {
         let focused = self
             .focused()
-            .ok_or_else(|| PaneError::InvalidMutation("no focused panel".into()))?;
+            .ok_or(PaneError::InvalidMutation(MutationError::NoFocusedPanel))?;
         let focused_nid = self
             .tree
             .node_for_panel(focused)
@@ -403,27 +393,11 @@ impl LayoutRuntime {
         let parent_id = self
             .tree
             .parent(focused_nid)?
-            .ok_or_else(|| PaneError::InvalidMutation("focused panel has no parent".into()))?;
+            .ok_or(PaneError::InvalidMutation(MutationError::FocusedNoParent))?;
 
         let (new_pid, new_nid) = self.tree.add_panel(kind, constraints)?;
 
-        let parent_axis = match self.tree.node(parent_id) {
-            Some(Node::Col { .. }) => Direction::Vertical,
-            Some(Node::TaffyPassthrough { style, .. })
-                if matches!(
-                    style.flex_direction,
-                    taffy::FlexDirection::Column | taffy::FlexDirection::ColumnReverse
-                ) =>
-            {
-                Direction::Vertical
-            }
-            Some(Node::Row { .. }) | Some(Node::TaffyPassthrough { .. }) => Direction::Horizontal,
-            Some(Node::Panel { .. }) | None => {
-                return Err(PaneError::InvalidMutation(
-                    "parent is not a container".into(),
-                ));
-            }
-        };
+        let parent_axis = parent_axis_direction(&self.tree, parent_id)?;
 
         let focused_idx = self
             .tree
@@ -432,34 +406,24 @@ impl LayoutRuntime {
             .position(|&c| c == focused_nid)
             .ok_or(PaneError::PanelNotFound(focused))?;
 
-        let insert_idx = match placement {
-            Placement::Before => focused_idx,
-            Placement::After => focused_idx + 1,
-        };
-
-        match (parent_axis == direction, direction, placement) {
-            (true, _, _) => {
-                self.tree.insert_child_at(parent_id, insert_idx, new_nid)?;
+        match (parent_axis == direction, placement) {
+            (true, Placement::Before) => {
+                self.tree.insert_child_at(parent_id, focused_idx, new_nid)?;
             }
-            (false, Direction::Horizontal, Placement::Before) => {
-                self.tree.detach(focused_nid);
-                let c = self.tree.add_row(0.0, vec![new_nid, focused_nid])?;
-                self.tree.insert_child_at(parent_id, focused_idx, c)?;
+            (true, Placement::After) => {
+                self.tree
+                    .insert_child_at(parent_id, focused_idx + 1, new_nid)?;
             }
-            (false, Direction::Horizontal, Placement::After) => {
-                self.tree.detach(focused_nid);
-                let c = self.tree.add_row(0.0, vec![focused_nid, new_nid])?;
-                self.tree.insert_child_at(parent_id, focused_idx, c)?;
-            }
-            (false, Direction::Vertical, Placement::Before) => {
-                self.tree.detach(focused_nid);
-                let c = self.tree.add_col(0.0, vec![new_nid, focused_nid])?;
-                self.tree.insert_child_at(parent_id, focused_idx, c)?;
-            }
-            (false, Direction::Vertical, Placement::After) => {
-                self.tree.detach(focused_nid);
-                let c = self.tree.add_col(0.0, vec![focused_nid, new_nid])?;
-                self.tree.insert_child_at(parent_id, focused_idx, c)?;
+            (false, _) => {
+                wrap_in_container(
+                    &mut self.tree,
+                    parent_id,
+                    focused_nid,
+                    focused_idx,
+                    new_nid,
+                    direction,
+                    placement,
+                )?;
             }
         }
 
@@ -472,6 +436,33 @@ impl LayoutRuntime {
 
         self.viewport.focus = Some(new_pid);
         Ok(new_pid)
+    }
+
+    /// Resize a panel's share of its container by `delta` (fraction of container space).
+    ///
+    /// Positive delta gives the panel more space; negative gives it less.
+    /// All siblings in the parent container must be panels with grow constraints.
+    pub fn resize_boundary(&mut self, pid: PanelId, delta: f32) -> Result<(), PaneError> {
+        validate_delta(delta)?;
+        if delta.abs() < f32::EPSILON {
+            return Ok(());
+        }
+
+        let parent_nid = resolve_parent(&self.tree, pid)?;
+        let siblings = collect_grow_siblings(&self.tree, parent_nid)?;
+        let new_weights = redistribute_grow(pid, delta, &siblings)?;
+
+        for (sibling, new_grow) in siblings.iter().zip(new_weights) {
+            let updated = Constraints {
+                grow: Some(new_grow),
+                min: sibling.constraints.min,
+                max: sibling.constraints.max,
+                ..Constraints::default()
+            };
+            self.tree.set_constraints(sibling.pid, updated)?;
+        }
+
+        Ok(())
     }
 
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.
@@ -505,11 +496,12 @@ impl LayoutRuntime {
         apply_scroll_offset(&mut layout, self.viewport.scroll_offset);
 
         let prev_arc = self.previous.take();
-        let diff = match (tree_dirty, prev_arc.as_deref()) {
-            (_, None) => diff::first_frame(&layout),
-            (false, Some(prev)) => diff::diff_same_panels(prev, &layout),
-            (true, Some(prev)) => diff::diff_reuse(prev, &layout, &mut self.diff_scratch),
-        };
+        let diff = select_diff(
+            tree_dirty,
+            prev_arc.as_deref(),
+            &layout,
+            &mut self.diff_scratch,
+        );
 
         let layout = Arc::new(layout);
         self.previous = Some(Arc::clone(&layout));
@@ -527,6 +519,142 @@ impl From<LayoutTree> for LayoutRuntime {
     fn from(tree: LayoutTree) -> Self {
         Self::new(tree)
     }
+}
+
+fn select_diff(
+    tree_dirty: bool,
+    prev: Option<&ResolvedLayout>,
+    new: &ResolvedLayout,
+    scratch: &mut diff::DiffScratch,
+) -> LayoutDiff {
+    match (tree_dirty, prev) {
+        (_, None) => diff::first_frame(new),
+        (false, Some(prev)) => diff::diff_same_panels(prev, new),
+        (true, Some(prev)) => diff::diff_reuse(prev, new, scratch),
+    }
+}
+
+fn parent_axis_direction(tree: &LayoutTree, parent_id: NodeId) -> Result<Direction, PaneError> {
+    let node = tree.node(parent_id).ok_or(PaneError::InvalidMutation(
+        MutationError::ParentNotContainer,
+    ))?;
+    match node {
+        Node::Panel { .. } => Err(PaneError::InvalidMutation(
+            MutationError::ParentNotContainer,
+        )),
+        _ => Ok(crate::compiler::direction_of(node)),
+    }
+}
+
+fn wrap_in_container(
+    tree: &mut LayoutTree,
+    parent_id: NodeId,
+    focused_nid: NodeId,
+    focused_idx: usize,
+    new_nid: NodeId,
+    direction: Direction,
+    placement: Placement,
+) -> Result<(), PaneError> {
+    tree.detach(focused_nid);
+    let children = match placement {
+        Placement::Before => vec![new_nid, focused_nid],
+        Placement::After => vec![focused_nid, new_nid],
+    };
+    let c = match direction {
+        Direction::Horizontal => tree.add_row(0.0, children)?,
+        Direction::Vertical => tree.add_col(0.0, children)?,
+    };
+    tree.insert_child_at(parent_id, focused_idx, c)
+}
+
+fn validate_delta(delta: f32) -> Result<(), PaneError> {
+    match delta.is_finite() {
+        true => Ok(()),
+        false => Err(PaneError::InvalidConstraint(
+            ConstraintError::DeltaNotFinite,
+        )),
+    }
+}
+
+fn resolve_parent(tree: &LayoutTree, pid: PanelId) -> Result<NodeId, PaneError> {
+    let nid = tree
+        .node_for_panel(pid)
+        .ok_or(PaneError::PanelNotFound(pid))?;
+    let parent_nid = tree
+        .parent(nid)?
+        .ok_or(PaneError::InvalidMutation(MutationError::PanelNoParent))?;
+    match tree.children(parent_nid)?.len() < 2 {
+        true => Err(PaneError::InvalidMutation(MutationError::OnlyChild)),
+        false => Ok(parent_nid),
+    }
+}
+
+fn redistribute_grow(
+    target_pid: PanelId,
+    delta: f32,
+    siblings: &[SiblingInfo],
+) -> Result<Vec<f32>, PaneError> {
+    const EPSILON: f32 = 0.001;
+
+    let total_grow: f32 = siblings.iter().map(|s| s.grow).sum();
+    let target = siblings
+        .iter()
+        .find(|s| s.pid == target_pid)
+        .ok_or(PaneError::PanelNotFound(target_pid))?;
+    let current_share = target.grow / total_grow;
+
+    // Panel already dominates — no room to redistribute.
+    match current_share >= 1.0 - EPSILON {
+        true => return Ok(siblings.iter().map(|s| s.grow).collect()),
+        false => {}
+    }
+
+    let max_share = 1.0 - EPSILON * (siblings.len() - 1) as f32;
+    let new_share = (current_share + delta).clamp(EPSILON, max_share);
+    let scale = (1.0 - new_share) / (1.0 - current_share);
+
+    Ok(siblings
+        .iter()
+        .map(|s| match s.pid == target_pid {
+            true => new_share * total_grow,
+            false => (s.grow * scale).max(EPSILON),
+        })
+        .collect())
+}
+
+struct SiblingInfo {
+    pid: PanelId,
+    grow: f32,
+    constraints: Constraints,
+}
+
+fn collect_grow_siblings(
+    tree: &LayoutTree,
+    parent_nid: NodeId,
+) -> Result<Vec<SiblingInfo>, PaneError> {
+    let children = tree.children(parent_nid)?;
+    let mut siblings = Vec::with_capacity(children.len());
+    for &child_nid in children {
+        let Some(Node::Panel {
+            id, constraints, ..
+        }) = tree.node(child_nid)
+        else {
+            return Err(PaneError::InvalidMutation(MutationError::SiblingsNotPanels));
+        };
+        let grow = match (constraints.grow, constraints.fixed) {
+            (Some(g), _) => g,
+            (None, None) => 1.0,
+            (None, Some(_)) => {
+                return Err(PaneError::InvalidMutation(MutationError::SiblingsNotGrow));
+            }
+        };
+        siblings.push(SiblingInfo {
+            pid: *id,
+            grow,
+            constraints: *constraints,
+        });
+    }
+    Ok(siblings)
 }
 
 /// Shift all resolved rect x-positions by the negative scroll offset.

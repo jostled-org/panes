@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use crate::builder::LayoutBuilder;
-use crate::error::PaneError;
+use crate::error::{PaneError, TreeError};
 use crate::layout::Layout;
 use crate::panel::{fixed, grow};
+use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
 /// Collect an iterator of string-like items into an `Arc<[Arc<str>]>`.
 pub(crate) fn collect_kinds(
@@ -31,35 +32,24 @@ pub(crate) fn add_grow_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>])
 /// Validate that at least one kind was provided.
 pub(crate) fn validate_kinds(kinds: &[Arc<str>]) -> Result<(), PaneError> {
     match kinds.is_empty() {
-        true => Err(PaneError::InvalidTree(
-            "preset requires at least one kind".into(),
-        )),
+        true => Err(PaneError::InvalidTree(TreeError::NoKinds)),
         false => Ok(()),
     }
 }
 
 /// Validate that an `f32` parameter is finite and non-negative.
-pub(crate) fn validate_f32_param(name: &str, value: f32) -> Result<(), PaneError> {
-    match value {
-        v if v.is_nan() => Err(PaneError::InvalidConstraint(
-            format!("{name} is NaN").into(),
-        )),
-        v if v < 0.0 => Err(PaneError::InvalidConstraint(
-            format!("{name} is negative").into(),
-        )),
-        v if v.is_infinite() => Err(PaneError::InvalidConstraint(
-            format!("{name} is infinite").into(),
-        )),
-        _ => Ok(()),
-    }
+pub(crate) fn validate_f32_param(name: &'static str, value: f32) -> Result<(), PaneError> {
+    check_f32_non_negative(value)
+        .map_err(|e| PaneError::InvalidConstraint(float_invalid_to_constraint(name, e)))
 }
 
 /// Validate that `active` is within bounds.
 pub(crate) fn validate_active(active: usize, len: usize) -> Result<(), PaneError> {
     match active >= len {
-        true => Err(PaneError::InvalidTree(
-            format!("active index {active} out of bounds for {len} panels").into(),
-        )),
+        true => Err(PaneError::InvalidTree(TreeError::ActiveOutOfBounds {
+            active,
+            len,
+        })),
         false => Ok(()),
     }
 }
@@ -79,7 +69,7 @@ pub(crate) fn add_active_hidden_panels(
     }
 }
 
-/// Shared implementation for all preset types: `resolve()` shorthand and `TryFrom` conversion.
+// Macro lives here because it references preset-specific builder methods.
 macro_rules! impl_preset {
     ($Type:ty) => {
         impl $Type {

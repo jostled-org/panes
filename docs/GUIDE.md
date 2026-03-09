@@ -690,6 +690,11 @@ rt.toggle_collapsed(panel_id)?;
 // Scroll (for scrollable layouts)
 rt.scroll_by(10.0);
 rt.scroll_to(0.0);
+
+// Resize a panel's share of its container (fraction of container space)
+// Positive delta = more space, negative = less
+rt.resize_boundary(pid, 0.1)?;   // give 10% more
+rt.resize_boundary(pid, -0.05)?; // give 5% less
 ```
 
 ### Legacy runtime

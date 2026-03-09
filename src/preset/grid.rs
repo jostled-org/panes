@@ -33,7 +33,7 @@ impl Grid {
         match self.cols {
             0 => {
                 return Err(PaneError::InvalidTree(
-                    "grid columns must be at least 1".into(),
+                    crate::error::TreeError::ColumnsCountZero,
                 ));
             }
             _ => {}
@@ -62,8 +62,7 @@ impl Grid {
             columns: self.cols,
             gap: self.gap,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

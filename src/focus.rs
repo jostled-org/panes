@@ -49,6 +49,10 @@ pub(crate) fn find_nearest(
             FocusDirection::Up => cy < oy,
             FocusDirection::Down => cy > oy,
         })
+        .filter(|&(_, (cx, cy))| {
+            let (a, b) = direction_score(ox, oy, cx, cy, direction);
+            a.is_finite() && b.is_finite()
+        })
         .min_by(|&(_, (ax, ay)), &(_, (bx, by))| {
             let score_a = direction_score(ox, oy, ax, ay, direction);
             let score_b = direction_score(ox, oy, bx, by, direction);
@@ -66,6 +70,6 @@ fn direction_score(ox: f32, oy: f32, cx: f32, cy: f32, direction: FocusDirection
 
 fn f32_pair_cmp(a: (f32, f32), b: (f32, f32)) -> Ordering {
     a.0.partial_cmp(&b.0)
-        .unwrap_or(Ordering::Equal)
-        .then(a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal))
+        .unwrap_or(Ordering::Greater)
+        .then(a.1.partial_cmp(&b.1).unwrap_or(Ordering::Greater))
 }

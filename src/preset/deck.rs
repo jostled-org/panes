@@ -48,7 +48,9 @@ impl Deck {
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
-        validate_active(self.active, self.kinds.len())?;
+        if self.kinds.len() > 1 {
+            validate_active(self.active, self.kinds.len() - 1)?;
+        }
         validate_f32_param("master_ratio", self.master_ratio)?;
 
         let mut b = LayoutBuilder::new();
@@ -75,8 +77,7 @@ impl Deck {
             master_ratio: self.master_ratio,
             gap: self.gap,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

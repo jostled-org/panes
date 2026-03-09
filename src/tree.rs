@@ -1,8 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::error::PaneError;
+use crate::error::{PaneError, TreeError};
 use crate::node::Node;
 use crate::node::PanelId;
 use crate::{Constraints, NodeId, PanelIdGenerator};
@@ -28,6 +27,7 @@ impl Position {
 /// Arena-based mutable layout tree.
 pub struct LayoutTree {
     nodes: Vec<Option<Node>>,
+    free_list: Vec<NodeId>,
     root: Option<NodeId>,
     panel_gen: PanelIdGenerator,
     kind_index: FxHashMap<Arc<str>, Vec<PanelId>>,
@@ -43,6 +43,7 @@ impl LayoutTree {
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),
+            free_list: Vec::new(),
             root: None,
             panel_gen: PanelIdGenerator::new(),
             kind_index: FxHashMap::default(),
@@ -56,11 +57,20 @@ impl LayoutTree {
 
     /// Allocate a new node in the arena, returning its `NodeId`.
     fn alloc(&mut self, node: Node) -> Result<NodeId, PaneError> {
-        let id =
-            NodeId::from_raw(u32::try_from(self.nodes.len()).map_err(|_| {
-                PaneError::InvalidTree("node arena size exceeds u32 capacity".into())
-            })?);
-        self.nodes.push(Some(node));
+        let id = match self.free_list.pop() {
+            Some(id) => {
+                self.nodes[id.raw() as usize] = Some(node);
+                id
+            }
+            None => {
+                let id = NodeId::from_raw(
+                    u32::try_from(self.nodes.len())
+                        .map_err(|_| PaneError::InvalidTree(TreeError::ArenaOverflow))?,
+                );
+                self.nodes.push(Some(node));
+                id
+            }
+        };
         self.live_count += 1;
         Ok(id)
     }
@@ -126,7 +136,7 @@ impl LayoutTree {
         children: Vec<NodeId>,
     ) -> Result<NodeId, PaneError> {
         let id = self.alloc(Node::TaffyPassthrough {
-            style: Rc::new(style),
+            style: Box::new(style),
             children,
         })?;
         Self::record_children_from(&mut self.parent_map, &self.nodes, id);
@@ -250,6 +260,15 @@ impl LayoutTree {
         }
     }
 
+    /// Get a panel's kind as a cheap `Arc::clone` instead of allocating.
+    pub fn panel_kind_arc(&self, pid: PanelId) -> Result<Arc<str>, PaneError> {
+        let nid = self.resolve_panel(pid)?;
+        match self.node(nid) {
+            Some(Node::Panel { kind, .. }) => Ok(Arc::clone(kind)),
+            _ => Err(PaneError::PanelNotFound(pid)),
+        }
+    }
+
     /// Get the children of a node. Returns an empty slice for leaf nodes.
     pub fn children(&self, id: NodeId) -> Result<&[NodeId], PaneError> {
         match self.node(id) {
@@ -363,7 +382,8 @@ impl LayoutTree {
         // Remove from panel-to-node map and arena
         self.panel_to_node.remove(&pid);
         self.nodes[nid.raw() as usize] = None;
-        self.live_count -= 1;
+        self.free_list.push(nid);
+        self.live_count = self.live_count.saturating_sub(1);
         self.dirty = true;
 
         Ok(())
@@ -394,11 +414,10 @@ impl LayoutTree {
     pub fn validate(&self) -> Result<(), PaneError> {
         let root_id = self
             .root
-            .ok_or_else(|| PaneError::InvalidTree("root is not set".into()))?;
+            .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
-        self.node(root_id).ok_or_else(|| {
-            PaneError::InvalidTree(format!("root node {root_id} missing from arena").into())
-        })?;
+        self.node(root_id)
+            .ok_or(PaneError::InvalidTree(TreeError::RootMissing(root_id)))?;
 
         let live: FxHashSet<NodeId> = self
             .nodes
@@ -406,9 +425,9 @@ impl LayoutTree {
             .enumerate()
             .filter_map(|(i, slot)| {
                 slot.as_ref().map(|_| {
-                    u32::try_from(i).map(NodeId::from_raw).map_err(|_| {
-                        PaneError::InvalidTree("node arena index exceeds u32 capacity".into())
-                    })
+                    u32::try_from(i)
+                        .map(NodeId::from_raw)
+                        .map_err(|_| PaneError::InvalidTree(TreeError::ArenaIndexOverflow))
                 })
             })
             .collect::<Result<_, _>>()?;
@@ -423,9 +442,10 @@ impl LayoutTree {
             let Some(node) = self.node(nid) else { continue };
             for &child in node.children() {
                 if !live.contains(&child) {
-                    return Err(PaneError::InvalidTree(
-                        format!("node {nid} references missing child {child}").into(),
-                    ));
+                    return Err(PaneError::InvalidTree(TreeError::MissingChild {
+                        parent: nid,
+                        child,
+                    }));
                 }
             }
         }
@@ -438,24 +458,23 @@ impl LayoutTree {
             if nid == root_id {
                 continue;
             }
-            let parent_id = self.parent_map.get(&nid).copied().ok_or_else(|| {
-                PaneError::InvalidTree(format!("node {nid} has no parent entry").into())
-            })?;
+            let parent_id = self
+                .parent_map
+                .get(&nid)
+                .copied()
+                .ok_or(PaneError::InvalidTree(TreeError::NoParentEntry(nid)))?;
             let parent_children = self
                 .node(parent_id)
-                .ok_or_else(|| {
-                    PaneError::InvalidTree(
-                        format!("parent {parent_id} of node {nid} missing from arena").into(),
-                    )
-                })?
+                .ok_or(PaneError::InvalidTree(TreeError::ParentMissing {
+                    parent: parent_id,
+                    child: nid,
+                }))?
                 .children();
             if !parent_children.contains(&nid) {
-                return Err(PaneError::InvalidTree(
-                    format!(
-                        "parent_map says {parent_id} is parent of {nid}, but children list disagrees"
-                    )
-                    .into(),
-                ));
+                return Err(PaneError::InvalidTree(TreeError::ParentChildMismatch {
+                    parent: parent_id,
+                    child: nid,
+                }));
             }
         }
         Ok(())

@@ -21,15 +21,15 @@ pub struct RectChange {
 #[derive(Debug)]
 pub struct LayoutDiff {
     /// Panels present in the new frame but not the old.
-    pub added: Vec<PanelId>,
+    pub added: Box<[PanelId]>,
     /// Panels present in the old frame but not the new.
-    pub removed: Vec<PanelId>,
+    pub removed: Box<[PanelId]>,
     /// Panels whose position changed.
-    pub moved: Vec<RectChange>,
+    pub moved: Box<[RectChange]>,
     /// Panels whose size changed.
-    pub resized: Vec<RectChange>,
+    pub resized: Box<[RectChange]>,
     /// Panels whose rect is identical across frames.
-    pub unchanged: Vec<PanelId>,
+    pub unchanged: Box<[PanelId]>,
 }
 
 fn position_changed(a: &Rect, b: &Rect) -> bool {
@@ -69,20 +69,22 @@ fn classify_change(
     }
 }
 
-/// Compare two resolved layouts and categorize every panel.
-pub fn diff(old: &ResolvedLayout, new: &ResolvedLayout) -> LayoutDiff {
-    let old_ids: FxHashSet<PanelId> = old.panel_ids().collect();
-    let new_ids: FxHashSet<PanelId> = new.panel_ids().collect();
-
-    let removed: Vec<PanelId> = old_ids.difference(&new_ids).copied().collect();
-    let added: Vec<PanelId> = new_ids.difference(&old_ids).copied().collect();
+/// Shared diff logic: given pre-computed id sets, classify all panels.
+fn diff_from_sets(
+    old_ids: &FxHashSet<PanelId>,
+    new_ids: &FxHashSet<PanelId>,
+    old: &ResolvedLayout,
+    new: &ResolvedLayout,
+) -> LayoutDiff {
+    let removed: Vec<PanelId> = old_ids.difference(new_ids).copied().collect();
+    let added: Vec<PanelId> = new_ids.difference(old_ids).copied().collect();
 
     let common_count = old_ids.len().min(new_ids.len());
     let mut moved = Vec::with_capacity(common_count);
     let mut resized = Vec::with_capacity(common_count);
     let mut unchanged = Vec::with_capacity(common_count);
 
-    for &pid in old_ids.intersection(&new_ids) {
+    for &pid in old_ids.intersection(new_ids) {
         let (Some(old_rect), Some(new_rect)) = (old.get(pid), new.get(pid)) else {
             continue;
         };
@@ -97,12 +99,19 @@ pub fn diff(old: &ResolvedLayout, new: &ResolvedLayout) -> LayoutDiff {
     }
 
     LayoutDiff {
-        added,
-        removed,
-        moved,
-        resized,
-        unchanged,
+        added: added.into_boxed_slice(),
+        removed: removed.into_boxed_slice(),
+        moved: moved.into_boxed_slice(),
+        resized: resized.into_boxed_slice(),
+        unchanged: unchanged.into_boxed_slice(),
     }
+}
+
+/// Compare two resolved layouts and categorize every panel.
+pub fn diff(old: &ResolvedLayout, new: &ResolvedLayout) -> LayoutDiff {
+    let old_ids: FxHashSet<PanelId> = old.panel_ids().collect();
+    let new_ids: FxHashSet<PanelId> = new.panel_ids().collect();
+    diff_from_sets(&old_ids, &new_ids, old, new)
 }
 
 /// Reusable scratch buffers for diffing without per-frame HashSet allocation.
@@ -122,53 +131,17 @@ pub(crate) fn diff_reuse(
     scratch.old_ids.extend(old.panel_ids());
     scratch.new_ids.clear();
     scratch.new_ids.extend(new.panel_ids());
-
-    let removed: Vec<PanelId> = scratch
-        .old_ids
-        .difference(&scratch.new_ids)
-        .copied()
-        .collect();
-    let added: Vec<PanelId> = scratch
-        .new_ids
-        .difference(&scratch.old_ids)
-        .copied()
-        .collect();
-
-    let common_count = scratch.old_ids.len().min(scratch.new_ids.len());
-    let mut moved = Vec::with_capacity(common_count);
-    let mut resized = Vec::with_capacity(common_count);
-    let mut unchanged = Vec::with_capacity(common_count);
-
-    for &pid in scratch.old_ids.intersection(&scratch.new_ids) {
-        let (Some(old_rect), Some(new_rect)) = (old.get(pid), new.get(pid)) else {
-            continue;
-        };
-        classify_change(
-            pid,
-            old_rect,
-            new_rect,
-            &mut moved,
-            &mut resized,
-            &mut unchanged,
-        );
-    }
-
-    LayoutDiff {
-        added,
-        removed,
-        moved,
-        resized,
-        unchanged,
-    }
+    diff_from_sets(&scratch.old_ids, &scratch.new_ids, old, new)
 }
 
 /// Diff when the panel set is known to be identical (tree not dirty).
 ///
 /// Skips HashSet construction entirely — single pass over new layout.
 pub(crate) fn diff_same_panels(old: &ResolvedLayout, new: &ResolvedLayout) -> LayoutDiff {
-    let mut moved = Vec::new();
-    let mut resized = Vec::new();
-    let mut unchanged = Vec::new();
+    let panel_hint = new.iter().size_hint().0;
+    let mut moved = Vec::with_capacity(panel_hint);
+    let mut resized = Vec::with_capacity(panel_hint);
+    let mut unchanged = Vec::with_capacity(panel_hint);
 
     for (pid, new_rect) in new.iter() {
         let Some(old_rect) = old.get(pid) else {
@@ -185,21 +158,21 @@ pub(crate) fn diff_same_panels(old: &ResolvedLayout, new: &ResolvedLayout) -> La
     }
 
     LayoutDiff {
-        added: Vec::new(),
-        removed: Vec::new(),
-        moved,
-        resized,
-        unchanged,
+        added: Box::default(),
+        removed: Box::default(),
+        moved: moved.into_boxed_slice(),
+        resized: resized.into_boxed_slice(),
+        unchanged: unchanged.into_boxed_slice(),
     }
 }
 
 /// Produce a diff representing the first frame — all panels are added.
 pub fn first_frame(layout: &ResolvedLayout) -> LayoutDiff {
     LayoutDiff {
-        added: layout.panel_ids().collect(),
-        removed: Vec::new(),
-        moved: Vec::new(),
-        resized: Vec::new(),
-        unchanged: Vec::new(),
+        added: layout.panel_ids().collect::<Vec<_>>().into_boxed_slice(),
+        removed: Box::default(),
+        moved: Box::default(),
+        resized: Box::default(),
+        unchanged: Box::default(),
     }
 }

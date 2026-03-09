@@ -3,7 +3,7 @@ use std::sync::Arc;
 use taffy::prelude::fr;
 
 use crate::builder::LayoutBuilder;
-use crate::error::PaneError;
+use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::layout::Layout;
 
 /// Builder for the grid-based dashboard preset layout.
@@ -41,27 +41,22 @@ impl Dashboard {
     pub fn build(&self) -> Result<Layout, PaneError> {
         match self.cards.is_empty() {
             true => {
-                return Err(PaneError::InvalidTree(
-                    "dashboard requires at least one card".into(),
-                ));
+                return Err(PaneError::InvalidTree(TreeError::DashboardNoCards));
             }
             _ => {}
         }
         match self.columns {
             0 => {
-                return Err(PaneError::InvalidTree(
-                    "dashboard columns must be at least 1".into(),
-                ));
+                return Err(PaneError::InvalidTree(TreeError::DashboardNoColumns));
             }
             _ => {}
         }
 
         let mut b = LayoutBuilder::new();
         let grid_style = self.grid_root_style();
-        let cards = self.cards.to_vec();
 
         b.row(|r| {
-            r.taffy_node(grid_style, |grid| add_cards(grid, &cards));
+            r.taffy_node(grid_style, |grid| add_cards(grid, &self.cards));
         })?;
 
         b.build()
@@ -87,9 +82,8 @@ impl Dashboard {
 }
 
 fn card_style(span: usize) -> Result<taffy::Style, PaneError> {
-    let span_u16 = u16::try_from(span).map_err(|_| {
-        PaneError::InvalidConstraint(format!("grid span {span} exceeds u16 max").into())
-    })?;
+    let span_u16 = u16::try_from(span)
+        .map_err(|_| PaneError::InvalidConstraint(ConstraintError::GridSpanOverflow(span)))?;
     Ok(taffy::Style {
         grid_column: taffy::Line {
             start: taffy::GridPlacement::Auto,

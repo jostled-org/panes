@@ -27,10 +27,11 @@ mod strategy;
 #[cfg(feature = "toml")]
 mod toml_parse;
 mod tree;
+mod validate;
 mod viewport;
 
 pub use builder::{ContainerCtx, LayoutBuilder};
-pub use error::PaneError;
+pub use error::{ConstraintError, MutationError, PaneError, TreeError, ViewportError};
 pub use focus::FocusDirection;
 pub use layout::Layout;
 pub use node::{Node, NodeId, PanelId};

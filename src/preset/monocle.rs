@@ -48,8 +48,7 @@ impl Monocle {
             variant: crate::strategy::ActivePanelVariant::Monocle,
             bar_height: 0.0,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

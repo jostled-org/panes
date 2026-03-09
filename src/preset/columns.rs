@@ -34,7 +34,7 @@ impl Columns {
         match self.count {
             0 => {
                 return Err(PaneError::InvalidTree(
-                    "columns count must be at least 1".into(),
+                    crate::error::TreeError::ColumnsCountZero,
                 ));
             }
             _ => {}
@@ -59,7 +59,8 @@ impl Columns {
 
 /// Distribute items round-robin into `n` buckets.
 fn distribute_round_robin(items: &[Arc<str>], n: usize) -> Vec<Vec<Arc<str>>> {
-    let mut buckets: Vec<Vec<Arc<str>>> = (0..n).map(|_| Vec::new()).collect();
+    let per_bucket = items.len().div_ceil(n);
+    let mut buckets: Vec<Vec<Arc<str>>> = (0..n).map(|_| Vec::with_capacity(per_bucket)).collect();
     for (i, kind) in items.iter().enumerate() {
         buckets[i % n].push(Arc::clone(kind));
     }
@@ -73,8 +74,7 @@ impl Columns {
             direction: crate::strategy::Direction::Horizontal,
             gap: self.gap,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

@@ -1,5 +1,6 @@
-use crate::error::PaneError;
+use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::node::PanelId;
+use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
 /// Generates sequential, unique `PanelId` values.
 #[derive(Default)]
@@ -26,7 +27,7 @@ impl PanelIdGenerator {
         self.counter = self
             .counter
             .checked_add(1)
-            .ok_or(PaneError::InvalidTree("panel ID counter exhausted".into()))?;
+            .ok_or(PaneError::InvalidTree(TreeError::PanelIdExhausted))?;
         Ok(id)
     }
 }
@@ -66,25 +67,19 @@ impl Constraints {
 
         match (self.grow, self.fixed, self.min, self.max) {
             (Some(_), Some(_), _, _) => Err(PaneError::InvalidConstraint(
-                "grow and fixed are mutually exclusive".into(),
+                ConstraintError::GrowFixedExclusive,
             )),
             (_, _, Some(lo), Some(hi)) if lo > hi => {
-                Err(PaneError::InvalidConstraint("min exceeds max".into()))
+                Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
             }
             _ => Ok(()),
         }
     }
 
-    fn reject_bad_f32(name: &str, value: Option<f32>) -> Result<(), PaneError> {
-        match value {
-            Some(v) if v.is_nan() => Err(PaneError::InvalidConstraint(
-                format!("{name} is NaN").into(),
-            )),
-            Some(v) if v < 0.0 => Err(PaneError::InvalidConstraint(
-                format!("{name} is negative").into(),
-            )),
-            _ => Ok(()),
-        }
+    fn reject_bad_f32(name: &'static str, value: Option<f32>) -> Result<(), PaneError> {
+        let Some(v) = value else { return Ok(()) };
+        check_f32_non_negative(v)
+            .map_err(|e| PaneError::InvalidConstraint(float_invalid_to_constraint(name, e)))
     }
 }
 

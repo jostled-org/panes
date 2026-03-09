@@ -1,29 +1,4 @@
-/// Generates a newtype wrapper around `u32` with `from_raw`, `raw`, and `Display`.
-macro_rules! id_newtype {
-    ($(#[$meta:meta])* $vis:vis $Name:ident) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        $vis struct $Name(u32);
-
-        impl $Name {
-            /// Construct from a raw integer.
-            pub fn from_raw(raw: u32) -> Self {
-                Self(raw)
-            }
-
-            /// Return the underlying integer.
-            pub fn raw(self) -> u32 {
-                self.0
-            }
-        }
-
-        impl std::fmt::Display for $Name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.0)
-            }
-        }
-    };
-}
+use crate::macros::id_newtype;
 
 id_newtype!(
     /// Opaque unique identifier for a node in the layout tree.
@@ -35,7 +10,6 @@ id_newtype!(
     pub PanelId
 );
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::panel::Constraints;
@@ -69,7 +43,7 @@ pub enum Node {
     /// Raw Taffy node for escape-hatch styling.
     TaffyPassthrough {
         /// Custom Taffy style applied directly.
-        style: Rc<taffy::Style>,
+        style: Box<taffy::Style>,
         /// Ordered child node ids.
         children: Vec<NodeId>,
     },

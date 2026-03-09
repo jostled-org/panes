@@ -83,8 +83,7 @@ impl Stacked {
             variant: crate::strategy::ActivePanelVariant::Stacked,
             bar_height: self.title_height,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

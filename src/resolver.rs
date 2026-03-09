@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 use crate::compiler::CompileResult;
-use crate::error::PaneError;
+use crate::error::{PaneError, TreeError};
 use crate::node::{Node, NodeId, PanelId};
 use crate::rect::Rect;
 use crate::tree::LayoutTree;
@@ -61,18 +61,18 @@ impl ResolvedLayout {
 
     /// Iterate over all (PanelId, Rect) pairs.
     pub fn iter(&self) -> impl Iterator<Item = (PanelId, &Rect)> {
-        self.rects
-            .iter()
-            .enumerate()
-            .filter_map(|(i, slot)| slot.as_ref().map(|r| (PanelId::from_raw(i as u32), r)))
+        self.rects.iter().enumerate().filter_map(|(i, slot)| {
+            let pid = PanelId::from_raw(u32::try_from(i).ok()?);
+            slot.as_ref().map(|r| (pid, r))
+        })
     }
 
     /// Iterate over all resolved panel ids.
     pub fn panel_ids(&self) -> impl Iterator<Item = PanelId> + '_ {
-        self.rects
-            .iter()
-            .enumerate()
-            .filter_map(|(i, slot)| slot.as_ref().map(|_| PanelId::from_raw(i as u32)))
+        self.rects.iter().enumerate().filter_map(|(i, slot)| {
+            let pid = PanelId::from_raw(u32::try_from(i).ok()?);
+            slot.as_ref().map(|_| pid)
+        })
     }
 
     /// Iterate over all distinct panel kinds present in the resolved layout.
@@ -113,7 +113,7 @@ impl ResolvedLayout {
     }
 
     /// Take ownership of the rects buffer for reuse.
-    pub(crate) fn take_rects(&mut self) -> Vec<Option<Rect>> {
+    pub fn take_rects(&mut self) -> Vec<Option<Rect>> {
         std::mem::take(&mut self.rects)
     }
 
@@ -122,13 +122,34 @@ impl ResolvedLayout {
     /// Panels in `self` but not `other` interpolate against themselves (no-op).
     /// Panels only in `other` are excluded.
     pub fn lerp(&self, other: &ResolvedLayout, t: f32) -> ResolvedLayout {
-        let mut rects = vec![None; self.rects.len()];
+        let mut buf = Vec::new();
+        self.lerp_into(other, t, &mut buf)
+    }
+
+    /// Interpolate into a reusable buffer, avoiding per-call allocation.
+    ///
+    /// The caller can reclaim the buffer from the returned layout via
+    /// [`take_rects`](ResolvedLayout::take_rects).
+    pub fn lerp_into(
+        &self,
+        other: &ResolvedLayout,
+        t: f32,
+        buf: &mut Vec<Option<Rect>>,
+    ) -> ResolvedLayout {
+        buf.iter_mut().for_each(|slot| *slot = None);
+        buf.resize(self.rects.len(), None);
+
         for (i, from_rect) in self.rects.iter().enumerate() {
             let Some(from_rect) = from_rect else { continue };
-            let pid = PanelId::from_raw(i as u32);
+            let Some(raw) = u32::try_from(i).ok() else {
+                continue;
+            };
+            let pid = PanelId::from_raw(raw);
             let to_rect = other.get(pid).unwrap_or(from_rect);
-            rects[i] = Some(from_rect.lerp(*to_rect, t));
+            buf[i] = Some(from_rect.lerp(*to_rect, t));
         }
+
+        let rects = std::mem::take(buf);
         let kinds = Arc::clone(&self.kinds);
         ResolvedLayout { rects, kinds }
     }
@@ -152,7 +173,7 @@ fn resolve_dfs(
     let layout = result
         .taffy_tree
         .layout(*taffy_id)
-        .map_err(|e| PaneError::InvalidTree(e.to_string().into()))?;
+        .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))?;
     let abs_x = parent_x + layout.location.x;
     let abs_y = parent_y + layout.location.y;
 
@@ -164,7 +185,9 @@ fn resolve_dfs(
                 w: layout.size.width,
                 h: layout.size.height,
             };
-            rects[id.raw() as usize] = Some(rect);
+            *rects
+                .get_mut(id.raw() as usize)
+                .ok_or(PaneError::PanelNotFound(*id))? = Some(rect);
             kinds.entry(Arc::clone(kind)).or_default().push(*id);
         }
         Some(
@@ -172,11 +195,24 @@ fn resolve_dfs(
             | Node::Col { children, .. }
             | Node::TaffyPassthrough { children, .. },
         ) => {
-            for &child_id in children {
-                resolve_dfs(tree, result, child_id, abs_x, abs_y, rects, kinds)?;
-            }
+            resolve_children(tree, result, children, abs_x, abs_y, rects, kinds)?;
         }
         None => {}
+    }
+    Ok(())
+}
+
+fn resolve_children(
+    tree: &LayoutTree,
+    result: &CompileResult,
+    children: &[NodeId],
+    abs_x: f32,
+    abs_y: f32,
+    rects: &mut [Option<Rect>],
+    kinds: &mut FxHashMap<Arc<str>, Vec<PanelId>>,
+) -> Result<(), PaneError> {
+    for &child_id in children {
+        resolve_dfs(tree, result, child_id, abs_x, abs_y, rects, kinds)?;
     }
     Ok(())
 }
@@ -207,13 +243,15 @@ fn resolve_iterative(
         let layout = result
             .taffy_tree
             .layout(*taffy_id)
-            .map_err(|e| PaneError::InvalidTree(e.to_string().into()))?;
+            .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))?;
         let abs_x = parent_x + layout.location.x;
         let abs_y = parent_y + layout.location.y;
 
         match tree.node(node_id) {
             Some(Node::Panel { id, .. }) => {
-                rects[id.raw() as usize] = Some(Rect {
+                *rects
+                    .get_mut(id.raw() as usize)
+                    .ok_or(PaneError::PanelNotFound(*id))? = Some(Rect {
                     x: abs_x,
                     y: abs_y,
                     w: layout.size.width,
@@ -246,7 +284,7 @@ pub(crate) fn resolve_with_cached_kinds(
 ) -> Result<ResolvedLayout, PaneError> {
     let root_id = tree
         .root()
-        .ok_or_else(|| PaneError::InvalidTree("root is not set".into()))?;
+        .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
     let capacity = tree.panel_id_high_water() as usize;
     let mut rects = match rects_buf {
@@ -266,7 +304,7 @@ pub(crate) fn resolve_with_cached_kinds(
 pub fn resolve(result: &CompileResult, tree: &LayoutTree) -> Result<ResolvedLayout, PaneError> {
     let root_id = tree
         .root()
-        .ok_or_else(|| PaneError::InvalidTree("root is not set".into()))?;
+        .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
     let mut rects = vec![None; tree.panel_id_high_water() as usize];
     let mut kinds: FxHashMap<Arc<str>, Vec<PanelId>> =

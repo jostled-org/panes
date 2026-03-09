@@ -1,16 +1,13 @@
-use crate::error::PaneError;
+use crate::error::{PaneError, TreeError};
 use crate::node::{NodeId, PanelId};
 use crate::panel::Constraints;
 use crate::tree::LayoutTree;
+use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
 /// Reject NaN, negative, or infinite gap values.
 fn validate_gap(value: f32) -> Result<(), PaneError> {
-    match value {
-        v if v.is_nan() => Err(PaneError::InvalidConstraint("gap is NaN".into())),
-        v if v < 0.0 => Err(PaneError::InvalidConstraint("gap is negative".into())),
-        v if v.is_infinite() => Err(PaneError::InvalidConstraint("gap is infinite".into())),
-        _ => Ok(()),
-    }
+    check_f32_non_negative(value)
+        .map_err(|e| PaneError::InvalidConstraint(float_invalid_to_constraint("gap", e)))
 }
 
 /// Sentinel PanelId returned when a `ContainerCtx` operation fails.
@@ -100,7 +97,7 @@ impl LayoutBuilder {
     /// Validate the tree and produce a [`Layout`](crate::layout::Layout).
     pub fn build(self) -> Result<crate::layout::Layout, PaneError> {
         if !self.root_set {
-            return Err(PaneError::InvalidTree("root is not set".into()));
+            return Err(PaneError::InvalidTree(TreeError::RootNotSet));
         }
         self.tree.validate()?;
         Ok(crate::layout::Layout::from_tree(self.tree))
@@ -108,7 +105,7 @@ impl LayoutBuilder {
 
     fn require_no_root(&self) -> Result<(), PaneError> {
         match self.root_set {
-            true => Err(PaneError::InvalidTree("root already set".into())),
+            true => Err(PaneError::InvalidTree(TreeError::RootAlreadySet)),
             false => Ok(()),
         }
     }

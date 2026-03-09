@@ -88,8 +88,7 @@ impl Tabbed {
             variant: crate::strategy::ActivePanelVariant::Tabbed,
             bar_height: self.tab_height,
         };
-        let kinds: Vec<Arc<str>> = self.kinds.to_vec();
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
+        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }
 }
 

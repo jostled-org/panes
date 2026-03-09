@@ -2,6 +2,14 @@ use serde::Deserialize;
 
 use crate::layout::Layout;
 
+macro_rules! apply_opt {
+    ($preset:expr, $def:expr, $($field:ident),+ $(,)?) => {
+        $(if let Some(v) = $def.$field {
+            $preset = $preset.$field(v);
+        })+
+    };
+}
+
 /// Errors arising from TOML configuration parsing.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
@@ -163,114 +171,63 @@ fn into_toml_error(err: crate::error::PaneError) -> TomlError {
 fn build_master_stack(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::master_stack(panels.iter().map(Box::as_ref));
-    if let Some(r) = def.master_ratio {
-        preset = preset.master_ratio(r);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, master_ratio, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_centered_master(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::centered_master(panels.iter().map(Box::as_ref));
-    if let Some(r) = def.master_ratio {
-        preset = preset.master_ratio(r);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, master_ratio, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_monocle(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::monocle(panels.iter().map(Box::as_ref));
-    if let Some(a) = def.active {
-        preset = preset.active(a);
-    }
+    apply_opt!(preset, def, active);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_scrollable(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::scrollable(panels.iter().map(Box::as_ref));
-    if let Some(a) = def.active {
-        preset = preset.active(a);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, active, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_dwindle(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::dwindle(panels.iter().map(Box::as_ref));
-    if let Some(r) = def.ratio {
-        preset = preset.ratio(r);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, ratio, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_spiral(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::spiral(panels.iter().map(Box::as_ref));
-    if let Some(r) = def.ratio {
-        preset = preset.ratio(r);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, ratio, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_deck(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::deck(panels.iter().map(Box::as_ref));
-    if let Some(r) = def.master_ratio {
-        preset = preset.master_ratio(r);
-    }
-    if let Some(a) = def.active {
-        preset = preset.active(a);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, master_ratio, active, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_tabbed(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::tabbed(panels.iter().map(Box::as_ref));
-    if let Some(a) = def.active {
-        preset = preset.active(a);
-    }
-    if let Some(h) = def.tab_height {
-        preset = preset.tab_height(h);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, active, tab_height, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_stacked(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::stacked(panels.iter().map(Box::as_ref));
-    if let Some(a) = def.active {
-        preset = preset.active(a);
-    }
-    if let Some(h) = def.title_height {
-        preset = preset.title_height(h);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, active, title_height, gap);
     preset.build().map_err(into_toml_error)
 }
 
@@ -282,9 +239,7 @@ fn build_columns(def: LayoutDef) -> Result<Layout, TomlError> {
         .ok_or(TomlError::MissingField("columns".into()))?;
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::columns(cols, panels.iter().map(Box::as_ref));
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, gap);
     preset.build().map_err(into_toml_error)
 }
 
@@ -294,9 +249,7 @@ fn build_grid(def: LayoutDef) -> Result<Layout, TomlError> {
         .ok_or(TomlError::MissingField("columns".into()))?;
     let panels = require_panels_strings(&def)?;
     let mut preset = Layout::grid(cols, panels.iter().map(Box::as_ref));
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, gap);
     preset.build().map_err(into_toml_error)
 }
 
@@ -304,12 +257,7 @@ fn build_sidebar(def: LayoutDef) -> Result<Layout, TomlError> {
     let sidebar = require_field(&def.sidebar, "sidebar")?;
     let content = require_field(&def.content, "content")?;
     let mut preset = Layout::sidebar(sidebar, content);
-    if let Some(w) = def.sidebar_width {
-        preset = preset.sidebar_width(w);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, sidebar_width, gap);
     preset.build().map_err(into_toml_error)
 }
 
@@ -317,12 +265,7 @@ fn build_split(def: LayoutDef) -> Result<Layout, TomlError> {
     let first = require_field(&def.first, "first")?;
     let second = require_field(&def.second, "second")?;
     let mut preset = Layout::split(first, second);
-    if let Some(r) = def.ratio {
-        preset = preset.ratio(r);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, ratio, gap);
     match def.direction.as_deref() {
         Some("vertical") => {
             preset = preset.vertical();
@@ -345,18 +288,14 @@ fn build_holy_grail(def: LayoutDef) -> Result<Layout, TomlError> {
     let main = require_field(&def.main, "main")?;
     let right = require_field(&def.right, "right")?;
     let mut preset = Layout::holy_grail(header, footer, left, main, right);
-    if let Some(h) = def.header_height {
-        preset = preset.header_height(h);
-    }
-    if let Some(h) = def.footer_height {
-        preset = preset.footer_height(h);
-    }
-    if let Some(w) = def.sidebar_width {
-        preset = preset.sidebar_width(w);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(
+        preset,
+        def,
+        header_height,
+        footer_height,
+        sidebar_width,
+        gap
+    );
     preset.build().map_err(into_toml_error)
 }
 
@@ -382,12 +321,7 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
         false => {}
     }
     let mut preset = Layout::dashboard(cards);
-    if let Some(c) = def.columns {
-        preset = preset.columns(c);
-    }
-    if let Some(g) = def.gap {
-        preset = preset.gap(g);
-    }
+    apply_opt!(preset, def, columns, gap);
     preset.build().map_err(into_toml_error)
 }
 
@@ -428,7 +362,9 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
     match (node.kind.as_deref(), node.node_type.as_deref()) {
         (Some(_), Some(_)) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
-                "node has both 'kind' and 'type'; use one or the other".into(),
+                crate::error::TreeError::Dynamic(
+                    "node has both 'kind' and 'type'; use one or the other".into(),
+                ),
             ));
         }
         (Some(kind), None) => {
@@ -447,12 +383,16 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
         }
         (None, Some(other)) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
-                format!("unknown node type '{other}'; expected 'row' or 'col'").into(),
+                crate::error::TreeError::Dynamic(
+                    format!("unknown node type '{other}'; expected 'row' or 'col'").into(),
+                ),
             ));
         }
         (None, None) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
-                "node must have either 'kind' (panel) or 'type' (container)".into(),
+                crate::error::TreeError::Dynamic(
+                    "node must have either 'kind' (panel) or 'type' (container)".into(),
+                ),
             ));
         }
     }

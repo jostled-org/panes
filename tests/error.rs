@@ -1,6 +1,6 @@
 #[cfg(feature = "toml")]
 use panes::TomlError;
-use panes::{PaneError, PanelId};
+use panes::{ConstraintError, PaneError, PanelId};
 
 #[test]
 fn pane_error_panel_not_found_displays_id() {
@@ -11,12 +11,10 @@ fn pane_error_panel_not_found_displays_id() {
 
 #[test]
 fn pane_error_invalid_constraint_displays_reason() {
-    let err = PaneError::InvalidConstraint("negative grow".into());
+    let err = PaneError::InvalidConstraint(ConstraintError::IsNegative("grow"));
     let msg = err.to_string();
-    assert!(
-        msg.contains("negative grow"),
-        "expected 'negative grow' in: {msg}"
-    );
+    assert!(msg.contains("grow"), "expected 'grow' in: {msg}");
+    assert!(msg.contains("negative"), "expected 'negative' in: {msg}");
 }
 
 #[test]

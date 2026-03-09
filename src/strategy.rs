@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::builder::LayoutBuilder;
-use crate::error::PaneError;
+use crate::error::{MutationError, PaneError, TreeError};
 use crate::node::PanelId;
 use crate::panel::{Constraints, fixed, grow};
 use crate::sequence::PanelSequence;
@@ -165,39 +165,11 @@ pub fn build_initial(
     viewport: &mut ViewportState,
 ) -> Result<LayoutTree, PaneError> {
     match kinds.is_empty() {
-        true => return Err(PaneError::InvalidTree("at least one kind required".into())),
+        true => return Err(PaneError::InvalidTree(TreeError::NoKinds)),
         false => {}
     }
 
-    let tree = match strategy {
-        StrategyKind::Sequence { direction, gap } => build_sequence_tree(kinds, *direction, *gap)?,
-        StrategyKind::MasterStack { master_ratio, gap } => {
-            build_master_stack_tree(kinds, *master_ratio, *gap)?
-        }
-        StrategyKind::Deck { master_ratio, gap } => build_deck_tree(kinds, *master_ratio, *gap, 0)?,
-        StrategyKind::CenteredMaster { master_ratio, gap } => {
-            build_centered_master_tree(kinds, *master_ratio, *gap)?
-        }
-        StrategyKind::BinarySplit { spiral, ratio, gap } => {
-            build_binary_split_tree(kinds, *spiral, *ratio, *gap)?
-        }
-        StrategyKind::ColumnGrid { columns, gap } => build_column_grid_tree(kinds, *columns, *gap)?,
-        StrategyKind::Dashboard {
-            columns,
-            gap,
-            spans,
-        } => build_dashboard_tree(kinds, *columns, *gap, spans)?,
-        StrategyKind::ActivePanel {
-            variant,
-            bar_height,
-        } => build_active_panel_tree(kinds, *variant, *bar_height, 0)?,
-        StrategyKind::Window { size, gap } => build_window_tree(kinds, *size, *gap, 0)?,
-        StrategyKind::Slotted {
-            slots,
-            gap,
-            direction,
-        } => build_slotted_tree(slots, *gap, *direction)?,
-    };
+    let tree = build_tree_for_strategy(strategy, kinds)?;
 
     populate_sequence_by_kinds(&tree, kinds, sequence);
     viewport.focus = sequence.get(0);
@@ -498,14 +470,10 @@ fn add_via_rebuild(
 ) -> Result<PanelId, PaneError> {
     let mut kinds = collect_kinds_from_sequence(tree, sequence)?;
     kinds.push(kind);
-    let new_tree = builder(&kinds)?;
-    *tree = new_tree;
-    let mut new_seq = PanelSequence::default();
-    populate_sequence_by_kinds(tree, &kinds, &mut new_seq);
-    *sequence = new_seq;
+    rebuild_tree_and_sequence(tree, sequence, &kinds, builder)?;
     let new_pid = sequence
         .get(sequence.len() - 1)
-        .ok_or_else(|| PaneError::InvalidTree("empty after rebuild".into()))?;
+        .ok_or(PaneError::InvalidTree(TreeError::EmptyAfterRebuild))?;
     viewport.focus = Some(new_pid);
     Ok(new_pid)
 }
@@ -547,11 +515,13 @@ fn add_slotted(tree: &mut LayoutTree, viewport: &mut ViewportState) -> Result<Pa
         .iter()
         .next()
         .copied()
-        .ok_or_else(|| PaneError::InvalidMutation("no collapsed slots to uncollapse".into()))?;
+        .ok_or(PaneError::InvalidMutation(MutationError::NoCollapsedSlots))?;
     let saved = viewport
         .saved_constraints
         .remove(&pid)
-        .ok_or_else(|| PaneError::InvalidMutation("slot has no saved constraints".into()))?;
+        .ok_or(PaneError::InvalidMutation(
+            MutationError::SlotNoSavedConstraints,
+        ))?;
     tree.set_constraints(pid, saved)?;
     viewport.collapsed.remove(&pid);
     viewport.focus = Some(pid);
@@ -563,7 +533,7 @@ fn append_to_root(tree: &mut LayoutTree, kind: Arc<str>) -> Result<PanelId, Pane
     let (pid, nid) = tree.add_panel(kind, grow(1.0))?;
     let root = tree
         .root()
-        .ok_or_else(|| PaneError::InvalidTree("no root".into()))?;
+        .ok_or(PaneError::InvalidTree(TreeError::NoRoot))?;
     let len = tree.children(root)?.len();
     tree.insert_child_at(root, len, nid)?;
     Ok(pid)
@@ -574,7 +544,7 @@ fn append_to_stack_container(tree: &mut LayoutTree, kind: Arc<str>) -> Result<Pa
     let (pid, nid) = tree.add_panel(kind, grow(1.0))?;
     let root = tree
         .root()
-        .ok_or_else(|| PaneError::InvalidTree("no root".into()))?;
+        .ok_or(PaneError::InvalidTree(TreeError::NoRoot))?;
     let root_children = tree.children(root)?;
     let (container, container_len) = match root_children.len() >= 2 {
         true => {
@@ -593,7 +563,7 @@ fn append_to_shorter_side(tree: &mut LayoutTree, kind: Arc<str>) -> Result<Panel
     let (pid, nid) = tree.add_panel(kind, grow(1.0))?;
     let root = tree
         .root()
-        .ok_or_else(|| PaneError::InvalidTree("no root".into()))?;
+        .ok_or(PaneError::InvalidTree(TreeError::NoRoot))?;
     let root_children = tree.children(root)?.to_vec();
 
     let (target, target_len) = match root_children.len() >= 3 {
@@ -676,11 +646,7 @@ fn remove_via_rebuild(
         false => {}
     }
     let kinds = collect_kinds_from_sequence(tree, sequence)?;
-    let new_tree = builder(&kinds)?;
-    *tree = new_tree;
-    let mut new_seq = PanelSequence::default();
-    populate_sequence_by_kinds(tree, &kinds, &mut new_seq);
-    *sequence = new_seq;
+    rebuild_tree_and_sequence(tree, sequence, &kinds, builder)?;
     let focus_idx = removed_idx.min(sequence.len().saturating_sub(1));
     viewport.focus = sequence.get(focus_idx);
     Ok(viewport.focus)
@@ -730,9 +696,7 @@ pub fn apply_move(
 ) -> Result<PanelId, PaneError> {
     match strategy.supports_move() {
         false => {
-            return Err(PaneError::InvalidMutation(
-                "move not supported for slotted layouts".into(),
-            ));
+            return Err(PaneError::InvalidMutation(MutationError::MoveNotSupported));
         }
         true => {}
     }
@@ -761,38 +725,64 @@ fn rebuild_from_sequence(
     sequence: &mut PanelSequence,
 ) -> Result<(), PaneError> {
     let kinds = collect_kinds_from_sequence(tree, sequence)?;
-    let new_tree = match strategy {
-        StrategyKind::Sequence { direction, gap } => build_sequence_tree(&kinds, *direction, *gap)?,
+    match strategy {
+        StrategyKind::Slotted { .. } => return Ok(()),
+        _ => {}
+    }
+    rebuild_tree_and_sequence(tree, sequence, &kinds, |kinds| {
+        build_tree_for_strategy(strategy, kinds)
+    })
+}
+
+/// Build a tree from a strategy and kinds list.
+fn build_tree_for_strategy(
+    strategy: &StrategyKind,
+    kinds: &[Arc<str>],
+) -> Result<LayoutTree, PaneError> {
+    match strategy {
+        StrategyKind::Sequence { direction, gap } => build_sequence_tree(kinds, *direction, *gap),
         StrategyKind::MasterStack { master_ratio, gap } => {
-            build_master_stack_tree(&kinds, *master_ratio, *gap)?
+            build_master_stack_tree(kinds, *master_ratio, *gap)
         }
-        StrategyKind::Deck { master_ratio, gap } => {
-            build_deck_tree(&kinds, *master_ratio, *gap, 0)?
-        }
+        StrategyKind::Deck { master_ratio, gap } => build_deck_tree(kinds, *master_ratio, *gap, 0),
         StrategyKind::CenteredMaster { master_ratio, gap } => {
-            build_centered_master_tree(&kinds, *master_ratio, *gap)?
+            build_centered_master_tree(kinds, *master_ratio, *gap)
         }
         StrategyKind::BinarySplit { spiral, ratio, gap } => {
-            build_binary_split_tree(&kinds, *spiral, *ratio, *gap)?
+            build_binary_split_tree(kinds, *spiral, *ratio, *gap)
         }
-        StrategyKind::ColumnGrid { columns, gap } => {
-            build_column_grid_tree(&kinds, *columns, *gap)?
-        }
+        StrategyKind::ColumnGrid { columns, gap } => build_column_grid_tree(kinds, *columns, *gap),
         StrategyKind::Dashboard {
             columns,
             gap,
             spans,
-        } => build_dashboard_tree(&kinds, *columns, *gap, spans)?,
+        } => build_dashboard_tree(kinds, *columns, *gap, spans),
         StrategyKind::ActivePanel {
             variant,
             bar_height,
-        } => build_active_panel_tree(&kinds, *variant, *bar_height, 0)?,
-        StrategyKind::Window { size, gap } => build_window_tree(&kinds, *size, *gap, 0)?,
-        StrategyKind::Slotted { .. } => return Ok(()),
-    };
-    *tree = new_tree;
+        } => build_active_panel_tree(kinds, *variant, *bar_height, 0),
+        StrategyKind::Window { size, .. } if *size == 0 => {
+            Err(PaneError::InvalidTree(TreeError::WindowSizeZero))
+        }
+        StrategyKind::Window { size, gap } => build_window_tree(kinds, *size, *gap, 0),
+        StrategyKind::Slotted {
+            slots,
+            gap,
+            direction,
+        } => build_slotted_tree(slots, *gap, *direction),
+    }
+}
+
+/// Rebuild the tree from a kinds list and repopulate the sequence.
+fn rebuild_tree_and_sequence(
+    tree: &mut LayoutTree,
+    sequence: &mut PanelSequence,
+    kinds: &[Arc<str>],
+    builder: impl FnOnce(&[Arc<str>]) -> Result<LayoutTree, PaneError>,
+) -> Result<(), PaneError> {
+    *tree = builder(kinds)?;
     let mut new_seq = PanelSequence::default();
-    populate_sequence_by_kinds(tree, &kinds, &mut new_seq);
+    populate_sequence_by_kinds(tree, kinds, &mut new_seq);
     *sequence = new_seq;
     Ok(())
 }
@@ -861,23 +851,27 @@ fn focus_deck(
     viewport: &mut ViewportState,
     pid: PanelId,
 ) -> bool {
-    match viewport.focus {
-        Some(prev) if prev == pid => return true,
-        _ => {}
-    }
-    for (i, spid) in sequence.iter().enumerate() {
-        match (i > 0, spid == pid) {
-            (true, false) => {
-                set_constraints_if_present(tree, spid, fixed(0.0));
-            }
-            (true, true) => {
-                set_constraints_if_present(tree, spid, grow(1.0));
-            }
-            _ => {}
+    let prev_is_stack = viewport
+        .focus
+        .and_then(|p| sequence.index_of(p).map(|i| (p, i)));
+    match prev_is_stack {
+        Some((prev, _)) if prev == pid => return true,
+        Some((prev, i)) if i > 0 => {
+            set_constraints_if_present(tree, prev, fixed(0.0));
+            set_constraints_if_present(tree, pid, grow(1.0));
         }
+        _ => focus_deck_full(tree, sequence, pid),
     }
     viewport.focus = Some(pid);
     true
+}
+
+/// Hide all non-target stack panels, show only `pid`.
+fn focus_deck_full(tree: &mut LayoutTree, sequence: &PanelSequence, pid: PanelId) {
+    for spid in sequence.iter().skip(1) {
+        let c = if spid == pid { grow(1.0) } else { fixed(0.0) };
+        set_constraints_if_present(tree, spid, c);
+    }
 }
 
 fn focus_window(
@@ -915,14 +909,7 @@ fn apply_window_constraints_best_effort(
     start: usize,
     size: usize,
 ) {
-    for (i, pid) in sequence.iter().enumerate() {
-        let visible = i >= start && i < start + size;
-        let constraint = match visible {
-            true => grow(1.0),
-            false => fixed(0.0),
-        };
-        set_constraints_if_present(tree, pid, constraint);
-    }
+    let _ = apply_window_constraints(tree, sequence, start, size);
 }
 
 // ---------------------------------------------------------------------------
@@ -974,6 +961,6 @@ fn collect_kinds_from_sequence(
 ) -> Result<Vec<Arc<str>>, PaneError> {
     sequence
         .iter()
-        .map(|pid| tree.panel_kind(pid).map(Arc::from))
+        .map(|pid| tree.panel_kind_arc(pid))
         .collect()
 }
