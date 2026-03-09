@@ -36,6 +36,13 @@ fn slotted_move_returns_error() {
 }
 
 #[test]
+fn slotted_swap_returns_error() {
+    let mut rt = sidebar_runtime();
+    let result = rt.swap_next();
+    assert!(result.is_err());
+}
+
+#[test]
 fn slotted_remove_collapses() {
     let mut rt = sidebar_runtime();
     let sidebar = rt.sequence().get(0).unwrap();

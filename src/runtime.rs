@@ -280,6 +280,47 @@ impl LayoutRuntime {
         )
     }
 
+    /// Swap the focused panel with the next panel in the sequence (wrapping).
+    /// No-op if there is no focus or fewer than two panels.
+    pub fn swap_next(&mut self) -> Result<(), PaneError> {
+        let (pid, idx) = match (
+            self.viewport.focus,
+            self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
+        ) {
+            (Some(pid), Some(idx)) => (pid, idx),
+            _ => return Ok(()),
+        };
+        match self.sequence.len() <= 1 {
+            true => Ok(()),
+            false => {
+                let target = (idx + 1) % self.sequence.len();
+                self.move_panel(pid, target)?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Swap the focused panel with the previous panel in the sequence (wrapping).
+    /// No-op if there is no focus or fewer than two panels.
+    pub fn swap_prev(&mut self) -> Result<(), PaneError> {
+        let (pid, idx) = match (
+            self.viewport.focus,
+            self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
+        ) {
+            (Some(pid), Some(idx)) => (pid, idx),
+            _ => return Ok(()),
+        };
+        let len = self.sequence.len();
+        match len <= 1 {
+            true => Ok(()),
+            false => {
+                let target = (idx + len - 1) % len;
+                self.move_panel(pid, target)?;
+                Ok(())
+            }
+        }
+    }
+
     /// Move focus to the next panel in the sequence.
     /// No-op if the sequence is empty.
     pub fn focus_next(&mut self) {

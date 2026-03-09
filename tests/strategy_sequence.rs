@@ -73,6 +73,66 @@ fn sequence_focus_prev_wraps() {
     assert_eq!(rt.focused(), Some(p2));
 }
 
+// -- swap_next / swap_prev --
+
+/// Helper: collect kinds in sequence order.
+fn sequence_kinds(rt: &LayoutRuntime) -> Vec<String> {
+    (0..rt.sequence().len())
+        .map(|i| {
+            let pid = rt.sequence().get(i).unwrap();
+            rt.tree().panel_kind(pid).unwrap().to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn swap_next_wraps_last_to_first() {
+    let mut rt = sequence_runtime(3);
+    let last = rt.sequence().get(2).unwrap();
+    rt.focus(last);
+    rt.swap_next().unwrap();
+    assert_eq!(sequence_kinds(&rt), ["p2", "p0", "p1"]);
+    assert_eq!(rt.focused_kind(), Some("p2"));
+}
+
+#[test]
+fn swap_prev_wraps_first_to_last() {
+    let mut rt = sequence_runtime(3);
+    rt.swap_prev().unwrap();
+    assert_eq!(sequence_kinds(&rt), ["p1", "p2", "p0"]);
+    assert_eq!(rt.focused_kind(), Some("p0"));
+}
+
+#[test]
+fn swap_next_middle_reorders() {
+    let mut rt = sequence_runtime(3);
+    let p1 = rt.sequence().get(1).unwrap();
+    rt.focus(p1);
+    rt.swap_next().unwrap();
+    assert_eq!(sequence_kinds(&rt), ["p0", "p2", "p1"]);
+    assert_eq!(rt.focused_kind(), Some("p1"));
+}
+
+#[test]
+fn swap_single_panel_is_noop() {
+    let mut rt = sequence_runtime(1);
+    rt.swap_next().unwrap();
+    assert_eq!(sequence_kinds(&rt), ["p0"]);
+    rt.swap_prev().unwrap();
+    assert_eq!(sequence_kinds(&rt), ["p0"]);
+}
+
+#[test]
+fn swap_focus_follows_panel() {
+    let mut rt = sequence_runtime(4);
+    let p1 = rt.sequence().get(1).unwrap();
+    rt.focus(p1);
+    rt.swap_next().unwrap();
+    // Focus should track the swapped panel
+    let focused = rt.focused().unwrap();
+    assert_eq!(rt.tree().panel_kind(focused).unwrap(), "p1");
+}
+
 // -- MasterStack --
 
 fn master_stack_runtime(n: usize) -> LayoutRuntime {
