@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2](https://github.com/jostled-org/panes/compare/panes-v0.8.1...panes-v0.8.2) - 2026-03-09
+
+### Added
+
+- *(runtime)* add swap_next and swap_prev methods
+
 ## [0.8.1](https://github.com/jostled-org/panes/compare/panes-v0.8.0...panes-v0.8.1) - 2026-03-09
 
 ### Other
