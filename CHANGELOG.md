@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/jostled-org/panes/compare/panes-v0.8.0...panes-v0.8.1) - 2026-03-09
+
+### Other
+
+- split strategy.rs into module directory and extract resize helpers
+
 ## [0.8.0](https://github.com/jostled-org/panes/compare/panes-v0.7.0...panes-v0.8.0) - 2026-03-09
 
 ### Other
