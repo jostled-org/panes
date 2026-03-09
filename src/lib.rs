@@ -16,6 +16,7 @@ mod node;
 mod panel;
 mod preset;
 mod rect;
+mod resize;
 /// Resolves compiled Taffy output into [`ResolvedLayout`].
 pub mod resolver;
 /// Stateful runtime with viewport tracking, caching, and frame diffing.

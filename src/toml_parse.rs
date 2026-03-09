@@ -113,17 +113,33 @@ pub(crate) fn parse(input: &str) -> Result<Layout, TomlError> {
     build_from_def(doc.layout)
 }
 
+fn into_toml_error(err: crate::error::PaneError) -> TomlError {
+    TomlError::InvalidValue {
+        field: "layout".into(),
+        reason: err.to_string().into(),
+    }
+}
+
+macro_rules! build_preset {
+    ($def:expr, $ctor:expr $(, $field:ident)*) => {{
+        let panels = require_panels_strings(&$def)?;
+        let mut preset = $ctor(panels.iter().map(Box::as_ref));
+        apply_opt!(preset, $def, $($field),*);
+        preset.build().map_err(into_toml_error)
+    }};
+}
+
 fn build_from_def(def: LayoutDef) -> Result<Layout, TomlError> {
     match def.strategy.as_ref() {
-        "master-stack" => build_master_stack(def),
-        "centered-master" => build_centered_master(def),
-        "monocle" => build_monocle(def),
-        "scrollable" => build_scrollable(def),
-        "dwindle" => build_dwindle(def),
-        "spiral" => build_spiral(def),
-        "deck" => build_deck(def),
-        "tabbed" => build_tabbed(def),
-        "stacked" => build_stacked(def),
+        "master-stack" => build_preset!(def, Layout::master_stack, master_ratio, gap),
+        "centered-master" => build_preset!(def, Layout::centered_master, master_ratio, gap),
+        "monocle" => build_preset!(def, Layout::monocle, active),
+        "scrollable" => build_preset!(def, Layout::scrollable, active, gap),
+        "dwindle" => build_preset!(def, Layout::dwindle, ratio, gap),
+        "spiral" => build_preset!(def, Layout::spiral, ratio, gap),
+        "deck" => build_preset!(def, Layout::deck, master_ratio, active, gap),
+        "tabbed" => build_preset!(def, Layout::tabbed, active, tab_height, gap),
+        "stacked" => build_preset!(def, Layout::stacked, active, title_height, gap),
         "columns" => build_columns(def),
         "grid" => build_grid(def),
         "sidebar" => build_sidebar(def),
@@ -159,79 +175,7 @@ fn require_field<'a>(value: &'a Option<Box<str>>, name: &str) -> Result<&'a str,
     }
 }
 
-fn into_toml_error(err: crate::error::PaneError) -> TomlError {
-    TomlError::InvalidValue {
-        field: "layout".into(),
-        reason: err.to_string().into(),
-    }
-}
-
-// -- List-based strategy builders (Step 2) --
-
-fn build_master_stack(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::master_stack(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, master_ratio, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_centered_master(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::centered_master(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, master_ratio, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_monocle(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::monocle(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, active);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_scrollable(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::scrollable(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, active, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_dwindle(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::dwindle(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, ratio, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_spiral(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::spiral(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, ratio, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_deck(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::deck(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, master_ratio, active, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_tabbed(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::tabbed(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, active, tab_height, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_stacked(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
-    let mut preset = Layout::stacked(panels.iter().map(Box::as_ref));
-    apply_opt!(preset, def, active, title_height, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-// -- Count + list / named-param / dashboard builders (Step 3) --
+// -- Count + list / named-param / dashboard builders --
 
 fn build_columns(def: LayoutDef) -> Result<Layout, TomlError> {
     let cols = def
