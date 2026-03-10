@@ -11,7 +11,8 @@ categories = ["gui"]
 exclude = ["docs/", "logs/"]
 
 [features]
-toml = ["dep:toml", "dep:serde"]
+serde = ["dep:serde"]
+toml = ["dep:toml", "serde"]
 
 [dependencies]
 rustc-hash = "2"

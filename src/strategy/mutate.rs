@@ -2,168 +2,60 @@ use std::sync::Arc;
 
 use crate::error::{MutationError, PaneError, TreeError};
 use crate::node::PanelId;
-use crate::panel::{fixed, grow};
+use crate::panel::fixed;
 use crate::sequence::PanelSequence;
 use crate::tree::LayoutTree;
 use crate::viewport::ViewportState;
 
 use super::StrategyKind;
-use super::build::{
-    build_binary_split_tree, build_column_grid_tree, build_dashboard_tree, build_tree_for_strategy,
-    populate_sequence_by_kinds,
-};
-use super::focus::apply_window_constraints;
+use super::build::{build_tree_for_strategy, populate_sequence_by_kinds};
+use super::focus::try_apply_focus;
 
 // ---------------------------------------------------------------------------
 // apply_add
 // ---------------------------------------------------------------------------
 
-/// Add a panel to an existing layout.
+/// Add a panel at a specific sequence index.
+///
+/// Slotted: restores a collapsed slot (index ignored).
+/// All others: inserts the kind at `index`, rebuilds the tree via
+/// `build_tree_for_strategy`, and applies focus to the new panel.
 pub fn apply_add(
     strategy: &StrategyKind,
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
     viewport: &mut ViewportState,
     kind: Arc<str>,
+    index: usize,
 ) -> Result<PanelId, PaneError> {
     match strategy {
-        StrategyKind::Sequence { .. } => add_append(tree, sequence, viewport, kind),
-        StrategyKind::MasterStack { .. } => add_to_stack(tree, sequence, viewport, kind),
-        StrategyKind::Deck { .. } => add_to_deck(tree, sequence, viewport, kind),
-        StrategyKind::CenteredMaster { .. } => add_to_centered(tree, sequence, viewport, kind),
-        StrategyKind::BinarySplit { spiral, ratio, gap } => {
-            add_via_rebuild(tree, sequence, viewport, kind, |kinds| {
-                build_binary_split_tree(kinds, *spiral, *ratio, *gap)
-            })
-        }
-        StrategyKind::ColumnGrid { columns, gap } => {
-            add_via_rebuild(tree, sequence, viewport, kind, |kinds| {
-                build_column_grid_tree(kinds, *columns, *gap)
-            })
-        }
-        StrategyKind::Dashboard {
-            columns,
-            gap,
-            spans,
-        } => add_via_rebuild(tree, sequence, viewport, kind, |kinds| {
-            build_dashboard_tree(kinds, *columns, *gap, spans)
-        }),
-        StrategyKind::ActivePanel { .. } => add_active_panel(tree, sequence, viewport, kind),
-        StrategyKind::Window { size, .. } => add_window(tree, sequence, viewport, kind, *size),
         StrategyKind::Slotted { .. } => add_slotted(tree, viewport),
+        _ => add_via_rebuild(strategy, tree, sequence, viewport, kind, index),
     }
-}
-
-fn add_append(
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    kind: Arc<str>,
-) -> Result<PanelId, PaneError> {
-    let pid = append_to_root(tree, kind)?;
-    sequence.push(pid);
-    viewport.focus = Some(pid);
-    Ok(pid)
-}
-
-fn add_to_stack(
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    kind: Arc<str>,
-) -> Result<PanelId, PaneError> {
-    let pid = append_to_stack_container(tree, kind)?;
-    sequence.push(pid);
-    viewport.focus = Some(pid);
-    Ok(pid)
-}
-
-fn add_to_deck(
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    kind: Arc<str>,
-) -> Result<PanelId, PaneError> {
-    hide_prev_stack_panel(tree, sequence, viewport)?;
-    let pid = append_to_stack_container(tree, kind)?;
-    sequence.push(pid);
-    viewport.focus = Some(pid);
-    Ok(pid)
-}
-
-fn hide_prev_stack_panel(
-    tree: &mut LayoutTree,
-    sequence: &PanelSequence,
-    viewport: &ViewportState,
-) -> Result<(), PaneError> {
-    let (prev, idx) = match viewport.focus {
-        Some(prev) => (prev, sequence.index_of(prev)),
-        None => return Ok(()),
-    };
-    match idx {
-        Some(i) if i > 0 => tree.set_constraints(prev, fixed(0.0)),
-        _ => Ok(()),
-    }
-}
-
-fn add_to_centered(
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    kind: Arc<str>,
-) -> Result<PanelId, PaneError> {
-    let pid = append_to_shorter_side(tree, kind)?;
-    sequence.push(pid);
-    viewport.focus = Some(pid);
-    Ok(pid)
 }
 
 fn add_via_rebuild(
+    strategy: &StrategyKind,
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
     viewport: &mut ViewportState,
     kind: Arc<str>,
-    builder: impl FnOnce(&[Arc<str>]) -> Result<LayoutTree, PaneError>,
+    index: usize,
 ) -> Result<PanelId, PaneError> {
-    let mut kinds = collect_kinds_from_sequence(tree, sequence)?;
-    kinds.push(kind);
-    rebuild_tree_and_sequence(tree, sequence, &kinds, builder)?;
+    let mut kinds = collect_kinds_from_sequence(tree, sequence);
+    let clamped = index.min(kinds.len());
+    kinds.insert(clamped, kind);
+    rebuild_tree_and_sequence(tree, sequence, &kinds, |kinds| {
+        build_tree_for_strategy(strategy, kinds)
+    })?;
     let new_pid = sequence
-        .get(sequence.len() - 1)
+        .get(clamped)
         .ok_or(PaneError::InvalidTree(TreeError::EmptyAfterRebuild))?;
-    viewport.focus = Some(new_pid);
+    // Rebuild hardcodes active=0. Set focus to match so try_apply_focus
+    // can properly transition away from it.
+    viewport.focus = sequence.get(0);
+    try_apply_focus(strategy, tree, sequence, viewport, new_pid);
     Ok(new_pid)
-}
-
-fn add_active_panel(
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    kind: Arc<str>,
-) -> Result<PanelId, PaneError> {
-    if let Some(prev) = viewport.focus {
-        tree.set_constraints(prev, fixed(0.0))?;
-    }
-    let pid = append_to_root(tree, kind)?;
-    sequence.push(pid);
-    viewport.focus = Some(pid);
-    Ok(pid)
-}
-
-fn add_window(
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    kind: Arc<str>,
-    size: usize,
-) -> Result<PanelId, PaneError> {
-    let pid = append_to_root(tree, kind)?;
-    sequence.push(pid);
-    let new_start = sequence.len().saturating_sub(size);
-    viewport.window_start = new_start;
-    apply_window_constraints(tree, sequence, new_start, size)?;
-    viewport.focus = Some(pid);
-    Ok(pid)
 }
 
 fn add_slotted(tree: &mut LayoutTree, viewport: &mut ViewportState) -> Result<PanelId, PaneError> {
@@ -185,57 +77,6 @@ fn add_slotted(tree: &mut LayoutTree, viewport: &mut ViewportState) -> Result<Pa
     Ok(pid)
 }
 
-/// Append a grow(1.0) panel as the last child of the root container.
-fn append_to_root(tree: &mut LayoutTree, kind: Arc<str>) -> Result<PanelId, PaneError> {
-    let (pid, nid) = tree.add_panel(kind, grow(1.0))?;
-    let root = tree
-        .root()
-        .ok_or(PaneError::InvalidTree(TreeError::NoRoot))?;
-    let len = tree.children(root)?.len();
-    tree.insert_child_at(root, len, nid)?;
-    Ok(pid)
-}
-
-/// Append a grow(1.0) panel to the stack container (2nd child of root row).
-fn append_to_stack_container(tree: &mut LayoutTree, kind: Arc<str>) -> Result<PanelId, PaneError> {
-    let (pid, nid) = tree.add_panel(kind, grow(1.0))?;
-    let root = tree
-        .root()
-        .ok_or(PaneError::InvalidTree(TreeError::NoRoot))?;
-    let root_children = tree.children(root)?;
-    let (container, container_len) = match root_children.len() >= 2 {
-        true => {
-            let stack = root_children[1];
-            (stack, tree.children(stack)?.len())
-        }
-        false => (root, root_children.len()),
-    };
-    tree.insert_child_at(container, container_len, nid)?;
-    Ok(pid)
-}
-
-/// Append to the shorter side column in CenteredMaster.
-/// Root structure: [left_col, master, right_col]
-fn append_to_shorter_side(tree: &mut LayoutTree, kind: Arc<str>) -> Result<PanelId, PaneError> {
-    let (pid, nid) = tree.add_panel(kind, grow(1.0))?;
-    let root = tree
-        .root()
-        .ok_or(PaneError::InvalidTree(TreeError::NoRoot))?;
-    let root_children = tree.children(root)?.to_vec();
-
-    let (target, target_len) = match root_children.len() >= 3 {
-        true => {
-            let (left, right) = (root_children[0], root_children[2]);
-            let (lc, rc) = (tree.children(left)?.len(), tree.children(right)?.len());
-            let shorter = shorter_side(left, right, lc, rc);
-            (shorter, tree.children(shorter)?.len())
-        }
-        false => (root, root_children.len()),
-    };
-    tree.insert_child_at(target, target_len, nid)?;
-    Ok(pid)
-}
-
 // ---------------------------------------------------------------------------
 // apply_remove
 // ---------------------------------------------------------------------------
@@ -250,24 +91,7 @@ pub fn apply_remove(
 ) -> Result<Option<PanelId>, PaneError> {
     match strategy {
         StrategyKind::Slotted { .. } => remove_slotted(tree, sequence, viewport, pid),
-        StrategyKind::BinarySplit { spiral, ratio, gap } => {
-            remove_via_rebuild(tree, sequence, viewport, pid, |kinds| {
-                build_binary_split_tree(kinds, *spiral, *ratio, *gap)
-            })
-        }
-        StrategyKind::ColumnGrid { columns, gap } => {
-            remove_via_rebuild(tree, sequence, viewport, pid, |kinds| {
-                build_column_grid_tree(kinds, *columns, *gap)
-            })
-        }
-        StrategyKind::Dashboard {
-            columns,
-            gap,
-            spans,
-        } => remove_via_rebuild(tree, sequence, viewport, pid, |kinds| {
-            build_dashboard_tree(kinds, *columns, *gap, spans)
-        }),
-        _ => remove_incremental(strategy, tree, sequence, viewport, pid),
+        _ => remove_via_rebuild(strategy, tree, sequence, viewport, pid),
     }
 }
 
@@ -288,11 +112,11 @@ fn remove_slotted(
 }
 
 fn remove_via_rebuild(
+    strategy: &StrategyKind,
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
     viewport: &mut ViewportState,
     pid: PanelId,
-    builder: impl FnOnce(&[Arc<str>]) -> Result<LayoutTree, PaneError>,
 ) -> Result<Option<PanelId>, PaneError> {
     let removed_idx = sequence.remove(pid).unwrap_or(0);
     match sequence.is_empty() {
@@ -302,39 +126,18 @@ fn remove_via_rebuild(
         }
         false => {}
     }
-    let kinds = collect_kinds_from_sequence(tree, sequence)?;
-    rebuild_tree_and_sequence(tree, sequence, &kinds, builder)?;
+    let kinds = collect_kinds_from_sequence(tree, sequence);
+    rebuild_tree_and_sequence(tree, sequence, &kinds, |kinds| {
+        build_tree_for_strategy(strategy, kinds)
+    })?;
     let focus_idx = removed_idx.min(sequence.len().saturating_sub(1));
-    viewport.focus = sequence.get(focus_idx);
-    Ok(viewport.focus)
-}
-
-fn remove_incremental(
-    strategy: &StrategyKind,
-    tree: &mut LayoutTree,
-    sequence: &mut PanelSequence,
-    viewport: &mut ViewportState,
-    pid: PanelId,
-) -> Result<Option<PanelId>, PaneError> {
-    let removed_idx = sequence.remove(pid).unwrap_or(0);
-    tree.remove_panel(pid)?;
-    let new_focus = sequence.neighbor_after_removal(removed_idx);
-
-    match (strategy, new_focus) {
-        (StrategyKind::ActivePanel { .. }, Some(focus_pid)) => {
-            tree.set_constraints(focus_pid, grow(1.0))?;
-        }
-        (StrategyKind::Window { size, .. }, _) if !sequence.is_empty() => {
-            let ws = viewport
-                .window_start
-                .min(sequence.len().saturating_sub(*size));
-            viewport.window_start = ws;
-            apply_window_constraints(tree, sequence, ws, *size)?;
-        }
-        _ => {}
+    let new_focus = sequence.get(focus_idx);
+    // Rebuild hardcodes active=0. Set focus to match so try_apply_focus
+    // can properly transition away from it.
+    viewport.focus = sequence.get(0);
+    if let Some(pid) = new_focus {
+        try_apply_focus(strategy, tree, sequence, viewport, pid);
     }
-
-    viewport.focus = new_focus;
     Ok(new_focus)
 }
 
@@ -372,7 +175,10 @@ pub fn apply_move(
     let moved_pid = sequence
         .get(new_index)
         .ok_or_else(|| PaneError::SequenceOutOfBounds(new_index, sequence.len()))?;
-    viewport.focus = Some(moved_pid);
+    // Rebuild hardcodes active=0. Set focus to match so try_apply_focus
+    // can properly transition away from it.
+    viewport.focus = sequence.get(0);
+    try_apply_focus(strategy, tree, sequence, viewport, moved_pid);
     Ok(moved_pid)
 }
 
@@ -381,7 +187,7 @@ fn rebuild_from_sequence(
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
 ) -> Result<(), PaneError> {
-    let kinds = collect_kinds_from_sequence(tree, sequence)?;
+    let kinds = collect_kinds_from_sequence(tree, sequence);
     match strategy {
         StrategyKind::Slotted { .. } => return Ok(()),
         _ => {}
@@ -409,25 +215,11 @@ fn rebuild_tree_and_sequence(
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn shorter_side(
-    left: crate::node::NodeId,
-    right: crate::node::NodeId,
-    left_count: usize,
-    right_count: usize,
-) -> crate::node::NodeId {
-    match left_count <= right_count {
-        true => left,
-        false => right,
-    }
-}
-
 /// Collect panel kinds from the sequence, preserving order.
-fn collect_kinds_from_sequence(
-    tree: &LayoutTree,
-    sequence: &PanelSequence,
-) -> Result<Vec<Arc<str>>, PaneError> {
+/// Skips panels missing from the tree (only possible via `tree_mut()` corruption).
+fn collect_kinds_from_sequence(tree: &LayoutTree, sequence: &PanelSequence) -> Vec<Arc<str>> {
     sequence
         .iter()
-        .map(|pid| tree.panel_kind_arc(pid))
+        .filter_map(|pid| tree.panel_kind_arc(pid).ok())
         .collect()
 }

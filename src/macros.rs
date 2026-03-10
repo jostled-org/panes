@@ -3,6 +3,7 @@ macro_rules! id_newtype {
     ($(#[$meta:meta])* $vis:vis $Name:ident) => {
         $(#[$meta])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         $vis struct $Name(u32);
 
         impl $Name {

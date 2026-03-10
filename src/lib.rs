@@ -23,6 +23,8 @@ pub mod resolver;
 pub mod runtime;
 /// Ordered panel sequence for focus navigation.
 mod sequence;
+/// Serializable snapshots for session persistence.
+mod snapshot;
 /// Layout mutation strategies mapped to presets.
 mod strategy;
 #[cfg(feature = "toml")]
@@ -45,6 +47,7 @@ pub use rect::Rect;
 pub use resolver::{PanelEntry, ResolvedLayout};
 pub use runtime::Placement;
 pub use sequence::PanelSequence;
+pub use snapshot::{LayoutSnapshot, SnapshotNode, SnapshotSlotDef, SnapshotSource, StrategyConfig};
 pub use strategy::{ActivePanelVariant, Direction, SlotDef, StrategyKind};
 #[cfg(feature = "toml")]
 pub use toml_parse::TomlError;

@@ -1,5 +1,6 @@
 /// Axis-aligned rectangle defined by origin (x, y) and size (w, h).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Rect {
     /// Horizontal origin.
     pub x: f32,

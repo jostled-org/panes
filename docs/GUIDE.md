@@ -14,6 +14,8 @@
 - [Frame Diffing](#frame-diffing)
 - [Animation](#animation)
 - [Render Adapters](#render-adapters)
+- [Serialization](#serialization)
+- [Snapshots](#snapshots)
 - [Escape Hatch: Raw Taffy](#escape-hatch-raw-taffy)
 
 ---
@@ -635,30 +637,26 @@ let resolved = frame.layout();
 
 ### Panel mutations
 
-Add, remove, move, and focus panels at runtime. The strategy handles the spatial rules — where new panels go, how focus shifts, whether the tree rebuilds or just adjusts constraints.
+Add, remove, move, and focus panels at runtime. The strategy handles the spatial rules — where new panels go, how focus shifts, and how the tree rebuilds.
 
 ```rust
-// Add a panel — strategy decides placement, focus shifts to new panel
+// Add a panel — inserts after focused, rebuilds via strategy
 let pid = rt.add_panel("terminal".into())?;
 
-// Add adjacent to focused panel — strategy-independent tree surgery
-// Auto-picks split direction from the focused panel's aspect ratio
-let new = rt.add_panel_adjacent("sidebar".into())?;
-
-// Full control: explicit direction, constraints, and placement
-use panes::{Placement, Direction, fixed};
-let new = rt.add_panel_adjacent_with(
-    "sidebar".into(),
-    Direction::Horizontal,
-    fixed(30.0),
-    Placement::Before,  // insert left of / above focused
-)?;
+// Explicit placement — before focused, after focused, or at end
+use panes::Placement;
+rt.add_panel_with("sidebar".into(), Placement::Before)?;
+rt.add_panel_with("logs".into(), Placement::End)?;
 
 // Remove the focused panel — focus shifts to neighbor
 rt.remove_panel(pid)?;
 
 // Move a panel to a new position in the sequence
 rt.move_panel(pid, 0)?;
+
+// Swap focused panel with neighbors — infallible, no-op when impossible
+rt.swap_next();
+rt.swap_prev();
 
 // Sequential focus navigation
 rt.focus_next();
@@ -681,6 +679,24 @@ let focused: Option<PanelId> = rt.focused();
 let kind: Option<&str> = rt.focused_kind();
 ```
 
+#### Without a strategy
+
+`add_panel` also works on non-strategy runtimes. Without a strategy it performs a hydrland-style split: auto-picks the split direction from the focused panel's aspect ratio (wider → horizontal, taller → vertical) and uses `grow(1.0)` constraints.
+
+For full tree-topology control, use `add_panel_adjacent_with`:
+
+```rust
+use panes::{Placement, Direction, fixed};
+let new = rt.add_panel_adjacent_with(
+    "sidebar".into(),
+    Direction::Horizontal,
+    fixed(30.0),
+    Placement::Before,  // insert left of / above focused
+)?;
+```
+
+On a strategy runtime, `add_panel_adjacent_with` delegates to the strategy (direction and constraints are ignored). On a non-strategy runtime, it operates directly on tree topology.
+
 ### Viewport operations
 
 ```rust
@@ -697,18 +713,29 @@ rt.resize_boundary(pid, 0.1)?;   // give 10% more
 rt.resize_boundary(pid, -0.05)?; // give 5% less
 ```
 
-### Legacy runtime
+### Non-strategy runtime
 
-For layouts built with the builder API or macro, wrap them in a runtime without a strategy. Mutations go through `tree_mut()` directly.
+For layouts built with the builder API or macro, wrap them in a runtime without a strategy. `add_panel` works (hydrland-style splits), or mutate the tree directly via `tree_mut()`.
 
 ```rust
 let layout = Layout::master_stack(["editor", "chat"]).build()?;
 let mut rt = LayoutRuntime::from(layout);
 
+// add_panel auto-splits the focused panel
+rt.set_active(some_pid);
+rt.add_panel("terminal".into())?;
+
+// Or use tree_mut() for direct tree surgery
 let tree = rt.tree_mut();
 let (pid, _) = tree.add_panel("terminal", grow(1.0))?;
 tree.set_constraints(pid, fixed(30.0))?;
 tree.remove_panel(pid)?;
+```
+
+Use `from_tree_and_sequence` to create a non-strategy runtime with sequence tracking (needed for `add_panel`, `focus_next`, etc.):
+
+```rust
+let mut rt = LayoutRuntime::from_tree_and_sequence(tree, sequence);
 ```
 
 The runtime recompiles automatically when the tree is dirty.
@@ -882,6 +909,85 @@ for entry in panes_wasm::panels(&resolved) {
 }
 
 let rects: FxHashMap<PanelId, WasmRect> = panes_wasm::convert(&resolved);
+```
+
+---
+
+## Serialization
+
+Enable the `serde` feature to derive `Serialize` and `Deserialize` on core types:
+
+```toml
+[dependencies]
+panes = { version = "0.1", features = ["serde"] }
+```
+
+Types with serde derives: `Rect`, `PanelId`, `NodeId`, `Constraints`, `Direction`, `ActivePanelVariant`, and all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`).
+
+This lets resolved layouts flow directly into JSON responses, IPC messages, or config files without manual conversion:
+
+```rust
+let resolved = layout.resolve(800.0, 600.0)?;
+for entry in resolved.panels() {
+    // entry.rect, entry.id are now serializable
+    let json = serde_json::to_string(&entry.rect)?;
+}
+```
+
+The `toml` feature implies `serde` — if you're already using TOML configuration, the derives are active.
+
+For JavaScript/browser interop, use `panes-wasm` instead — its `WasmRect` uses f64 to match the browser's number model.
+
+---
+
+## Snapshots
+
+`LayoutSnapshot` captures a runtime's state for session persistence. Snapshot, serialize with any serde format, restore next session.
+
+```rust
+use panes::Layout;
+use panes::runtime::LayoutRuntime;
+
+let mut rt = Layout::master_stack(["editor", "chat", "status"])
+    .master_ratio(0.6).gap(1.0).into_runtime()?;
+rt.focus_next(); // focus "chat"
+
+// Capture
+let snapshot = rt.snapshot();
+let json = serde_json::to_string(&snapshot)?;
+
+// Restore (next session)
+let snapshot: panes::LayoutSnapshot = serde_json::from_str(&json)?;
+let mut rt = LayoutRuntime::from_snapshot(snapshot)?;
+// rt has the same strategy, panel order, and focus
+```
+
+### What gets persisted
+
+**Strategy runtimes** snapshot the recipe — strategy config + panel kinds in sequence order. On restore, the tree is rebuilt through the preset builder, so decorative panels (tabs, titles) are recreated automatically.
+
+**Non-strategy runtimes** snapshot the tree topology — a recursive structure of rows, columns, and panels with their constraints. On restore, the tree is rebuilt via the layout builder.
+
+Both variants also persist:
+- **Focused panel** (by kind, not PanelId — IDs are regenerated on rebuild)
+- **Collapsed panels** (by kind — collapse state is re-applied after rebuild)
+
+### What doesn't persist
+
+- **Resize deltas** — `resize_boundary` modifies tree constraints directly. To persist resize state, track the deltas in your app and replay them after restore.
+- **Scroll offset** — transient viewport state.
+- **Cached frames** — recomputed on the next `resolve()` call.
+
+### Format freedom
+
+`LayoutSnapshot` implements `Serialize`/`Deserialize` behind the `serde` feature gate. Pick whatever format fits your stack — JSON, TOML, MessagePack, bincode:
+
+```rust
+// JSON for config files
+let json = serde_json::to_string_pretty(&snapshot)?;
+
+// bincode for IPC
+let bytes = bincode::serialize(&snapshot)?;
 ```
 
 ---

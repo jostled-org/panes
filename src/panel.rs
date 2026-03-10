@@ -34,6 +34,7 @@ impl PanelIdGenerator {
 
 /// Spatial constraints for a panel within a layout.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Constraints {
     /// Flex grow factor. Mutually exclusive with `fixed`.
     pub grow: Option<f32>,

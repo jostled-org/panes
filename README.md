@@ -40,6 +40,13 @@ for entry in resolved.panels() {
 cargo add panes
 ```
 
+Optional features:
+
+| Feature | What it enables |
+|---------|----------------|
+| `serde` | `Serialize`/`Deserialize` on `Rect`, `PanelId`, `NodeId` |
+| `toml`  | Load layouts from TOML strings/files (implies `serde`) |
+
 ## Usage
 
 Build custom layouts or pick from 15 presets. Pass any coordinate system — pixels, logical points, terminal cells.
@@ -67,13 +74,19 @@ Layout::master_stack(["editor", "chat", "status"]).master_ratio(0.6).gap(1.0)
 let mut rt = Layout::master_stack(["editor", "chat", "status"])
     .master_ratio(0.6).gap(1.0).into_runtime()?;
 
-rt.add_panel("terminal".into())?;          // strategy-managed
-rt.add_panel_adjacent("split".into())?;    // auto-splits focused panel
+rt.add_panel("terminal".into())?;          // insert after focused, rebuild via strategy
+rt.add_panel_with("logs".into(), Placement::End)?;  // append to end
+rt.swap_next();                            // reorder in sequence
 rt.focus_next();
 rt.focus_direction_current(FocusDirection::Right);
 
 let frame = rt.resolve(80.0, 24.0)?;
 let diff = frame.diff();
+
+// Snapshot — save session state, restore later
+let snapshot = rt.snapshot();
+// serde_json::to_string(&snapshot)?;  // with `serde` feature
+let mut rt2 = LayoutRuntime::from_snapshot(snapshot)?;
 ```
 
 Adapters convert rects to renderer-native types:

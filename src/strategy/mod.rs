@@ -8,6 +8,7 @@ use crate::panel::Constraints;
 
 /// Direction for linear layouts (split, columns).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Direction {
     /// Left-to-right.
     Horizontal,
@@ -17,6 +18,7 @@ pub enum Direction {
 
 /// Sub-variant for single-visible-panel layouts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ActivePanelVariant {
     /// Full-screen single panel.
     Monocle,

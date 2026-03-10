@@ -10,6 +10,7 @@ use crate::panel::fixed;
 use crate::rect::Rect;
 use crate::resolver::{self, ResolveScratch, ResolvedLayout};
 use crate::sequence::PanelSequence;
+use crate::snapshot::{self, LayoutSnapshot, SnapshotSource};
 use crate::strategy::{Direction, StrategyKind};
 use crate::tree::LayoutTree;
 use crate::viewport::ViewportState;
@@ -22,6 +23,8 @@ pub enum Placement {
     /// New panel goes after focused (right or below).
     #[default]
     After,
+    /// Append to the end of the sequence.
+    End,
 }
 
 /// Result of a single resolve call: the resolved layout and its diff against the previous frame.
@@ -90,6 +93,27 @@ impl LayoutRuntime {
             strategy: Some(strategy),
             sequence,
         })
+    }
+
+    /// Create a runtime from a pre-built tree with a pre-populated sequence.
+    /// No strategy — for direct tree-topology control with sequence tracking.
+    pub fn from_tree_and_sequence(tree: LayoutTree, sequence: PanelSequence) -> Self {
+        let focus = sequence.get(0);
+        Self {
+            tree,
+            viewport: ViewportState {
+                focus,
+                ..ViewportState::default()
+            },
+            previous: None,
+            cached_compile: None,
+            cached_kinds: None,
+            rects_buf: None,
+            diff_scratch: diff::DiffScratch::default(),
+            resolve_scratch: ResolveScratch::default(),
+            strategy: None,
+            sequence,
+        }
     }
 
     /// Create a runtime from a pre-built tree and a strategy.
@@ -203,6 +227,56 @@ impl LayoutRuntime {
         self.tree.panel_kind(pid).ok()
     }
 
+    /// Capture a serializable snapshot of the current runtime state.
+    ///
+    /// Strategy runtimes snapshot the recipe (strategy config + panel kinds).
+    /// Non-strategy runtimes snapshot the tree topology.
+    pub fn snapshot(&self) -> LayoutSnapshot {
+        snapshot::capture(
+            &self.tree,
+            self.strategy.as_ref(),
+            &self.sequence,
+            &self.viewport,
+        )
+    }
+
+    /// Restore a runtime from a snapshot.
+    ///
+    /// Strategy snapshots rebuild through the preset builder.
+    /// Tree snapshots rebuild via the layout builder.
+    pub fn from_snapshot(snap: LayoutSnapshot) -> Result<Self, PaneError> {
+        let mut rt = match snap.source() {
+            SnapshotSource::Strategy { strategy, panels } => {
+                let sk = StrategyKind::from(strategy);
+                let kinds: Vec<Arc<str>> = panels.iter().map(|s| Arc::from(s.as_str())).collect();
+                Self::from_strategy(sk, &kinds)?
+            }
+            SnapshotSource::Tree { root } => {
+                let tree = snapshot::snapshot_to_tree(root)?;
+                let mut seq = PanelSequence::default();
+                collect_panels_depth_first(&tree, &mut seq);
+                Self::from_tree_and_sequence(tree, seq)
+            }
+        };
+
+        // Restore focus by kind
+        if let Some(&pid) = snap
+            .focused()
+            .and_then(|kind| rt.tree.panels_by_kind(kind).first())
+        {
+            rt.focus(pid);
+        }
+
+        // Restore collapsed by kind
+        for kind in snap.collapsed() {
+            if let Some(&pid) = rt.tree.panels_by_kind(kind).first() {
+                let _ = rt.toggle_collapsed(pid);
+            }
+        }
+
+        Ok(rt)
+    }
+
     /// Whether `pid` is a decorative panel (tab bar, title bar) for `content_pid`.
     pub fn is_decoration_for(&self, pid: PanelId, content_pid: PanelId) -> bool {
         let (Ok(dec_kind), Ok(content_kind)) =
@@ -217,18 +291,60 @@ impl LayoutRuntime {
     }
 
     /// Add a panel using the active strategy.
+    ///
+    /// With a strategy: inserts after focused (or at end if no focus),
+    /// then rebuilds the tree through the strategy's preset builder.
+    ///
+    /// Without a strategy: hyprland-style split (auto-direction from
+    /// aspect ratio, `grow(1.0)`, placed after focused).
     pub fn add_panel(&mut self, kind: Arc<str>) -> Result<PanelId, PaneError> {
-        let strategy = self
-            .strategy
-            .as_ref()
-            .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))?;
-        crate::strategy::apply_add(
-            strategy,
-            &mut self.tree,
-            &mut self.sequence,
-            &mut self.viewport,
-            kind,
-        )
+        self.add_panel_with(kind, Placement::After)
+    }
+
+    /// Add a panel at an explicit position relative to focused.
+    ///
+    /// - `Placement::Before` — before focused
+    /// - `Placement::After` — after focused (same as `add_panel`)
+    /// - `Placement::End` — append to sequence end
+    pub fn add_panel_with(
+        &mut self,
+        kind: Arc<str>,
+        placement: Placement,
+    ) -> Result<PanelId, PaneError> {
+        match self.strategy.as_ref() {
+            Some(strategy) => {
+                let index = self.placement_to_index(placement);
+                crate::strategy::apply_add(
+                    strategy,
+                    &mut self.tree,
+                    &mut self.sequence,
+                    &mut self.viewport,
+                    kind,
+                    index,
+                )
+            }
+            None => {
+                let direction = self.auto_direction();
+                self.add_panel_adjacent_with(kind, direction, crate::panel::grow(1.0), placement)
+            }
+        }
+    }
+
+    /// Convert a Placement to a sequence index.
+    fn placement_to_index(&self, placement: Placement) -> usize {
+        match placement {
+            Placement::Before => self
+                .viewport
+                .focus
+                .and_then(|pid| self.sequence.index_of(pid))
+                .unwrap_or(self.sequence.len()),
+            Placement::After => self
+                .viewport
+                .focus
+                .and_then(|pid| self.sequence.index_of(pid).map(|i| i + 1))
+                .unwrap_or(self.sequence.len()),
+            Placement::End => self.sequence.len(),
+        }
     }
 
     /// Remove a panel using the active strategy. Returns the new focus panel.
@@ -282,41 +398,39 @@ impl LayoutRuntime {
 
     /// Swap the focused panel with the next panel in the sequence (wrapping).
     /// No-op if there is no focus or fewer than two panels.
-    pub fn swap_next(&mut self) -> Result<(), PaneError> {
+    pub fn swap_next(&mut self) {
         let (pid, idx) = match (
             self.viewport.focus,
             self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
         ) {
             (Some(pid), Some(idx)) => (pid, idx),
-            _ => return Ok(()),
+            _ => return,
         };
         match self.sequence.len() <= 1 {
-            true => Ok(()),
+            true => {}
             false => {
                 let target = (idx + 1) % self.sequence.len();
-                self.move_panel(pid, target)?;
-                Ok(())
+                let _ = self.move_panel(pid, target);
             }
         }
     }
 
     /// Swap the focused panel with the previous panel in the sequence (wrapping).
     /// No-op if there is no focus or fewer than two panels.
-    pub fn swap_prev(&mut self) -> Result<(), PaneError> {
+    pub fn swap_prev(&mut self) {
         let (pid, idx) = match (
             self.viewport.focus,
             self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
         ) {
             (Some(pid), Some(idx)) => (pid, idx),
-            _ => return Ok(()),
+            _ => return,
         };
         let len = self.sequence.len();
         match len <= 1 {
-            true => Ok(()),
+            true => {}
             false => {
                 let target = (idx + len - 1) % len;
-                self.move_panel(pid, target)?;
-                Ok(())
+                let _ = self.move_panel(pid, target);
             }
         }
     }
@@ -397,26 +511,15 @@ impl LayoutRuntime {
         }
     }
 
-    /// Add a panel adjacent to the currently focused panel.
-    ///
-    /// Auto-picks the split direction from the focused panel's aspect ratio:
-    /// wider panels split horizontal, taller panels split vertical. Falls
-    /// back to horizontal if no layout has been resolved yet.
-    ///
-    /// Uses `grow(1.0)` constraints and [`Placement::After`].
-    pub fn add_panel_adjacent(&mut self, kind: Arc<str>) -> Result<PanelId, PaneError> {
-        let direction = self.auto_direction();
-        self.add_panel_adjacent_with(kind, direction, crate::panel::grow(1.0), Placement::After)
-    }
-
     /// Add a panel adjacent to the currently focused panel with full control.
     ///
-    /// This is strategy-independent: it works directly on tree topology.
-    /// `placement` controls whether the new panel appears before or after
-    /// the focused panel. If `direction` matches the parent container's
-    /// axis, the new panel is inserted as a sibling. If it conflicts, the
-    /// focused panel is wrapped in a new sub-container oriented along
-    /// `direction`, and the new panel is added beside it.
+    /// With a strategy: delegates to strategy rebuild (direction/constraints
+    /// ignored, placement controls sequence position).
+    ///
+    /// Without a strategy: works directly on tree topology. If `direction`
+    /// matches the parent container's axis, the new panel is inserted as a
+    /// sibling. If it conflicts, the focused panel is wrapped in a new
+    /// sub-container.
     pub fn add_panel_adjacent_with(
         &mut self,
         kind: Arc<str>,
@@ -424,6 +527,20 @@ impl LayoutRuntime {
         constraints: crate::Constraints,
         placement: Placement,
     ) -> Result<PanelId, PaneError> {
+        // With a strategy: delegate to strategy rebuild, ignoring
+        // direction/constraints.
+        if let Some(strategy) = self.strategy.as_ref() {
+            let index = self.placement_to_index(placement);
+            return crate::strategy::apply_add(
+                strategy,
+                &mut self.tree,
+                &mut self.sequence,
+                &mut self.viewport,
+                kind,
+                index,
+            );
+        }
+
         let focused = self
             .focused()
             .ok_or(PaneError::InvalidMutation(MutationError::NoFocusedPanel))?;
@@ -451,11 +568,11 @@ impl LayoutRuntime {
             (true, Placement::Before) => {
                 self.tree.insert_child_at(parent_id, focused_idx, new_nid)?;
             }
-            (true, Placement::After) => {
+            (true, Placement::After | Placement::End) => {
                 self.tree
                     .insert_child_at(parent_id, focused_idx + 1, new_nid)?;
             }
-            (false, _) => {
+            (false, Placement::End | Placement::After) => {
                 wrap_in_container(
                     &mut self.tree,
                     parent_id,
@@ -463,7 +580,18 @@ impl LayoutRuntime {
                     focused_idx,
                     new_nid,
                     direction,
-                    placement,
+                    Placement::After,
+                )?;
+            }
+            (false, Placement::Before) => {
+                wrap_in_container(
+                    &mut self.tree,
+                    parent_id,
+                    focused_nid,
+                    focused_idx,
+                    new_nid,
+                    direction,
+                    Placement::Before,
                 )?;
             }
         }
@@ -471,7 +599,7 @@ impl LayoutRuntime {
         let seq_idx = match (self.sequence.index_of(focused), placement) {
             (Some(idx), Placement::Before) => idx,
             (Some(idx), Placement::After) => idx + 1,
-            (None, _) => self.sequence.len(),
+            (_, Placement::End) | (None, _) => self.sequence.len(),
         };
         self.sequence.insert(seq_idx, new_pid);
 
@@ -580,7 +708,7 @@ fn wrap_in_container(
     tree.detach(focused_nid);
     let children = match placement {
         Placement::Before => vec![new_nid, focused_nid],
-        Placement::After => vec![focused_nid, new_nid],
+        Placement::After | Placement::End => vec![focused_nid, new_nid],
     };
     let c = match direction {
         Direction::Horizontal => tree.add_row(0.0, children)?,
@@ -594,6 +722,24 @@ fn apply_scroll_offset(layout: &mut ResolvedLayout, offset: f32) {
     match offset.abs() < f32::EPSILON {
         true => {}
         false => layout.shift_x(-offset),
+    }
+}
+
+/// Collect all panel IDs from the tree in depth-first order.
+fn collect_panels_depth_first(tree: &LayoutTree, seq: &mut PanelSequence) {
+    let Some(root) = tree.root() else { return };
+    collect_panels_recursive(tree, root, seq);
+}
+
+fn collect_panels_recursive(tree: &LayoutTree, nid: NodeId, seq: &mut PanelSequence) {
+    let Some(node) = tree.node(nid) else { return };
+    match node {
+        Node::Panel { id, .. } => seq.push(*id),
+        _ => {
+            for &child in node.children() {
+                collect_panels_recursive(tree, child, seq);
+            }
+        }
     }
 }
 

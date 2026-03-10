@@ -36,10 +36,12 @@ fn slotted_move_returns_error() {
 }
 
 #[test]
-fn slotted_swap_returns_error() {
+fn slotted_swap_is_noop() {
     let mut rt = sidebar_runtime();
-    let result = rt.swap_next();
-    assert!(result.is_err());
+    let before: Vec<_> = rt.sequence().iter().collect();
+    rt.swap_next();
+    let after: Vec<_> = rt.sequence().iter().collect();
+    assert_eq!(before, after);
 }
 
 #[test]

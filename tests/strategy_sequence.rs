@@ -41,8 +41,10 @@ fn sequence_remove_focused_shifts_to_neighbor() {
     rt.focus(p1);
     let new_focus = rt.remove_panel(p1).unwrap();
     assert!(new_focus.is_some());
-    assert_ne!(new_focus, Some(p1));
     assert_eq!(rt.sequence().len(), 2);
+    // Focus should land on a panel in the sequence
+    let focus = new_focus.unwrap();
+    assert!(rt.sequence().index_of(focus).is_some());
 }
 
 #[test]
@@ -90,7 +92,7 @@ fn swap_next_wraps_last_to_first() {
     let mut rt = sequence_runtime(3);
     let last = rt.sequence().get(2).unwrap();
     rt.focus(last);
-    rt.swap_next().unwrap();
+    rt.swap_next();
     assert_eq!(sequence_kinds(&rt), ["p2", "p0", "p1"]);
     assert_eq!(rt.focused_kind(), Some("p2"));
 }
@@ -98,7 +100,7 @@ fn swap_next_wraps_last_to_first() {
 #[test]
 fn swap_prev_wraps_first_to_last() {
     let mut rt = sequence_runtime(3);
-    rt.swap_prev().unwrap();
+    rt.swap_prev();
     assert_eq!(sequence_kinds(&rt), ["p1", "p2", "p0"]);
     assert_eq!(rt.focused_kind(), Some("p0"));
 }
@@ -108,7 +110,7 @@ fn swap_next_middle_reorders() {
     let mut rt = sequence_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
     rt.focus(p1);
-    rt.swap_next().unwrap();
+    rt.swap_next();
     assert_eq!(sequence_kinds(&rt), ["p0", "p2", "p1"]);
     assert_eq!(rt.focused_kind(), Some("p1"));
 }
@@ -116,9 +118,9 @@ fn swap_next_middle_reorders() {
 #[test]
 fn swap_single_panel_is_noop() {
     let mut rt = sequence_runtime(1);
-    rt.swap_next().unwrap();
+    rt.swap_next();
     assert_eq!(sequence_kinds(&rt), ["p0"]);
-    rt.swap_prev().unwrap();
+    rt.swap_prev();
     assert_eq!(sequence_kinds(&rt), ["p0"]);
 }
 
@@ -127,7 +129,7 @@ fn swap_focus_follows_panel() {
     let mut rt = sequence_runtime(4);
     let p1 = rt.sequence().get(1).unwrap();
     rt.focus(p1);
-    rt.swap_next().unwrap();
+    rt.swap_next();
     // Focus should track the swapped panel
     let focused = rt.focused().unwrap();
     assert_eq!(rt.tree().panel_kind(focused).unwrap(), "p1");
