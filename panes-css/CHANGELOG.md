@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/jostled-org/panes/compare/panes-css-v0.2.3...panes-css-v0.2.4) - 2026-03-10
+
+### Other
+
+- updated the following local packages: panes
+
 ## [0.2.3](https://github.com/jostled-org/panes/compare/panes-css-v0.2.2...panes-css-v0.2.3) - 2026-03-09
 
 ### Other
