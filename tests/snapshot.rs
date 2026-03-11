@@ -2,8 +2,6 @@
 use panes::LayoutSnapshot;
 use panes::runtime::LayoutRuntime;
 use panes::{Layout, SnapshotSource, StrategyConfig};
-#[cfg(feature = "serde")]
-use panes::LayoutSnapshot;
 
 #[test]
 fn strategy_snapshot_round_trip() {
