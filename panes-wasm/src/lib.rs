@@ -1,6 +1,6 @@
 //! Convert panes layouts into f64 rects for WASM/JavaScript consumption.
 
-use panes::{PanelEntry, PanelId, ResolvedLayout};
+use panes::{OverlayEntry, PanelEntry, PanelId, ResolvedLayout};
 use rustc_hash::FxHashMap;
 
 /// Rectangle with f64 fields for JavaScript interop.
@@ -40,6 +40,18 @@ pub fn convert(resolved: &ResolvedLayout) -> FxHashMap<PanelId, WasmRect> {
 /// No hashmap allocation — produces entries lazily from the resolved layout.
 pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, WasmRect>> {
     resolved.panels().map(|e| {
+        e.map_rect(|r| WasmRect {
+            x: f64::from(r.x),
+            y: f64::from(r.y),
+            w: f64::from(r.w),
+            h: f64::from(r.h),
+        })
+    })
+}
+
+/// Iterate all resolved overlays, yielding identity and f64 rect.
+pub fn overlays(resolved: &ResolvedLayout) -> impl Iterator<Item = OverlayEntry<'_, WasmRect>> {
+    resolved.overlays().map(|e| {
         e.map_rect(|r| WasmRect {
             x: f64::from(r.x),
             y: f64::from(r.y),

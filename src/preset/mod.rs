@@ -36,5 +36,7 @@ pub use catalog::{PanelInputKind, PresetInfo};
 
 pub(crate) use common::collect_kinds;
 pub(crate) use common::impl_preset;
-pub(super) use common::{add_active_hidden_panels, add_grow_panels, build_single};
+pub(super) use common::{
+    add_active_hidden_panels, add_grow_panels, add_panels, build_single, col_style, row_style,
+};
 pub(crate) use common::{validate_active, validate_f32_param, validate_kinds};

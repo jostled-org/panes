@@ -29,7 +29,7 @@ fn build_tree_runtime(count: usize, direction: Direction) -> LayoutRuntime {
         seq.insert(seq.len(), *pid);
     }
     let mut rt = LayoutRuntime::from_tree_and_sequence(tree, seq);
-    rt.set_active(pids[0]);
+    rt.set_focus_unchecked(pids[0]);
     rt
 }
 
@@ -243,7 +243,7 @@ fn cross_axis_preserves_parent_gap() {
     tree.set_root(root);
 
     let mut rt = LayoutRuntime::new(tree);
-    rt.set_active(p0);
+    rt.set_focus_unchecked(p0);
 
     rt.add_panel_adjacent_with(
         Arc::from("new"),
@@ -300,7 +300,7 @@ fn single_child_parent() {
     tree.set_root(root);
 
     let mut rt = LayoutRuntime::new(tree);
-    rt.set_active(p0);
+    rt.set_focus_unchecked(p0);
 
     let new_pid = rt
         .add_panel_adjacent_with(

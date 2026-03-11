@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::compiler::CompileResult;
 use crate::error::{PaneError, TreeError};
 use crate::node::{Node, NodeId, PanelId};
+use crate::overlay::{OverlayEntry, OverlayId};
 use crate::rect::Rect;
 use crate::tree::LayoutTree;
 
@@ -39,10 +40,10 @@ impl<'a, R> PanelEntry<'a, R> {
 pub(crate) type KindIndex = Arc<FxHashMap<Arc<str>, Box<[PanelId]>>>;
 
 /// Resolved layout mapping each panel to its computed screen rectangle.
-#[derive(Clone)]
 pub struct ResolvedLayout {
     rects: Vec<Option<Rect>>,
     kinds: KindIndex,
+    overlay_rects: Vec<(OverlayId, Arc<str>, Rect)>,
 }
 
 impl ResolvedLayout {
@@ -107,6 +108,35 @@ impl ResolvedLayout {
             })
     }
 
+    /// Iterate resolved overlays in z-order (insertion order).
+    pub fn overlays(&self) -> impl Iterator<Item = OverlayEntry<'_, &Rect>> {
+        self.overlay_rects
+            .iter()
+            .map(|(id, kind, rect)| OverlayEntry {
+                id: *id,
+                kind: kind.as_ref(),
+                rect,
+            })
+    }
+
+    /// Look up the resolved rectangle for an overlay by its id.
+    pub fn overlay_rect(&self, id: OverlayId) -> Option<&Rect> {
+        self.overlay_rects
+            .iter()
+            .find(|(oid, _, _)| *oid == id)
+            .map(|(_, _, r)| r)
+    }
+
+    /// Raw overlay rects for diffing.
+    pub(crate) fn overlay_rects_raw(&self) -> &[(OverlayId, Arc<str>, Rect)] {
+        &self.overlay_rects
+    }
+
+    /// Set the resolved overlay rects (called by runtime after overlay resolution).
+    pub(crate) fn set_overlay_rects(&mut self, rects: Vec<(OverlayId, Arc<str>, Rect)>) {
+        self.overlay_rects = rects;
+    }
+
     /// Borrow the shared kinds index.
     pub(crate) fn kinds_arc(&self) -> &KindIndex {
         &self.kinds
@@ -115,6 +145,11 @@ impl ResolvedLayout {
     /// Take ownership of the rects buffer for reuse.
     pub fn take_rects(&mut self) -> Vec<Option<Rect>> {
         std::mem::take(&mut self.rects)
+    }
+
+    /// Take ownership of the overlay rects buffer for reuse.
+    pub(crate) fn take_overlay_rects(&mut self) -> Vec<(OverlayId, Arc<str>, Rect)> {
+        std::mem::take(&mut self.overlay_rects)
     }
 
     /// Linearly interpolate between two resolved layouts.
@@ -151,7 +186,11 @@ impl ResolvedLayout {
 
         let rects = std::mem::take(buf);
         let kinds = Arc::clone(&self.kinds);
-        ResolvedLayout { rects, kinds }
+        ResolvedLayout {
+            rects,
+            kinds,
+            overlay_rects: Vec::new(),
+        }
     }
 }
 
@@ -297,7 +336,11 @@ pub(crate) fn resolve_with_cached_kinds(
     };
     resolve_iterative(tree, result, root_id, &mut rects, scratch)?;
 
-    Ok(ResolvedLayout { rects, kinds })
+    Ok(ResolvedLayout {
+        rects,
+        kinds,
+        overlay_rects: Vec::new(),
+    })
 }
 
 /// Walk the compiled Taffy tree and produce a `ResolvedLayout` mapping each panel to its rect.
@@ -319,5 +362,9 @@ pub fn resolve(result: &CompileResult, tree: &LayoutTree) -> Result<ResolvedLayo
             .collect(),
     );
 
-    Ok(ResolvedLayout { rects, kinds })
+    Ok(ResolvedLayout {
+        rects,
+        kinds,
+        overlay_rects: Vec::new(),
+    })
 }

@@ -37,7 +37,8 @@ impl PanelSequence {
 
     /// Insert a panel at the given index.
     pub fn insert(&mut self, index: usize, pid: PanelId) {
-        self.ids.insert(index, pid);
+        debug_assert!(index <= self.ids.len());
+        self.ids.insert(index.min(self.ids.len()), pid);
     }
 
     /// Remove a panel by id. Returns its former index, or `None` if absent.

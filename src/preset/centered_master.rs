@@ -4,8 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::master_stack::{add_panels, col_style};
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
+use crate::preset::{add_panels, col_style, collect_kinds, validate_f32_param, validate_kinds};
 
 /// Builder for the centered-master preset layout.
 pub struct CenteredMaster {

@@ -197,9 +197,15 @@ impl LayoutTree {
         self.window_size
     }
 
-    /// Set the active window size.
-    pub fn set_window_size(&mut self, size: usize) {
-        self.window_size = size;
+    /// Set the active window size. Returns an error if `size` is zero.
+    pub fn set_window_size(&mut self, size: usize) -> Result<(), PaneError> {
+        match size {
+            0 => Err(PaneError::InvalidTree(TreeError::WindowSizeZero)),
+            _ => {
+                self.window_size = size;
+                Ok(())
+            }
+        }
     }
 
     /// Total number of distinct panel kinds.
@@ -337,13 +343,20 @@ impl LayoutTree {
         idx: usize,
         child: NodeId,
     ) -> Result<(), PaneError> {
-        match self.children_mut(container) {
-            Some(children) => {
+        let children = match self.children_mut(container) {
+            Some(c) => c,
+            None => return Err(PaneError::NodeNotFound(container)),
+        };
+        match idx > children.len() {
+            true => Err(PaneError::InvalidTree(TreeError::InsertOutOfBounds {
+                index: idx,
+                len: children.len(),
+            })),
+            false => {
                 children.insert(idx, child);
                 self.parent_map.insert(child, container);
                 Ok(())
             }
-            None => Err(PaneError::NodeNotFound(container)),
         }
     }
 

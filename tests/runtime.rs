@@ -12,13 +12,13 @@ fn runtime_first_resolve_all_added() {
     let frame = rt.resolve(100.0, 100.0).unwrap();
 
     // First frame: all panels should be added
-    assert_eq!(frame.diff().added.len(), 2);
-    assert!(frame.diff().added.contains(&pids[0]));
-    assert!(frame.diff().added.contains(&pids[1]));
-    assert!(frame.diff().removed.is_empty());
-    assert!(frame.diff().moved.is_empty());
-    assert!(frame.diff().resized.is_empty());
-    assert!(frame.diff().unchanged.is_empty());
+    assert_eq!(rt.last_diff().added.len(), 2);
+    assert!(rt.last_diff().added.contains(&pids[0]));
+    assert!(rt.last_diff().added.contains(&pids[1]));
+    assert!(rt.last_diff().removed.is_empty());
+    assert!(rt.last_diff().moved.is_empty());
+    assert!(rt.last_diff().resized.is_empty());
+    assert!(rt.last_diff().unchanged.is_empty());
 
     // Layout rects should be correct
     let r0 = frame.layout().get(pids[0]).unwrap();
@@ -32,16 +32,16 @@ fn runtime_second_resolve_no_changes() {
     let mut rt = LayoutRuntime::from(tree);
 
     let _ = rt.resolve(100.0, 100.0).unwrap();
-    let frame = rt.resolve(100.0, 100.0).unwrap();
+    let _frame = rt.resolve(100.0, 100.0).unwrap();
 
     // Second frame at same dimensions: all unchanged
-    assert!(frame.diff().added.is_empty());
-    assert!(frame.diff().removed.is_empty());
-    assert!(frame.diff().moved.is_empty());
-    assert!(frame.diff().resized.is_empty());
-    assert_eq!(frame.diff().unchanged.len(), 2);
-    assert!(frame.diff().unchanged.contains(&pids[0]));
-    assert!(frame.diff().unchanged.contains(&pids[1]));
+    assert!(rt.last_diff().added.is_empty());
+    assert!(rt.last_diff().removed.is_empty());
+    assert!(rt.last_diff().moved.is_empty());
+    assert!(rt.last_diff().resized.is_empty());
+    assert_eq!(rt.last_diff().unchanged.len(), 2);
+    assert!(rt.last_diff().unchanged.contains(&pids[0]));
+    assert!(rt.last_diff().unchanged.contains(&pids[1]));
 }
 
 #[test]
@@ -50,14 +50,14 @@ fn runtime_resolve_different_size_shows_resize() {
     let mut rt = LayoutRuntime::from(tree);
 
     let _ = rt.resolve(100.0, 100.0).unwrap();
-    let frame = rt.resolve(200.0, 100.0).unwrap();
+    let _frame = rt.resolve(200.0, 100.0).unwrap();
 
     // Both panels resized (width changed from 50 to 100)
-    assert_eq!(frame.diff().resized.len(), 2);
+    assert_eq!(rt.last_diff().resized.len(), 2);
 
     // Second panel also moved (its x position changed)
-    assert_eq!(frame.diff().moved.len(), 1);
-    let moved_ids: Vec<PanelId> = frame.diff().moved.iter().map(|c| c.id).collect();
+    assert_eq!(rt.last_diff().moved.len(), 1);
+    let moved_ids: Vec<PanelId> = rt.last_diff().moved.iter().map(|c| c.id).collect();
     assert!(moved_ids.contains(&pids[1]));
 }
 
@@ -70,14 +70,14 @@ fn runtime_remove_panel_in_diff() {
 
     // Remove middle panel
     rt.tree_mut().remove_panel(pids[1]).unwrap();
-    let frame = rt.resolve(90.0, 100.0).unwrap();
+    let _frame = rt.resolve(90.0, 100.0).unwrap();
 
     // Middle panel removed
-    assert_eq!(frame.diff().removed.len(), 1);
-    assert!(frame.diff().removed.contains(&pids[1]));
+    assert_eq!(rt.last_diff().removed.len(), 1);
+    assert!(rt.last_diff().removed.contains(&pids[1]));
 
     // Remaining panels resized (grew from 30px to 45px)
-    assert_eq!(frame.diff().resized.len(), 2);
+    assert_eq!(rt.last_diff().resized.len(), 2);
 }
 
 #[test]
@@ -89,10 +89,10 @@ fn runtime_set_constraints_in_diff() {
 
     // Change one panel to grow(2)
     rt.tree_mut().set_constraints(pids[0], grow(2.0)).unwrap();
-    let frame = rt.resolve(100.0, 100.0).unwrap();
+    let _frame = rt.resolve(100.0, 100.0).unwrap();
 
     // Both panels resized (proportions changed from 50/50 to ~67/33)
-    assert_eq!(frame.diff().resized.len(), 2);
+    assert_eq!(rt.last_diff().resized.len(), 2);
 }
 
 // --- Step 3 tests: Collapse, Scroll, Active ---
@@ -163,7 +163,7 @@ fn scroll_by_shifts_x() {
     let a_pid = frame.layout().by_kind("a")[0];
     let base_x = frame.layout().get(a_pid).unwrap().x;
 
-    rt.scroll_by(40.0);
+    rt.scroll_by(40.0).unwrap();
     let frame = rt.resolve(100.0, 100.0).unwrap();
     let new_x = frame.layout().get(a_pid).unwrap().x;
     assert!((new_x - (base_x - 40.0)).abs() < 0.1);
@@ -178,24 +178,24 @@ fn scroll_to_absolute() {
     let a_pid = frame.layout().by_kind("a")[0];
     let base_x = frame.layout().get(a_pid).unwrap().x;
 
-    rt.scroll_to(80.0);
+    rt.scroll_to(80.0).unwrap();
     let frame = rt.resolve(100.0, 100.0).unwrap();
     let new_x = frame.layout().get(a_pid).unwrap().x;
     assert!((new_x - (base_x - 80.0)).abs() < 0.1);
 }
 
 #[test]
-fn set_active_queryable() {
+fn set_focus_unchecked_queryable() {
     let (tree, pids) = build_row_tree(2, grow(1.0));
     let mut rt = LayoutRuntime::from(tree);
 
-    assert!(rt.active_panel().is_none());
+    assert!(rt.focused().is_none());
 
-    rt.set_active(pids[0]);
-    assert_eq!(rt.active_panel(), Some(pids[0]));
+    rt.set_focus_unchecked(pids[0]);
+    assert_eq!(rt.focused(), Some(pids[0]));
 
-    rt.set_active(pids[1]);
-    assert_eq!(rt.active_panel(), Some(pids[1]));
+    rt.set_focus_unchecked(pids[1]);
+    assert_eq!(rt.focused(), Some(pids[1]));
 }
 
 #[test]
@@ -228,4 +228,52 @@ fn tree_mutation_invalidates_compile_cache() {
     let frame = rt.resolve(100.0, 100.0).unwrap();
     assert_eq!(frame.layout().get(pids[0]).unwrap().w, 30.0);
     assert_eq!(frame.layout().get(pids[1]).unwrap().w, 70.0);
+}
+
+#[test]
+fn scroll_by_rejects_nan() {
+    let layout = Layout::split("a", "b").build().unwrap();
+    let mut rt = LayoutRuntime::from(layout);
+    assert!(rt.scroll_by(f32::NAN).is_err());
+}
+
+#[test]
+fn scroll_to_rejects_infinity() {
+    let layout = Layout::split("a", "b").build().unwrap();
+    let mut rt = LayoutRuntime::from(layout);
+    assert!(rt.scroll_to(f32::INFINITY).is_err());
+}
+
+#[test]
+fn set_window_size_rejects_zero() {
+    let mut tree = panes::LayoutTree::new();
+    assert!(tree.set_window_size(0).is_err());
+    assert!(tree.set_window_size(2).is_ok());
+}
+
+#[test]
+fn add_overlay_rejects_nan_margin() {
+    let mut rt = Layout::master_stack(["a", "b"]).into_runtime().unwrap();
+    let result = rt.add_overlay("bad", panes::overlay::Overlay::top(f32::NAN));
+    assert!(result.is_err());
+}
+
+#[test]
+fn add_overlay_rejects_min_exceeds_max() {
+    let mut rt = Layout::master_stack(["a", "b"]).into_runtime().unwrap();
+    let result = rt.add_overlay(
+        "bad",
+        panes::overlay::Overlay::center().clamp_width(200.0, 100.0),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn insert_child_at_rejects_oob() {
+    let (mut tree, _pids) = build_row_tree(2, grow(1.0));
+    let root = tree.root().unwrap();
+    let (_, new_nid) = tree.add_panel("extra", grow(1.0)).unwrap();
+    // Root has 2 children; index 3 is out of bounds
+    let result = tree.insert_child_at(root, 3, new_nid);
+    assert!(result.is_err());
 }

@@ -105,6 +105,7 @@ fn remove_slotted(
     viewport.saved_constraints.insert(pid, current);
     tree.set_constraints(pid, fixed(0.0))?;
     viewport.collapsed.insert(pid);
+    // Panel may not be in sequence (e.g. decoration panels), fall back to index 0.
     let removed_idx = sequence.remove(pid).unwrap_or(0);
     let new_focus = sequence.neighbor_after_removal(removed_idx);
     viewport.focus = new_focus;
@@ -118,6 +119,7 @@ fn remove_via_rebuild(
     viewport: &mut ViewportState,
     pid: PanelId,
 ) -> Result<Option<PanelId>, PaneError> {
+    // Panel may not be in sequence (e.g. decoration panels), fall back to index 0.
     let removed_idx = sequence.remove(pid).unwrap_or(0);
     match sequence.is_empty() {
         true => {

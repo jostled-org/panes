@@ -4,7 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
+use crate::preset::{add_panels, col_style, collect_kinds, validate_f32_param, validate_kinds};
 
 /// Builder for the master-stack preset layout.
 pub struct MasterStack {
@@ -56,46 +56,6 @@ impl MasterStack {
         })?;
 
         b.build()
-    }
-}
-
-/// A column-direction taffy style with a specific grow factor and gap.
-pub(crate) fn col_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
-    taffy::Style {
-        flex_direction: taffy::FlexDirection::Column,
-        flex_grow,
-        flex_basis: taffy::Dimension::length(0.0),
-        flex_shrink: 1.0,
-        gap: taffy::Size {
-            width: taffy::LengthPercentage::length(0.0),
-            height: taffy::LengthPercentage::length(gap_px),
-        },
-        ..Default::default()
-    }
-}
-
-/// A row-direction taffy style with a specific grow factor and gap.
-pub(crate) fn row_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
-    taffy::Style {
-        flex_direction: taffy::FlexDirection::Row,
-        flex_grow,
-        flex_basis: taffy::Dimension::length(0.0),
-        flex_shrink: 1.0,
-        gap: taffy::Size {
-            width: taffy::LengthPercentage::length(gap_px),
-            height: taffy::LengthPercentage::length(0.0),
-        },
-        ..Default::default()
-    }
-}
-
-pub(crate) fn add_panels(
-    ctx: &mut crate::ContainerCtx,
-    kinds: &[Arc<str>],
-    constraints: crate::Constraints,
-) {
-    for kind in kinds {
-        ctx.panel_with(Arc::clone(kind), constraints);
     }
 }
 

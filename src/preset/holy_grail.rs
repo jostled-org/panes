@@ -4,8 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::fixed;
-use crate::preset::master_stack::row_style;
-use crate::preset::validate_f32_param;
+use crate::preset::{row_style, validate_f32_param};
 
 /// Builder for the holy-grail preset layout.
 pub struct HolyGrail {

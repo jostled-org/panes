@@ -85,7 +85,10 @@ fn focus_deck(
 /// Hide all non-target stack panels, show only `pid`.
 fn focus_deck_full(tree: &mut LayoutTree, sequence: &PanelSequence, pid: PanelId) {
     for spid in sequence.iter().skip(1) {
-        let c = if spid == pid { grow(1.0) } else { fixed(0.0) };
+        let c = match spid == pid {
+            true => grow(1.0),
+            false => fixed(0.0),
+        };
         set_constraints_if_present(tree, spid, c);
     }
 }
@@ -118,7 +121,9 @@ fn focus_window(
     true
 }
 
-/// Best-effort window constraints: skips panels that are missing from the tree.
+/// Best-effort window constraints: errors from missing/corrupted panels
+/// are ignored because focus has already been set and partial constraint
+/// application is preferable to propagating an error mid-focus.
 fn apply_window_constraints_best_effort(
     tree: &mut LayoutTree,
     sequence: &PanelSequence,
@@ -129,6 +134,7 @@ fn apply_window_constraints_best_effort(
 }
 
 fn window_start_for_index(index: usize, current_start: usize, size: usize) -> usize {
+    debug_assert!(size > 0, "window size must be at least 1");
     match index < current_start {
         true => index,
         false => index.saturating_sub(size - 1),

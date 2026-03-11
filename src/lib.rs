@@ -13,6 +13,8 @@ mod focus;
 mod layout;
 mod macros;
 mod node;
+/// Overlay types for floating UI elements rendered above the base layout.
+pub mod overlay;
 mod panel;
 mod preset;
 mod rect;
@@ -21,6 +23,7 @@ mod resize;
 pub mod resolver;
 /// Stateful runtime with viewport tracking, caching, and frame diffing.
 pub mod runtime;
+mod runtime_overlay;
 /// Ordered panel sequence for focus navigation.
 mod sequence;
 /// Serializable snapshots for session persistence.
@@ -34,10 +37,15 @@ mod validate;
 mod viewport;
 
 pub use builder::{ContainerCtx, LayoutBuilder};
+pub use diff::{DiffScratch, LayoutDiff, OverlayDiff, OverlayRectChange, RectChange};
 pub use error::{ConstraintError, MutationError, PaneError, TreeError, ViewportError};
 pub use focus::FocusDirection;
 pub use layout::Layout;
 pub use node::{Node, NodeId, PanelId};
+pub use overlay::{
+    ExtentValue, HAlign, Overlay, OverlayAnchor, OverlayDef, OverlayEntry, OverlayExtent,
+    OverlayId, SnapshotOverlay, VAlign,
+};
 pub use panel::{Constraints, PanelIdGenerator, fixed, grow};
 pub use preset::{
     CenteredMaster, Columns, Dashboard, Deck, Dwindle, Grid, HolyGrail, MasterStack, Monocle,

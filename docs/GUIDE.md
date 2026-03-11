@@ -11,6 +11,7 @@
 - [Presets](#presets)
 - [TOML Configuration](#toml-configuration)
 - [Runtime](#runtime)
+- [Overlays](#overlays)
 - [Frame Diffing](#frame-diffing)
 - [Animation](#animation)
 - [Render Adapters](#render-adapters)
@@ -722,7 +723,7 @@ let layout = Layout::master_stack(["editor", "chat"]).build()?;
 let mut rt = LayoutRuntime::from(layout);
 
 // add_panel auto-splits the focused panel
-rt.set_active(some_pid);
+rt.set_focus_unchecked(some_pid);
 rt.add_panel("terminal".into())?;
 
 // Or use tree_mut() for direct tree surgery
@@ -742,13 +743,78 @@ The runtime recompiles automatically when the tree is dirty.
 
 ---
 
-## Frame Diffing
+## Overlays
 
-Every `runtime.resolve()` call returns a `Frame` containing a `LayoutDiff`:
+Overlays are floating UI elements rendered above the base layout — command palettes, tooltips, dropdown menus, modal dialogs. They don't participate in the flexbox tree; instead they're positioned relative to the viewport or a specific panel.
+
+### Adding overlays
 
 ```rust
-let frame = rt.resolve(80.0, 24.0)?;
-let diff = frame.diff();
+use panes::Overlay;
+
+// Centered modal
+let id = rt.add_overlay("picker", Overlay::center().fixed(400.0, 300.0))?;
+
+// Bottom-anchored command palette (10px margin, full width, 50px tall)
+rt.add_overlay("palette", Overlay::bottom(10.0).full_width().height(50.0))?;
+
+// Tooltip above a specific panel
+rt.add_overlay("tooltip", Overlay::above("editor").fixed(200.0, 30.0))?;
+```
+
+`add_overlay` returns the existing `OverlayId` if the kind already exists. Anchors include `center()`, `top(margin)`, `bottom(margin)`, `left(margin)`, `right(margin)`, `above(panel_kind)`, and `below(panel_kind)`.
+
+### Controlling overlays
+
+```rust
+// Show/hide without removing
+rt.set_overlay_visible("palette", false);
+rt.set_overlay_visible("palette", true);
+
+// Resize dynamically
+rt.set_overlay_height("palette", 80.0)?;
+rt.set_overlay_width("palette", 400.0)?;
+
+// Remove entirely
+rt.remove_overlay("palette");
+
+// Look up definition
+if let Some(def) = rt.overlay("palette") {
+    println!("visible: {}", def.visible());
+}
+```
+
+### Reading overlay rects
+
+After `resolve()`, overlay rects appear in the `ResolvedLayout`:
+
+```rust
+let frame = rt.resolve(800.0, 600.0)?;
+
+// Iterate resolved overlays in z-order
+for entry in frame.layout().overlays() {
+    println!("{}: {:?}", entry.kind, entry.rect);
+}
+
+// Look up by id
+if let Some(rect) = frame.layout().overlay_rect(id) {
+    draw_overlay(rect);
+}
+```
+
+Adapter crates provide `overlays()` iterators that convert to renderer-native rects, just like `panels()`.
+
+Hidden overlays and panel-anchored overlays referencing missing panels are excluded from the resolved output.
+
+---
+
+## Frame Diffing
+
+Every `runtime.resolve()` call computes a diff against the previous frame. Access it via `last_diff()` and `last_overlay_diff()`:
+
+```rust
+let _frame = rt.resolve(80.0, 24.0)?;
+let diff = rt.last_diff();
 
 // Panels that appeared this frame
 for &pid in diff.added.iter() { /* ... */ }
@@ -768,7 +834,17 @@ for change in diff.resized.iter() { /* ... */ }
 for &pid in diff.unchanged.iter() { /* ... */ }
 ```
 
-The first frame reports all panels as `added`.
+Overlay diffing works identically:
+
+```rust
+let overlay_diff = rt.last_overlay_diff();
+for &oid in overlay_diff.added.iter() { /* new overlay appeared */ }
+for &oid in overlay_diff.removed.iter() { /* overlay disappeared */ }
+for change in overlay_diff.moved.iter() { /* overlay repositioned */ }
+for change in overlay_diff.resized.iter() { /* overlay size changed */ }
+```
+
+The first frame reports all panels and overlays as `added`. Diffs borrow from internal scratch buffers and are valid until the next `resolve()` call.
 
 ---
 
@@ -796,9 +872,10 @@ let interpolated = rect_a.lerp(rect_b, t);
 
 panes computes abstract `Rect { x, y, w, h }` values. Adapter crates convert these to renderer-native types.
 
-Each adapter provides two APIs:
+Each adapter provides three APIs:
 - `convert()` — returns a `FxHashMap<PanelId, TargetRect>` for random access
 - `panels()` — returns a lazy iterator of `PanelEntry { id, kind, rect, kind_index }` for rendering loops
+- `overlays()` — returns a lazy iterator of `OverlayEntry { id, kind, rect }` for overlay rendering
 
 ### PanelEntry
 
@@ -922,7 +999,7 @@ Enable the `serde` feature to derive `Serialize` and `Deserialize` on core types
 panes = { version = "0.1", features = ["serde"] }
 ```
 
-Types with serde derives: `Rect`, `PanelId`, `NodeId`, `Constraints`, `Direction`, `ActivePanelVariant`, and all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`).
+Types with serde derives: `Rect`, `PanelId`, `NodeId`, `Constraints`, `Direction`, `ActivePanelVariant`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).
 
 This lets resolved layouts flow directly into JSON responses, IPC messages, or config files without manual conversion:
 
@@ -953,7 +1030,7 @@ let mut rt = Layout::master_stack(["editor", "chat", "status"])
 rt.focus_next(); // focus "chat"
 
 // Capture
-let snapshot = rt.snapshot();
+let snapshot = rt.snapshot()?;
 let json = serde_json::to_string(&snapshot)?;
 
 // Restore (next session)
@@ -971,6 +1048,7 @@ let mut rt = LayoutRuntime::from_snapshot(snapshot)?;
 Both variants also persist:
 - **Focused panel** (by kind, not PanelId — IDs are regenerated on rebuild)
 - **Collapsed panels** (by kind — collapse state is re-applied after rebuild)
+- **Overlays** (anchor, extents, visibility)
 
 ### What doesn't persist
 

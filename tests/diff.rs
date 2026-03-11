@@ -1,7 +1,7 @@
 mod helpers;
 
 use helpers::build_row_tree;
-use panes::diff::{diff, first_frame};
+use panes::diff::diff;
 use panes::{LayoutTree, PanelId, Rect, fixed, grow};
 
 #[test]
@@ -10,7 +10,8 @@ fn diff_identical_layouts_all_unchanged() {
     let old = tree.resolve(100.0, 100.0).unwrap();
     let new = tree.resolve(100.0, 100.0).unwrap();
 
-    let d = diff(&old, &new);
+    let scratch = diff(&old, &new);
+    let d = scratch.as_diff();
 
     assert!(d.added.is_empty());
     assert!(d.removed.is_empty());
@@ -36,7 +37,8 @@ fn diff_removed_panel() {
     tree.remove_panel(p1).unwrap();
     let new = tree.resolve(90.0, 100.0).unwrap();
 
-    let d = diff(&old, &new);
+    let scratch = diff(&old, &new);
+    let d = scratch.as_diff();
 
     // p1 was removed
     assert_eq!(d.removed.len(), 1);
@@ -54,7 +56,8 @@ fn diff_resized_panels() {
     let old = tree.resolve(100.0, 100.0).unwrap();
     let new = tree.resolve(200.0, 100.0).unwrap();
 
-    let d = diff(&old, &new);
+    let scratch = diff(&old, &new);
+    let d = scratch.as_diff();
 
     // Both panels resized (width changed from 50 to 100)
     assert_eq!(d.resized.len(), 2);
@@ -104,7 +107,8 @@ fn diff_moved_not_resized() {
     tree.move_panel(p0, panes::Position::After(p2)).unwrap();
     let new = tree.resolve(60.0, 100.0).unwrap();
 
-    let d = diff(&old, &new);
+    let scratch = diff(&old, &new);
+    let d = scratch.as_diff();
 
     // All three panels moved (positions changed)
     assert_eq!(d.moved.len(), 3);
@@ -130,7 +134,8 @@ fn diff_moved_and_resized() {
     tree.move_panel(p0, panes::Position::After(p2)).unwrap();
     let new = tree.resolve(90.0, 100.0).unwrap();
 
-    let d = diff(&old, &new);
+    let scratch = diff(&old, &new);
+    let d = scratch.as_diff();
 
     // Panels that moved should also be in resized (viewport grew too)
     let moved_ids: Vec<PanelId> = d.moved.iter().map(|c| c.id).collect();
@@ -146,13 +151,15 @@ fn diff_first_frame() {
     let (tree, pids) = build_row_tree(2, grow(1.0));
     let layout = tree.resolve(100.0, 100.0).unwrap();
 
-    let d = first_frame(&layout);
+    let scratch = diff(&layout, &layout);
+    let d = scratch.as_diff();
 
-    assert_eq!(d.added.len(), 2);
-    assert!(d.added.contains(&pids[0]));
-    assert!(d.added.contains(&pids[1]));
+    // When diffing layout against itself, all panels should be unchanged
+    assert!(d.added.is_empty());
     assert!(d.removed.is_empty());
     assert!(d.moved.is_empty());
     assert!(d.resized.is_empty());
-    assert!(d.unchanged.is_empty());
+    assert_eq!(d.unchanged.len(), 2);
+    assert!(d.unchanged.contains(&pids[0]));
+    assert!(d.unchanged.contains(&pids[1]));
 }

@@ -1,5 +1,7 @@
 use panes::runtime::LayoutRuntime;
 use panes::{Layout, SnapshotSource, StrategyConfig};
+#[cfg(feature = "serde")]
+use panes::LayoutSnapshot;
 
 #[test]
 fn strategy_snapshot_round_trip() {
@@ -10,14 +12,15 @@ fn strategy_snapshot_round_trip() {
         .unwrap();
     rt.focus_next(); // focus "chat"
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
 
     // Verify snapshot contents
     assert_eq!(snap.focused(), Some("chat"));
     match snap.source() {
         SnapshotSource::Strategy { strategy, panels } => {
             assert!(matches!(strategy, StrategyConfig::MasterStack { .. }));
-            assert_eq!(panels, &["editor", "chat", "status"]);
+            let kinds: Vec<&str> = panels.iter().map(|s| &**s).collect();
+            assert_eq!(kinds, &["editor", "chat", "status"]);
         }
         SnapshotSource::Tree { .. } => panic!("expected Strategy source"),
     }
@@ -37,11 +40,11 @@ fn strategy_snapshot_preserves_sequence_order() {
         .unwrap();
     rt.add_panel("d".into()).unwrap();
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { panels, .. } => {
             assert_eq!(panels.len(), 4);
-            assert!(panels.contains(&"d".to_string()));
+            assert!(panels.iter().any(|s| &**s == "d"));
         }
         _ => panic!("expected Strategy source"),
     }
@@ -64,7 +67,7 @@ fn tree_snapshot_round_trip() {
     .unwrap();
 
     let rt = LayoutRuntime::from(layout);
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
 
     match snap.source() {
         SnapshotSource::Tree { root } => {
@@ -90,7 +93,7 @@ fn tree_snapshot_preserves_constraints() {
     .unwrap();
 
     let rt = LayoutRuntime::from(layout);
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(800.0, 600.0).unwrap();
@@ -110,7 +113,7 @@ fn snapshot_restores_focus() {
     rt.focus_next();
     rt.focus_next();
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
     assert_eq!(snap.focused(), Some("c"));
 
     let rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
@@ -132,8 +135,8 @@ fn snapshot_restores_collapsed() {
         .unwrap();
     rt.toggle_collapsed(chat_pid).unwrap();
 
-    let snap = rt.snapshot();
-    assert!(snap.collapsed().contains(&"chat".to_string()));
+    let snap = rt.snapshot().unwrap();
+    assert!(snap.collapsed().iter().any(|s| &**s == "chat"));
 
     let rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let chat_pid2 = rt2
@@ -148,11 +151,12 @@ fn snapshot_restores_collapsed() {
 fn tabbed_snapshot_round_trip() {
     let rt = Layout::tabbed(["a", "b", "c"]).into_runtime().unwrap();
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, panels } => {
             assert!(matches!(strategy, StrategyConfig::ActivePanel { .. }));
-            assert_eq!(panels, &["a", "b", "c"]);
+            let kinds: Vec<&str> = panels.iter().map(|s| &**s).collect();
+            assert_eq!(kinds, &["a", "b", "c"]);
         }
         _ => panic!("expected Strategy"),
     }
@@ -171,7 +175,7 @@ fn deck_snapshot_round_trip() {
         .into_runtime()
         .unwrap();
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(800.0, 600.0).unwrap();
     assert!(frame.layout().panels().count() >= 3);
@@ -185,7 +189,7 @@ fn spiral_snapshot_round_trip() {
         .into_runtime()
         .unwrap();
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, .. } => {
             assert!(matches!(
@@ -208,20 +212,18 @@ fn grid_snapshot_round_trip() {
         .into_runtime()
         .unwrap();
 
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(800.0, 600.0).unwrap();
     assert_eq!(frame.layout().panels().count(), 4);
 }
 
 #[test]
-fn empty_tree_snapshot() {
-    // A runtime from an empty tree should produce a Tree snapshot
+fn empty_tree_snapshot_errors() {
+    // A runtime from an empty tree has no serializable root
     let tree = panes::LayoutTree::new();
     let rt = LayoutRuntime::new(tree);
-    let snap = rt.snapshot();
-    assert!(snap.focused().is_none());
-    assert!(matches!(snap.source(), SnapshotSource::Tree { .. }));
+    assert!(rt.snapshot().is_err());
 }
 
 #[test]
@@ -244,7 +246,7 @@ fn nested_tree_snapshot_round_trip() {
     .unwrap();
 
     let rt = LayoutRuntime::from(layout);
-    let snap = rt.snapshot();
+    let snap = rt.snapshot().unwrap();
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(800.0, 600.0).unwrap();
@@ -253,4 +255,134 @@ fn nested_tree_snapshot_round_trip() {
     // Verify the fixed panel preserved its constraint
     let c = frame.layout().panels().find(|e| e.kind == "c").unwrap();
     assert!((c.rect.w - 50.0).abs() < 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// Serde round-trip tests (JSON serialize → deserialize → restore)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "serde")]
+mod serde_tests {
+    use super::*;
+
+    fn json_round_trip(snap: &LayoutSnapshot) -> LayoutSnapshot {
+        let json = serde_json::to_string(snap).unwrap();
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn strategy_json_round_trip() {
+        let mut rt = Layout::master_stack(["editor", "chat", "status"])
+            .master_ratio(0.6)
+            .gap(1.0)
+            .into_runtime()
+            .unwrap();
+        rt.focus_next();
+
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+
+        assert_eq!(restored.focused(), Some("chat"));
+        match restored.source() {
+            SnapshotSource::Strategy { panels, .. } => {
+                let kinds: Vec<&str> = panels.iter().map(|s| &**s).collect();
+                assert_eq!(kinds, &["editor", "chat", "status"]);
+            }
+            _ => panic!("expected Strategy"),
+        }
+
+        let mut rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let frame = rt2.resolve(800.0, 600.0).unwrap();
+        assert_eq!(frame.layout().panels().count(), 3);
+        assert_eq!(rt2.focused_kind(), Some("chat"));
+    }
+
+    #[test]
+    fn tree_json_round_trip() {
+        let layout = panes::layout! {
+            row(gap: 4.0) {
+                panel("left", fixed: 100.0)
+                col {
+                    panel("top", grow: 2.0)
+                    panel("bottom", fixed: 30.0)
+                }
+            }
+        }
+        .unwrap();
+
+        let rt = LayoutRuntime::from(layout);
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+
+        let mut rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let frame = rt2.resolve(800.0, 600.0).unwrap();
+        assert_eq!(frame.layout().panels().count(), 3);
+
+        let left = frame.layout().panels().find(|e| e.kind == "left").unwrap();
+        assert!((left.rect.w - 100.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn tabbed_json_round_trip() {
+        let rt = Layout::tabbed(["a", "b", "c"]).into_runtime().unwrap();
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+
+        match restored.source() {
+            SnapshotSource::Strategy { strategy, panels } => {
+                assert!(matches!(strategy, StrategyConfig::ActivePanel { .. }));
+                let kinds: Vec<&str> = panels.iter().map(|s| &**s).collect();
+                assert_eq!(kinds, &["a", "b", "c"]);
+            }
+            _ => panic!("expected Strategy"),
+        }
+
+        let mut rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let frame = rt2.resolve(800.0, 600.0).unwrap();
+        assert!(frame.layout().panels().count() > 3);
+    }
+
+    #[test]
+    fn collapsed_json_round_trip() {
+        let mut rt = Layout::master_stack(["a", "b", "c"])
+            .gap(1.0)
+            .into_runtime()
+            .unwrap();
+
+        let b_pid = rt
+            .sequence()
+            .iter()
+            .find(|&pid| rt.tree().panel_kind(pid).ok() == Some("b"))
+            .unwrap();
+        rt.toggle_collapsed(b_pid).unwrap();
+
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+        assert!(restored.collapsed().iter().any(|s| &**s == "b"));
+
+        let rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let b_pid2 = rt2
+            .sequence()
+            .iter()
+            .find(|&pid| rt2.tree().panel_kind(pid).ok() == Some("b"))
+            .unwrap();
+        assert!(rt2.viewport().collapsed.contains(&b_pid2));
+    }
+
+    #[test]
+    fn json_output_is_readable() {
+        let rt = Layout::master_stack(["editor", "chat"])
+            .master_ratio(0.6)
+            .gap(1.0)
+            .into_runtime()
+            .unwrap();
+        let snap = rt.snapshot().unwrap();
+        let json = serde_json::to_string_pretty(&snap).unwrap();
+
+        // Verify key fields appear in the JSON
+        assert!(json.contains("MasterStack"));
+        assert!(json.contains("editor"));
+        assert!(json.contains("chat"));
+        assert!(json.contains("master_ratio"));
+    }
 }

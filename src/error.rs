@@ -43,6 +43,9 @@ pub enum TreeError {
     /// Panel ID counter exhausted.
     #[error("panel ID counter exhausted")]
     PanelIdExhausted,
+    /// Overlay ID counter exhausted.
+    #[error("overlay ID counter exhausted")]
+    OverlayIdExhausted,
     /// Node arena size exceeds u32 capacity.
     #[error("node arena size exceeds u32 capacity")]
     ArenaOverflow,
@@ -105,6 +108,17 @@ pub enum TreeError {
     /// Column count must be at least 1.
     #[error("column count must be at least 1")]
     ColumnsCountZero,
+    /// Tree has no serializable root for snapshot.
+    #[error("no serializable root for snapshot")]
+    SnapshotNoRoot,
+    /// Insert index exceeds container length.
+    #[error("insert index {index} exceeds container length {len}")]
+    InsertOutOfBounds {
+        /// The requested index.
+        index: usize,
+        /// The container's child count.
+        len: usize,
+    },
     /// Wrapped error from Taffy or other dynamic source.
     #[error("{0}")]
     Dynamic(Box<str>),
@@ -123,6 +137,9 @@ pub enum ViewportError {
     /// Dimension is infinite.
     #[error("dimension is infinite")]
     IsInfinite,
+    /// Scroll value is NaN or infinite.
+    #[error("scroll value is not finite")]
+    ScrollNotFinite,
     /// No saved constraints for a panel.
     #[error("no saved constraints for panel {0}")]
     NoSavedConstraints(PanelId),

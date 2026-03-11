@@ -4,8 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::master_stack::{col_style, row_style};
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
+use crate::preset::{col_style, collect_kinds, row_style, validate_f32_param, validate_kinds};
 
 /// Builder for the dwindle preset layout.
 pub struct Dwindle {

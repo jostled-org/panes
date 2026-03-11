@@ -1,6 +1,6 @@
 //! Convert panes layouts into `ratatui::layout::Rect` with pixel-perfect edge rounding.
 
-use panes::{PanelEntry, PanelId, ResolvedLayout};
+use panes::{OverlayEntry, PanelEntry, PanelId, ResolvedLayout};
 use ratatui::layout::Rect;
 use rustc_hash::FxHashMap;
 
@@ -115,6 +115,11 @@ pub fn focused_panels_at<'a>(
         });
         (entry, is_focused)
     })
+}
+
+/// Iterate all resolved overlays, yielding identity and quantized ratatui rect.
+pub fn overlays(resolved: &ResolvedLayout) -> impl Iterator<Item = OverlayEntry<'_, Rect>> {
+    resolved.overlays().map(|e| e.map_rect(quantize))
 }
 
 /// Round edges, not positions+sizes, to produce pixel-perfect u16 rects.

@@ -69,6 +69,47 @@ pub(crate) fn add_active_hidden_panels(
     }
 }
 
+/// A column-direction taffy style with a specific grow factor and gap.
+pub(crate) fn col_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
+    taffy::Style {
+        flex_direction: taffy::FlexDirection::Column,
+        flex_grow,
+        flex_basis: taffy::Dimension::length(0.0),
+        flex_shrink: 1.0,
+        gap: taffy::Size {
+            width: taffy::LengthPercentage::length(0.0),
+            height: taffy::LengthPercentage::length(gap_px),
+        },
+        ..Default::default()
+    }
+}
+
+/// A row-direction taffy style with a specific grow factor and gap.
+pub(crate) fn row_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
+    taffy::Style {
+        flex_direction: taffy::FlexDirection::Row,
+        flex_grow,
+        flex_basis: taffy::Dimension::length(0.0),
+        flex_shrink: 1.0,
+        gap: taffy::Size {
+            width: taffy::LengthPercentage::length(gap_px),
+            height: taffy::LengthPercentage::length(0.0),
+        },
+        ..Default::default()
+    }
+}
+
+/// Add one panel per kind with the given constraints.
+pub(crate) fn add_panels(
+    ctx: &mut crate::ContainerCtx,
+    kinds: &[Arc<str>],
+    constraints: crate::Constraints,
+) {
+    for kind in kinds {
+        ctx.panel_with(Arc::clone(kind), constraints);
+    }
+}
+
 // Macro lives here because it references preset-specific builder methods.
 macro_rules! impl_preset {
     ($Type:ty) => {

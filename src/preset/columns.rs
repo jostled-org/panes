@@ -3,9 +3,7 @@ use std::sync::Arc;
 use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::preset::collect_kinds;
-use crate::preset::master_stack::col_style;
-use crate::preset::validate_kinds;
+use crate::preset::{col_style, collect_kinds, validate_kinds};
 
 /// Builder for the equal-columns preset layout.
 pub struct Columns {

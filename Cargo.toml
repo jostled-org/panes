@@ -19,7 +19,7 @@ rustc-hash = "2"
 serde = { version = "1", features = ["derive"], optional = true }
 taffy = "0.9"
 thiserror = "2"
-toml = { version = "0.8", optional = true }
+toml = { version = "1", optional = true }
 
 [lints]
 workspace = true
@@ -58,8 +58,9 @@ debug = "line-tables-only"
 incremental = true
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 ratatui = { version = "0.30", default-features = false }
+serde_json = "1"
 taffy = "0.9"
 
 [[bench]]

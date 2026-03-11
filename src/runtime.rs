@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
+use rustc_hash::FxHashMap;
+
 use crate::compiler::{CompileResult, compile, compute_layout};
-use crate::diff::{self, LayoutDiff};
+use crate::diff::{self, LayoutDiff, OverlayDiff, OverlayDiffScratch};
 use crate::error::{MutationError, PaneError, ViewportError};
 use crate::focus::{self, FocusDirection};
 use crate::layout::Layout;
 use crate::node::{Node, NodeId, PanelId};
+use crate::overlay::{self, Overlay, OverlayDef, OverlayId, OverlayIdGenerator};
 use crate::panel::fixed;
 use crate::rect::Rect;
 use crate::resolver::{self, ResolveScratch, ResolvedLayout};
@@ -13,6 +16,7 @@ use crate::sequence::PanelSequence;
 use crate::snapshot::{self, LayoutSnapshot, SnapshotSource};
 use crate::strategy::{Direction, StrategyKind};
 use crate::tree::LayoutTree;
+use crate::validate::{check_f32_finite, check_f32_non_negative, float_invalid_to_constraint};
 use crate::viewport::ViewportState;
 
 /// Where to place the new panel relative to the focused panel.
@@ -27,21 +31,19 @@ pub enum Placement {
     End,
 }
 
-/// Result of a single resolve call: the resolved layout and its diff against the previous frame.
+/// Result of a single resolve call: the resolved layout for this frame.
+///
+/// To access the diff between this frame and the previous one, call
+/// [`LayoutRuntime::last_diff()`] or [`LayoutRuntime::last_overlay_diff()`]
+/// after `resolve()`.
 pub struct Frame {
     layout: Arc<ResolvedLayout>,
-    diff: LayoutDiff,
 }
 
 impl Frame {
     /// The resolved layout for this frame.
     pub fn layout(&self) -> &ResolvedLayout {
         &self.layout
-    }
-
-    /// The diff between this frame and the previous one.
-    pub fn diff(&self) -> &LayoutDiff {
-        &self.diff
     }
 }
 
@@ -54,26 +56,53 @@ pub struct LayoutRuntime {
     cached_kinds: Option<resolver::KindIndex>,
     rects_buf: Option<Vec<Option<Rect>>>,
     diff_scratch: diff::DiffScratch,
+    overlay_diff_scratch: OverlayDiffScratch,
     resolve_scratch: ResolveScratch,
     strategy: Option<StrategyKind>,
     sequence: PanelSequence,
+    overlays: Vec<OverlayDef>,
+    overlay_gen: OverlayIdGenerator,
+    overlay_index: FxHashMap<Arc<str>, usize>,
+    prev_overlay_rects: Vec<(OverlayId, Rect)>,
+    overlay_rects_buf: Vec<(OverlayId, Arc<str>, Rect)>,
+}
+
+/// Shared default fields for all constructors.
+fn base(
+    tree: LayoutTree,
+    viewport: ViewportState,
+    strategy: Option<StrategyKind>,
+    sequence: PanelSequence,
+) -> LayoutRuntime {
+    LayoutRuntime {
+        tree,
+        viewport,
+        previous: None,
+        cached_compile: None,
+        cached_kinds: None,
+        rects_buf: None,
+        diff_scratch: diff::DiffScratch::default(),
+        overlay_diff_scratch: OverlayDiffScratch::default(),
+        resolve_scratch: ResolveScratch::default(),
+        strategy,
+        sequence,
+        overlays: Vec::new(),
+        overlay_gen: OverlayIdGenerator::default(),
+        overlay_index: FxHashMap::default(),
+        prev_overlay_rects: Vec::new(),
+        overlay_rects_buf: Vec::new(),
+    }
 }
 
 impl LayoutRuntime {
     /// Create a runtime from an existing tree (legacy path, no strategy).
     pub fn new(tree: LayoutTree) -> Self {
-        Self {
+        base(
             tree,
-            viewport: ViewportState::default(),
-            previous: None,
-            cached_compile: None,
-            cached_kinds: None,
-            rects_buf: None,
-            diff_scratch: diff::DiffScratch::default(),
-            resolve_scratch: ResolveScratch::default(),
-            strategy: None,
-            sequence: PanelSequence::default(),
-        }
+            ViewportState::default(),
+            None,
+            PanelSequence::default(),
+        )
     }
 
     /// Create a runtime from a strategy and initial panel kinds.
@@ -81,39 +110,22 @@ impl LayoutRuntime {
         let mut sequence = PanelSequence::default();
         let mut viewport = ViewportState::default();
         let tree = crate::strategy::build_initial(&strategy, kinds, &mut sequence, &mut viewport)?;
-        Ok(Self {
-            tree,
-            viewport,
-            previous: None,
-            cached_compile: None,
-            cached_kinds: None,
-            rects_buf: None,
-            diff_scratch: diff::DiffScratch::default(),
-            resolve_scratch: ResolveScratch::default(),
-            strategy: Some(strategy),
-            sequence,
-        })
+        Ok(base(tree, viewport, Some(strategy), sequence))
     }
 
     /// Create a runtime from a pre-built tree with a pre-populated sequence.
     /// No strategy — for direct tree-topology control with sequence tracking.
     pub fn from_tree_and_sequence(tree: LayoutTree, sequence: PanelSequence) -> Self {
         let focus = sequence.get(0);
-        Self {
+        base(
             tree,
-            viewport: ViewportState {
+            ViewportState {
                 focus,
                 ..ViewportState::default()
             },
-            previous: None,
-            cached_compile: None,
-            cached_kinds: None,
-            rects_buf: None,
-            diff_scratch: diff::DiffScratch::default(),
-            resolve_scratch: ResolveScratch::default(),
-            strategy: None,
+            None,
             sequence,
-        }
+        )
     }
 
     /// Create a runtime from a pre-built tree and a strategy.
@@ -130,21 +142,15 @@ impl LayoutRuntime {
             }
         }
         let focus = sequence.get(0);
-        Self {
+        base(
             tree,
-            viewport: ViewportState {
+            ViewportState {
                 focus,
                 ..ViewportState::default()
             },
-            previous: None,
-            cached_compile: None,
-            cached_kinds: None,
-            rects_buf: None,
-            diff_scratch: diff::DiffScratch::default(),
-            resolve_scratch: ResolveScratch::default(),
-            strategy: Some(strategy),
+            Some(strategy),
             sequence,
-        }
+        )
     }
 
     /// Immutable access to the underlying tree.
@@ -187,23 +193,28 @@ impl LayoutRuntime {
     }
 
     /// Shift the scroll offset by a delta.
-    pub fn scroll_by(&mut self, delta: f32) {
+    pub fn scroll_by(&mut self, delta: f32) -> Result<(), PaneError> {
+        check_f32_finite(delta)
+            .map_err(|_| PaneError::InvalidViewport(ViewportError::ScrollNotFinite))?;
         self.viewport.scroll_offset += delta;
+        Ok(())
     }
 
     /// Set the scroll offset to an absolute value.
-    pub fn scroll_to(&mut self, offset: f32) {
+    pub fn scroll_to(&mut self, offset: f32) -> Result<(), PaneError> {
+        check_f32_finite(offset)
+            .map_err(|_| PaneError::InvalidViewport(ViewportError::ScrollNotFinite))?;
         self.viewport.scroll_offset = offset;
+        Ok(())
     }
 
-    /// Set the active panel.
-    pub fn set_active(&mut self, pid: PanelId) {
+    /// Set focus to a panel without strategy validation.
+    ///
+    /// Unlike [`focus`](Self::focus), this bypasses strategy-specific focus
+    /// logic (e.g. updating tab visibility in `ActivePanel` layouts).
+    /// Use when you need raw focus control outside the strategy system.
+    pub fn set_focus_unchecked(&mut self, pid: PanelId) {
         self.viewport.focus = Some(pid);
-    }
-
-    /// Get the currently active panel, if any.
-    pub fn active_panel(&self) -> Option<PanelId> {
-        self.viewport.focus
     }
 
     /// The layout strategy, if this runtime was created via `from_strategy`.
@@ -231,12 +242,16 @@ impl LayoutRuntime {
     ///
     /// Strategy runtimes snapshot the recipe (strategy config + panel kinds).
     /// Non-strategy runtimes snapshot the tree topology.
-    pub fn snapshot(&self) -> LayoutSnapshot {
+    ///
+    /// `TaffyPassthrough` nodes are not serializable and are omitted from tree
+    /// snapshots. Returns `SnapshotNoRoot` if the root itself is a passthrough.
+    pub fn snapshot(&self) -> Result<LayoutSnapshot, PaneError> {
         snapshot::capture(
             &self.tree,
             self.strategy.as_ref(),
             &self.sequence,
             &self.viewport,
+            &self.overlays,
         )
     }
 
@@ -248,7 +263,7 @@ impl LayoutRuntime {
         let mut rt = match snap.source() {
             SnapshotSource::Strategy { strategy, panels } => {
                 let sk = StrategyKind::from(strategy);
-                let kinds: Vec<Arc<str>> = panels.iter().map(|s| Arc::from(s.as_str())).collect();
+                let kinds: Vec<Arc<str>> = panels.iter().map(|s| Arc::from(&**s)).collect();
                 Self::from_strategy(sk, &kinds)?
             }
             SnapshotSource::Tree { root } => {
@@ -270,9 +285,11 @@ impl LayoutRuntime {
         // Restore collapsed by kind
         for kind in snap.collapsed() {
             if let Some(&pid) = rt.tree.panels_by_kind(kind).first() {
-                let _ = rt.toggle_collapsed(pid);
+                rt.toggle_collapsed(pid)?;
             }
         }
+
+        restore_overlays(&mut rt, snap.overlays())?;
 
         Ok(rt)
     }
@@ -384,7 +401,7 @@ impl LayoutRuntime {
     /// sequence (strategy path) or not a known panel.
     pub fn focus(&mut self, pid: PanelId) -> bool {
         let Some(strategy) = self.strategy.as_ref() else {
-            self.viewport.focus = Some(pid);
+            self.set_focus_unchecked(pid);
             return true;
         };
         crate::strategy::try_apply_focus(
@@ -399,25 +416,16 @@ impl LayoutRuntime {
     /// Swap the focused panel with the next panel in the sequence (wrapping).
     /// No-op if there is no focus or fewer than two panels.
     pub fn swap_next(&mut self) {
-        let (pid, idx) = match (
-            self.viewport.focus,
-            self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
-        ) {
-            (Some(pid), Some(idx)) => (pid, idx),
-            _ => return,
-        };
-        match self.sequence.len() <= 1 {
-            true => {}
-            false => {
-                let target = (idx + 1) % self.sequence.len();
-                let _ = self.move_panel(pid, target);
-            }
-        }
+        self.swap_by(1);
     }
 
     /// Swap the focused panel with the previous panel in the sequence (wrapping).
     /// No-op if there is no focus or fewer than two panels.
     pub fn swap_prev(&mut self) {
+        self.swap_by(-1);
+    }
+
+    fn swap_by(&mut self, delta: isize) {
         let (pid, idx) = match (
             self.viewport.focus,
             self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
@@ -429,7 +437,11 @@ impl LayoutRuntime {
         match len <= 1 {
             true => {}
             false => {
-                let target = (idx + len - 1) % len;
+                let target = ((idx as isize + delta).rem_euclid(len as isize)) as usize;
+                // move_panel can only fail if: no strategy (impossible,
+                // swap_by requires a strategy), OOB index (impossible,
+                // rem_euclid guarantees bounds), or rebuild fails on empty
+                // kinds (impossible, len > 1 checked above).
                 let _ = self.move_panel(pid, target);
             }
         }
@@ -438,36 +450,28 @@ impl LayoutRuntime {
     /// Move focus to the next panel in the sequence.
     /// No-op if the sequence is empty.
     pub fn focus_next(&mut self) {
-        let next = match (
-            self.viewport.focus,
-            self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
-        ) {
-            (Some(_), Some(idx)) => {
-                let next_idx = (idx + 1) % self.sequence.len().max(1);
-                self.sequence.get(next_idx)
-            }
-            _ => self.sequence.get(0),
-        };
-        if let Some(pid) = next {
-            self.focus(pid);
-        }
+        self.focus_by(1);
     }
 
     /// Move focus to the previous panel in the sequence.
     /// No-op if the sequence is empty.
     pub fn focus_prev(&mut self) {
-        let prev = match (
+        self.focus_by(-1);
+    }
+
+    fn focus_by(&mut self, delta: isize) {
+        let target = match (
             self.viewport.focus,
             self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
         ) {
             (Some(_), Some(idx)) => {
                 let len = self.sequence.len().max(1);
-                let prev_idx = (idx + len - 1) % len;
-                self.sequence.get(prev_idx)
+                let next_idx = ((idx as isize + delta).rem_euclid(len as isize)) as usize;
+                self.sequence.get(next_idx)
             }
             _ => self.sequence.get(0),
         };
-        if let Some(pid) = prev {
+        if let Some(pid) = target {
             self.focus(pid);
         }
     }
@@ -527,42 +531,36 @@ impl LayoutRuntime {
         constraints: crate::Constraints,
         placement: Placement,
     ) -> Result<PanelId, PaneError> {
-        // With a strategy: delegate to strategy rebuild, ignoring
-        // direction/constraints.
-        if let Some(strategy) = self.strategy.as_ref() {
-            let index = self.placement_to_index(placement);
-            return crate::strategy::apply_add(
-                strategy,
-                &mut self.tree,
-                &mut self.sequence,
-                &mut self.viewport,
-                kind,
-                index,
-            );
+        match self.strategy.as_ref() {
+            Some(strategy) => {
+                let index = self.placement_to_index(placement);
+                crate::strategy::apply_add(
+                    strategy,
+                    &mut self.tree,
+                    &mut self.sequence,
+                    &mut self.viewport,
+                    kind,
+                    index,
+                )
+            }
+            None => self.add_panel_adjacent_no_strategy(kind, direction, constraints, placement),
         }
+    }
 
+    fn add_panel_adjacent_no_strategy(
+        &mut self,
+        kind: Arc<str>,
+        direction: Direction,
+        constraints: crate::Constraints,
+        placement: Placement,
+    ) -> Result<PanelId, PaneError> {
         let focused = self
             .focused()
             .ok_or(PaneError::InvalidMutation(MutationError::NoFocusedPanel))?;
-        let focused_nid = self
-            .tree
-            .node_for_panel(focused)
-            .ok_or(PaneError::PanelNotFound(focused))?;
-        let parent_id = self
-            .tree
-            .parent(focused_nid)?
-            .ok_or(PaneError::InvalidMutation(MutationError::FocusedNoParent))?;
+        let (focused_nid, parent_id, focused_idx, parent_axis) =
+            find_focused_position(&self.tree, focused)?;
 
         let (new_pid, new_nid) = self.tree.add_panel(kind, constraints)?;
-
-        let parent_axis = parent_axis_direction(&self.tree, parent_id)?;
-
-        let focused_idx = self
-            .tree
-            .children(parent_id)?
-            .iter()
-            .position(|&c| c == focused_nid)
-            .ok_or(PaneError::PanelNotFound(focused))?;
 
         match (parent_axis == direction, placement) {
             (true, Placement::Before) => {
@@ -615,54 +613,202 @@ impl LayoutRuntime {
         crate::resize::resize_boundary(&mut self.tree, pid, delta)
     }
 
+    /// Add an overlay. Returns the existing id if the kind already exists.
+    pub fn add_overlay(
+        &mut self,
+        kind: impl Into<Arc<str>>,
+        builder: Overlay,
+    ) -> Result<OverlayId, PaneError> {
+        crate::runtime_overlay::add_overlay_impl(
+            &mut self.overlays,
+            &mut self.overlay_index,
+            &mut self.overlay_gen,
+            kind.into(),
+            builder,
+        )
+    }
+
+    /// Remove an overlay by kind. No-op if the kind is not found.
+    pub fn remove_overlay(&mut self, kind: &str) {
+        crate::runtime_overlay::remove_overlay_impl(
+            &mut self.overlays,
+            &mut self.overlay_index,
+            kind,
+        );
+    }
+
+    /// Show or hide an overlay without removing it.
+    pub fn set_overlay_visible(&mut self, kind: &str, visible: bool) {
+        if let Some(&idx) = self.overlay_index.get(kind) {
+            self.overlays[idx].visible = visible;
+        }
+    }
+
+    /// Update an overlay's height (fixed value).
+    pub fn set_overlay_height(&mut self, kind: &str, h: f32) -> Result<(), PaneError> {
+        validate_overlay_dimension("overlay_height", h)?;
+        if let Some(&idx) = self.overlay_index.get(kind) {
+            self.overlays[idx].height.value = overlay::ExtentValue::Fixed(h);
+        }
+        Ok(())
+    }
+
+    /// Update an overlay's width (fixed value).
+    pub fn set_overlay_width(&mut self, kind: &str, w: f32) -> Result<(), PaneError> {
+        validate_overlay_dimension("overlay_width", w)?;
+        if let Some(&idx) = self.overlay_index.get(kind) {
+            self.overlays[idx].width.value = overlay::ExtentValue::Fixed(w);
+        }
+        Ok(())
+    }
+
+    /// Look up an overlay definition by kind.
+    pub fn overlay(&self, kind: &str) -> Option<&OverlayDef> {
+        self.overlay_index.get(kind).map(|&idx| &self.overlays[idx])
+    }
+
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.
     pub fn resolve(&mut self, width: f32, height: f32) -> Result<Frame, PaneError> {
         let tree_dirty = self.tree.is_dirty();
+        let (mut result, cached_kinds) = self.compile_tree(tree_dirty)?;
+        compute_layout(&mut result, width, height)?;
 
-        let mut result = match (tree_dirty, self.cached_compile.take()) {
+        let mut layout = self.resolve_layout(&result, cached_kinds)?;
+        self.cached_compile = Some(result);
+
+        apply_scroll_offset(&mut layout, self.viewport.scroll_offset);
+        self.resolve_overlays(&mut layout, width, height);
+
+        self.compute_diffs(&layout, tree_dirty);
+
+        let layout = Arc::new(layout);
+        let prev_arc = self.previous.replace(Arc::clone(&layout));
+
+        // Reclaim the previous frame's buffers if no other consumers hold a reference.
+        if let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) {
+            self.rects_buf = Some(prev_layout.take_rects());
+            self.overlay_rects_buf = prev_layout.take_overlay_rects();
+        }
+
+        Ok(Frame { layout })
+    }
+
+    fn compile_tree(
+        &mut self,
+        tree_dirty: bool,
+    ) -> Result<(CompileResult, Option<resolver::KindIndex>), PaneError> {
+        let result = match (tree_dirty, self.cached_compile.take()) {
             (false, Some(cached)) => cached,
             _ => {
                 self.tree.clear_dirty();
                 compile(&self.tree)?
             }
         };
+        let cached_kinds = match tree_dirty {
+            false => self.cached_kinds.take(),
+            true => None,
+        };
+        Ok((result, cached_kinds))
+    }
 
-        compute_layout(&mut result, width, height)?;
-
-        let mut layout = match (tree_dirty, self.cached_kinds.take()) {
-            (false, Some(kinds)) => resolver::resolve_with_cached_kinds(
-                &result,
+    fn resolve_layout(
+        &mut self,
+        result: &CompileResult,
+        cached_kinds: Option<resolver::KindIndex>,
+    ) -> Result<ResolvedLayout, PaneError> {
+        let layout = match cached_kinds {
+            Some(kinds) => resolver::resolve_with_cached_kinds(
+                result,
                 &self.tree,
                 kinds,
                 &mut self.resolve_scratch,
                 self.rects_buf.take(),
             )?,
-            _ => resolver::resolve(&result, &self.tree)?,
+            None => resolver::resolve(result, &self.tree)?,
         };
-
         self.cached_kinds = Some(Arc::clone(layout.kinds_arc()));
-        self.cached_compile = Some(result);
+        Ok(layout)
+    }
 
-        apply_scroll_offset(&mut layout, self.viewport.scroll_offset);
+    fn resolve_overlays(&mut self, layout: &mut ResolvedLayout, width: f32, height: f32) {
+        crate::runtime_overlay::resolve_overlays_impl(
+            &self.overlays,
+            &mut self.overlay_rects_buf,
+            layout,
+            width,
+            height,
+        );
+    }
 
-        let prev_arc = self.previous.take();
-        let diff = select_diff(
+    /// The layout diff from the most recent `resolve()` call.
+    ///
+    /// Borrows from internal scratch buffers. Valid until the next `resolve()`.
+    pub fn last_diff(&self) -> LayoutDiff<'_> {
+        self.diff_scratch.as_diff()
+    }
+
+    /// The overlay diff from the most recent `resolve()` call.
+    ///
+    /// Borrows from internal scratch buffers. Valid until the next `resolve()`.
+    pub fn last_overlay_diff(&self) -> OverlayDiff<'_> {
+        self.overlay_diff_scratch.as_diff()
+    }
+
+    fn compute_diffs(&mut self, layout: &ResolvedLayout, tree_dirty: bool) {
+        select_diff(
             tree_dirty,
-            prev_arc.as_deref(),
-            &layout,
+            self.previous.as_deref(),
+            layout,
             &mut self.diff_scratch,
         );
 
-        let layout = Arc::new(layout);
-        self.previous = Some(Arc::clone(&layout));
+        match self.prev_overlay_rects.is_empty() {
+            true => {
+                diff::first_frame_overlays(
+                    layout.overlay_rects_raw(),
+                    &mut self.overlay_diff_scratch,
+                );
+            }
+            false => {
+                diff::diff_overlays(
+                    &self.prev_overlay_rects,
+                    layout.overlay_rects_raw(),
+                    &mut self.overlay_diff_scratch,
+                );
+            }
+        };
 
-        // Reclaim the previous frame's rects buffer if no other consumers hold a reference.
-        if let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) {
-            self.rects_buf = Some(prev_layout.take_rects());
-        }
-
-        Ok(Frame { layout, diff })
+        self.prev_overlay_rects.clear();
+        self.prev_overlay_rects.extend(
+            layout
+                .overlay_rects_raw()
+                .iter()
+                .map(|(id, _, rect)| (*id, *rect)),
+        );
     }
+}
+
+/// Restore overlay definitions from snapshot data.
+fn restore_overlays(
+    rt: &mut LayoutRuntime,
+    overlays: &[overlay::SnapshotOverlay],
+) -> Result<(), PaneError> {
+    for snap_overlay in overlays {
+        let kind: Arc<str> = Arc::from(&*snap_overlay.kind);
+        let id = rt.overlay_gen.next_id()?;
+        let def = OverlayDef {
+            id,
+            kind: Arc::clone(&kind),
+            anchor: snap_overlay.anchor.clone(),
+            width: snap_overlay.width,
+            height: snap_overlay.height,
+            visible: snap_overlay.visible,
+        };
+        let idx = rt.overlays.len();
+        rt.overlays.push(def);
+        rt.overlay_index.insert(kind, idx);
+    }
+    Ok(())
 }
 
 impl From<LayoutTree> for LayoutRuntime {
@@ -676,12 +822,37 @@ fn select_diff(
     prev: Option<&ResolvedLayout>,
     new: &ResolvedLayout,
     scratch: &mut diff::DiffScratch,
-) -> LayoutDiff {
+) {
     match (tree_dirty, prev) {
-        (_, None) => diff::first_frame(new),
-        (false, Some(prev)) => diff::diff_same_panels(prev, new),
-        (true, Some(prev)) => diff::diff_reuse(prev, new, scratch),
-    }
+        (_, None) => {
+            diff::first_frame(new, scratch);
+        }
+        (false, Some(prev)) => {
+            diff::diff_same_panels_reuse(prev, new, scratch);
+        }
+        (true, Some(prev)) => {
+            diff::diff_reuse(prev, new, scratch);
+        }
+    };
+}
+
+fn find_focused_position(
+    tree: &LayoutTree,
+    focused: PanelId,
+) -> Result<(NodeId, NodeId, usize, Direction), PaneError> {
+    let focused_nid = tree
+        .node_for_panel(focused)
+        .ok_or(PaneError::PanelNotFound(focused))?;
+    let parent_id = tree
+        .parent(focused_nid)?
+        .ok_or(PaneError::InvalidMutation(MutationError::FocusedNoParent))?;
+    let parent_axis = parent_axis_direction(tree, parent_id)?;
+    let focused_idx = tree
+        .children(parent_id)?
+        .iter()
+        .position(|&c| c == focused_nid)
+        .ok_or(PaneError::PanelNotFound(focused))?;
+    Ok((focused_nid, parent_id, focused_idx, parent_axis))
 }
 
 fn parent_axis_direction(tree: &LayoutTree, parent_id: NodeId) -> Result<Direction, PaneError> {
@@ -741,6 +912,11 @@ fn collect_panels_recursive(tree: &LayoutTree, nid: NodeId, seq: &mut PanelSeque
             }
         }
     }
+}
+
+fn validate_overlay_dimension(name: &'static str, value: f32) -> Result<(), PaneError> {
+    check_f32_non_negative(value)
+        .map_err(|e| PaneError::InvalidConstraint(float_invalid_to_constraint(name, e)))
 }
 
 impl From<Layout> for LayoutRuntime {

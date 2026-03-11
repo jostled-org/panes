@@ -1,6 +1,8 @@
 [![crates.io](https://img.shields.io/crates/v/panes.svg)](https://crates.io/crates/panes)
 [![docs.rs](https://docs.rs/panes/badge.svg)](https://docs.rs/panes)
 [![CI](https://github.com/jostled-org/panes/actions/workflows/ci.yml/badge.svg)](https://github.com/jostled-org/panes/actions)
+[![downloads](https://img.shields.io/crates/d/panes.svg)](https://crates.io/crates/panes)
+[![dependencies](https://deps.rs/repo/github/jostled-org/panes/status.svg)](https://deps.rs/repo/github/jostled-org/panes)
 [![license](https://img.shields.io/crates/l/panes.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
 
 You keep solving the same panel layout problem — splits, stacks, grids, resize — from scratch in every project.
@@ -81,10 +83,10 @@ rt.focus_next();
 rt.focus_direction_current(FocusDirection::Right);
 
 let frame = rt.resolve(80.0, 24.0)?;
-let diff = frame.diff();
+let diff = rt.last_diff();  // added, removed, moved, resized, unchanged
 
 // Snapshot — save session state, restore later
-let snapshot = rt.snapshot();
+let snapshot = rt.snapshot()?;
 // serde_json::to_string(&snapshot)?;  // with `serde` feature
 let mut rt2 = LayoutRuntime::from_snapshot(snapshot)?;
 ```
