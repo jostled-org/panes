@@ -1,3 +1,5 @@
+#[cfg(feature = "serde")]
+use panes::LayoutSnapshot;
 use panes::runtime::LayoutRuntime;
 use panes::{Layout, SnapshotSource, StrategyConfig};
 #[cfg(feature = "serde")]
