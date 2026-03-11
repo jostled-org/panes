@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/jostled-org/panes/compare/panes-v0.9.0...panes-v0.10.0) - 2026-03-11
+
+### Added
+
+- [**breaking**] add overlay system, frame diffing, and audit remediation
+- [**breaking**] add overlay system, frame diffing, and audit remediation
+- [**breaking**] add overlay system, frame diffing, and audit remediation
+
 ## [0.9.0](https://github.com/jostled-org/panes/compare/panes-v0.8.2...panes-v0.9.0) - 2026-03-10
 
 ### Added
