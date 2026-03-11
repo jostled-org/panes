@@ -860,6 +860,24 @@ let to = layout_b.resolve(80.0, 24.0)?;
 let mid = from.lerp(&to, 0.5);
 ```
 
+With the runtime, `Frame` is `Clone` (cheap — it's an `Arc` internally). Store the previous frame to lerp from:
+
+```rust
+let prev_frame = rt.resolve(800.0, 600.0)?;
+
+// ... mutation happens ...
+let next_frame = rt.resolve(800.0, 600.0)?;
+
+// Lerp between the two layouts
+let mid = prev_frame.layout().lerp(next_frame.layout(), t);
+```
+
+For shared ownership, `frame.arc()` returns the underlying `Arc<ResolvedLayout>`:
+
+```rust
+let layout_arc = frame.arc(); // cheap clone of the Arc
+```
+
 `Rect` also has a standalone `lerp`:
 
 ```rust

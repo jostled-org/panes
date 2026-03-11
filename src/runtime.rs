@@ -36,6 +36,7 @@ pub enum Placement {
 /// To access the diff between this frame and the previous one, call
 /// [`LayoutRuntime::last_diff()`] or [`LayoutRuntime::last_overlay_diff()`]
 /// after `resolve()`.
+#[derive(Clone)]
 pub struct Frame {
     layout: Arc<ResolvedLayout>,
 }
@@ -44,6 +45,11 @@ impl Frame {
     /// The resolved layout for this frame.
     pub fn layout(&self) -> &ResolvedLayout {
         &self.layout
+    }
+
+    /// Cheap shared reference to the resolved layout.
+    pub fn arc(&self) -> Arc<ResolvedLayout> {
+        Arc::clone(&self.layout)
     }
 }
 
