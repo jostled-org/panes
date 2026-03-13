@@ -23,7 +23,7 @@
 
 ## Quick Start
 
-Pick a preset or build from scratch. Either way you get a bag of rectangles.
+Pick a preset or build from scratch. Either way you get a bag of rectangles. For a working example, see the [demo app](https://github.com/jostled-org/p3-demo).
 
 ```rust
 // Preset: one-liner for common patterns
