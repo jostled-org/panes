@@ -80,7 +80,7 @@ rt.add_panel("terminal".into())?;          // insert after focused, rebuild via 
 rt.add_panel_with("logs".into(), Placement::End)?;  // append to end
 rt.swap_next();                            // reorder in sequence
 rt.focus_next();
-rt.focus_direction_current(FocusDirection::Right);
+rt.focus_direction_current(FocusDirection::Right)?;
 
 let frame = rt.resolve(80.0, 24.0)?;
 let diff = rt.last_diff();  // added, removed, moved, resized, unchanged

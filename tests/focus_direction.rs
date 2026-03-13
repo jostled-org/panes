@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{ActivePanelVariant, Direction, FocusDirection, LayoutTree, StrategyKind, grow};
+use panes::{
+    ActivePanelVariant, Direction, FocusDirection, LayoutTree, PaneError, StrategyKind, grow,
+};
 
 fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
@@ -39,7 +41,9 @@ fn right_from_leftmost() {
     rt.focus(p0);
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Right)
+        .unwrap();
     assert_eq!(result, Some(p1));
     assert_eq!(rt.focused(), Some(p1));
 }
@@ -52,7 +56,9 @@ fn left_from_rightmost() {
     rt.focus(p2);
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Left)
+        .unwrap();
     assert_eq!(result, Some(p1));
     assert_eq!(rt.focused(), Some(p1));
 }
@@ -64,7 +70,9 @@ fn no_candidate_in_direction() {
     rt.focus(p0);
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Left)
+        .unwrap();
     assert_eq!(result, None);
     assert_eq!(rt.focused(), Some(p0));
 }
@@ -77,7 +85,9 @@ fn down_in_column() {
     rt.focus(p0);
     let frame = rt.resolve(100.0, 300.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Down);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Down)
+        .unwrap();
     assert_eq!(result, Some(p1));
 }
 
@@ -89,7 +99,9 @@ fn up_in_column() {
     rt.focus(p2);
     let frame = rt.resolve(100.0, 300.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Up);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Up)
+        .unwrap();
     assert_eq!(result, Some(p1));
 }
 
@@ -122,19 +134,27 @@ fn grid_navigation() {
     let frame = rt.resolve(200.0, 200.0).unwrap();
 
     // Right from p0 -> p2 (top-right)
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Right)
+        .unwrap();
     assert_eq!(result, Some(p2));
 
     // Down from p2 -> p3
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Down);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Down)
+        .unwrap();
     assert_eq!(result, Some(p3));
 
     // Left from p3 -> p1
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Left)
+        .unwrap();
     assert_eq!(result, Some(p1));
 
     // Up from p1 -> p0
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Up);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Up)
+        .unwrap();
     assert_eq!(result, Some(p0));
 }
 
@@ -153,7 +173,9 @@ fn master_stack_right() {
     rt.focus(master);
     let frame = rt.resolve(200.0, 200.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Right)
+        .unwrap();
     assert!(result.is_some());
     assert_ne!(result.unwrap(), master);
 }
@@ -174,7 +196,9 @@ fn master_stack_left() {
     rt.focus(stack0);
     let frame = rt.resolve(200.0, 200.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Left);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Left)
+        .unwrap();
     assert_eq!(result, Some(master));
 }
 
@@ -192,7 +216,9 @@ fn no_focused_panel() {
     // No focus set — focus_direction should return Ok(None)
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Right)
+        .unwrap();
     assert_eq!(result, None);
 }
 
@@ -209,13 +235,13 @@ fn single_panel() {
         FocusDirection::Up,
         FocusDirection::Down,
     ] {
-        let result = rt.focus_direction(frame.layout(), dir);
+        let result = rt.focus_direction(frame.layout(), dir).unwrap();
         assert_eq!(result, None);
     }
 }
 
 #[test]
-fn zero_area_skipped() {
+fn active_panel_returns_spatial_nav_error() {
     let k = kinds(3);
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::ActivePanel {
@@ -228,7 +254,28 @@ fn zero_area_skipped() {
     let frame = rt.resolve(100.0, 100.0).unwrap();
 
     let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
-    assert_eq!(result, None);
+    assert!(matches!(
+        result,
+        Err(PaneError::InvalidMutation(
+            panes::MutationError::SpatialNavUnsupported
+        ))
+    ));
+}
+
+#[test]
+fn window_returns_spatial_nav_error() {
+    let k = kinds(3);
+    let mut rt =
+        LayoutRuntime::from_strategy(StrategyKind::Window { size: 2, gap: 0.0 }, &k).unwrap();
+    let frame = rt.resolve(100.0, 100.0).unwrap();
+
+    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    assert!(matches!(
+        result,
+        Err(PaneError::InvalidMutation(
+            panes::MutationError::SpatialNavUnsupported
+        ))
+    ));
 }
 
 #[test]
@@ -263,7 +310,9 @@ fn diagonal_tiebreak() {
     rt.focus(s0);
     let frame = rt.resolve(200.0, 300.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Right)
+        .unwrap();
     assert_eq!(result, Some(s2));
 }
 
@@ -279,7 +328,9 @@ fn collapsed_middle_skipped() {
     rt.toggle_collapsed(p1).unwrap();
     let frame = rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Right)
+        .unwrap();
     assert_eq!(result, Some(p2));
 }
 
@@ -291,7 +342,7 @@ fn focus_direction_current_uses_cached_layout() {
     rt.focus(p0);
     rt.resolve(300.0, 100.0).unwrap();
 
-    let result = rt.focus_direction_current(FocusDirection::Right);
+    let result = rt.focus_direction_current(FocusDirection::Right).unwrap();
     assert_eq!(result, Some(p1));
     assert_eq!(rt.focused(), Some(p1));
 }
@@ -302,6 +353,55 @@ fn focus_direction_current_without_resolve_returns_none() {
     let p0 = rt.sequence().get(0).unwrap();
     rt.focus(p0);
 
-    let result = rt.focus_direction_current(FocusDirection::Right);
+    let result = rt.focus_direction_current(FocusDirection::Right).unwrap();
     assert!(result.is_none());
+}
+
+#[test]
+fn master_stack_down_prefers_cross_axis_overlap() {
+    // Issue #22: Down from a mid-stack panel should go to the panel
+    // directly below, not jump to the master panel whose center
+    // happens to be vertically closer.
+    let k: Vec<Arc<str>> = ["editor", "terminal", "logs", "panel-7", "panel-8"]
+        .iter()
+        .map(|s| Arc::from(*s))
+        .collect();
+    let mut rt = LayoutRuntime::from_strategy(
+        StrategyKind::MasterStack {
+            master_ratio: 0.6,
+            gap: 1.0,
+        },
+        &k,
+    )
+    .unwrap();
+
+    let logs = rt.sequence().get(2).unwrap();
+    let panel7 = rt.sequence().get(3).unwrap();
+    let panel8 = rt.sequence().get(4).unwrap();
+    let frame = rt.resolve(180.0, 56.0).unwrap();
+
+    // Down from logs → panel-7 (not editor)
+    rt.focus(logs);
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Down)
+        .unwrap();
+    assert_eq!(result, Some(panel7));
+
+    // Down from panel-7 → panel-8
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Down)
+        .unwrap();
+    assert_eq!(result, Some(panel8));
+
+    // Up from panel-8 → panel-7 (not editor)
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Up)
+        .unwrap();
+    assert_eq!(result, Some(panel7));
+
+    // Up from panel-7 → logs
+    let result = rt
+        .focus_direction(frame.layout(), FocusDirection::Up)
+        .unwrap();
+    assert_eq!(result, Some(logs));
 }

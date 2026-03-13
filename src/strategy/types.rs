@@ -146,4 +146,12 @@ impl StrategyKind {
     pub fn supports_move(&self) -> bool {
         !matches!(self, Self::Slotted { .. })
     }
+
+    /// Whether this strategy supports spatial focus navigation.
+    ///
+    /// Strategies that hide most panels (ActivePanel, Window) don't
+    /// produce meaningful spatial relationships — use `focus_next`/`focus_prev`.
+    pub fn supports_spatial_nav(&self) -> bool {
+        !matches!(self, Self::ActivePanel { .. } | Self::Window { .. })
+    }
 }

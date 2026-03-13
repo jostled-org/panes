@@ -664,16 +664,19 @@ rt.focus_next();
 rt.focus_prev();
 rt.focus(pid);  // returns bool
 
-// Spatial focus navigation — move to nearest panel in a direction
+// Spatial focus navigation — move to nearest panel in a direction.
+// Returns Result<Option<PanelId>, PaneError>.
+// Returns Err(SpatialNavUnsupported) for ActivePanel and Window strategies —
+// use focus_next/focus_prev for Monocle, Tabbed, Stacked, and Scrollable presets.
 use panes::FocusDirection;
-rt.focus_direction_current(FocusDirection::Left);
-rt.focus_direction_current(FocusDirection::Right);
-rt.focus_direction_current(FocusDirection::Up);
-rt.focus_direction_current(FocusDirection::Down);
+rt.focus_direction_current(FocusDirection::Left)?;
+rt.focus_direction_current(FocusDirection::Right)?;
+rt.focus_direction_current(FocusDirection::Up)?;
+rt.focus_direction_current(FocusDirection::Down)?;
 
 // Or pass an explicit layout (e.g. during animation)
 let frame = rt.resolve(80.0, 24.0)?;
-rt.focus_direction(frame.layout(), FocusDirection::Right);
+rt.focus_direction(frame.layout(), FocusDirection::Right)?;
 
 // Query focus state
 let focused: Option<PanelId> = rt.focused();

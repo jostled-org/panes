@@ -182,6 +182,9 @@ pub enum MutationError {
     /// Move not supported for this layout.
     #[error("move not supported for this layout")]
     MoveNotSupported,
+    /// Spatial focus navigation is not supported for this strategy.
+    #[error("spatial navigation not supported — use focus_next/focus_prev")]
+    SpatialNavUnsupported,
 }
 
 /// Errors arising from layout operations on panels and nodes.

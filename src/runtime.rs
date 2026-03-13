@@ -484,27 +484,55 @@ impl LayoutRuntime {
 
     /// Move focus to the nearest panel in a spatial direction.
     ///
-    /// Returns `Some(target)` when focus moved, `None` when no candidate
-    /// exists in that direction or no panel is focused.
+    /// Returns `Ok(Some(target))` when focus moved, `Ok(None)` when no
+    /// candidate exists in that direction or no panel is focused.
+    ///
+    /// Returns `Err(SpatialNavUnsupported)` for strategies where spatial
+    /// navigation is meaningless (ActivePanel, Window). Use
+    /// `focus_next`/`focus_prev` instead.
     pub fn focus_direction(
         &mut self,
         layout: &ResolvedLayout,
         direction: FocusDirection,
-    ) -> Option<PanelId> {
-        let focused = self.focused()?;
-        let target = focus::find_nearest(layout, focused, &self.sequence, direction)?;
+    ) -> Result<Option<PanelId>, PaneError> {
+        self.check_spatial_nav()?;
+        let Some(focused) = self.focused() else {
+            return Ok(None);
+        };
+        let Some(target) = focus::find_nearest(layout, focused, &self.sequence, direction) else {
+            return Ok(None);
+        };
         self.focus(target);
-        Some(target)
+        Ok(Some(target))
     }
 
     /// Move focus to the nearest panel in a spatial direction, using the
     /// most recently resolved layout.
     ///
-    /// Returns `Some(target)` when focus moved, `None` when no layout has
-    /// been resolved, no panel is focused, or no candidate exists.
-    pub fn focus_direction_current(&mut self, direction: FocusDirection) -> Option<PanelId> {
-        let layout = Arc::clone(self.previous.as_ref()?);
+    /// Returns `Ok(Some(target))` when focus moved, `Ok(None)` when no
+    /// layout has been resolved, no panel is focused, or no candidate exists.
+    ///
+    /// Returns `Err(SpatialNavUnsupported)` for strategies where spatial
+    /// navigation is meaningless (ActivePanel, Window). Use
+    /// `focus_next`/`focus_prev` instead.
+    pub fn focus_direction_current(
+        &mut self,
+        direction: FocusDirection,
+    ) -> Result<Option<PanelId>, PaneError> {
+        self.check_spatial_nav()?;
+        let Some(layout) = self.previous.as_ref().map(Arc::clone) else {
+            return Ok(None);
+        };
         self.focus_direction(&layout, direction)
+    }
+
+    fn check_spatial_nav(&self) -> Result<(), PaneError> {
+        match self.strategy.as_ref() {
+            Some(s) if !s.supports_spatial_nav() => Err(PaneError::InvalidMutation(
+                MutationError::SpatialNavUnsupported,
+            )),
+            _ => Ok(()),
+        }
     }
 
     /// Pick a split direction from the focused panel's aspect ratio.
