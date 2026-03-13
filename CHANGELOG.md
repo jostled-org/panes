@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/jostled-org/panes/compare/panes-v0.11.0...panes-v0.11.1) - 2026-03-13
+
+### Other
+
+- skip CI on docs-only changes and link demo app
+
 ## [0.11.0](https://github.com/jostled-org/panes/compare/panes-v0.10.1...panes-v0.11.0) - 2026-03-13
 
 ### Fixed
