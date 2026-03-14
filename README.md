@@ -100,7 +100,7 @@ Adapters convert rects to renderer-native types:
 | [`panes-css`](https://crates.io/crates/panes-css) | Browser | CSS declarations (browser solves layout) |
 | [`panes-wasm`](https://crates.io/crates/panes-wasm) | Canvas/JS | `WasmRect` (f64) |
 
-See the [demo app](https://github.com/jostled-org/p3-demo) for a working ratatui example (wasm demo coming soon).
+See the [demo app](https://github.com/jostled-org/p3-demo) for a working ratatui example, or try the [live wasm demo](https://jostled-org.github.io/p3-demo/wasm/).
 
 Each adapter provides a `panels()` iterator that yields `PanelEntry { id, kind, rect, kind_index }` — no hashmap, no cross-referencing:
 
