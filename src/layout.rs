@@ -167,6 +167,11 @@ impl Layout {
     }
 
     /// Create a [`Columns`](crate::preset::Columns) builder.
+    ///
+    /// # Deprecated
+    /// Use [`Layout::dashboard`] with span-1 cards instead.
+    #[deprecated(since = "0.12.0", note = "use Layout::dashboard() with span-1 cards")]
+    #[allow(deprecated)]
     pub fn columns(
         count: usize,
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
@@ -210,7 +215,7 @@ impl Layout {
 
     /// Create a [`Dashboard`](crate::preset::Dashboard) builder.
     pub fn dashboard(
-        cards: impl IntoIterator<Item = (impl Into<Arc<str>>, usize)>,
+        cards: impl IntoIterator<Item = (impl Into<Arc<str>>, impl Into<crate::strategy::CardSpan>)>,
     ) -> crate::preset::Dashboard {
         crate::preset::Dashboard::new(cards)
     }
@@ -229,6 +234,11 @@ impl Layout {
     }
 
     /// Create a [`Grid`](crate::preset::Grid) builder.
+    ///
+    /// # Deprecated
+    /// Use [`Layout::dashboard`] with span-1 cards instead.
+    #[deprecated(since = "0.12.0", note = "use Layout::dashboard() with span-1 cards")]
+    #[allow(deprecated)]
     pub fn grid(
         cols: usize,
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,

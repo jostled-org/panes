@@ -142,7 +142,6 @@ impl OverlayDef {
 }
 
 /// A resolved overlay for adapter consumption.
-#[non_exhaustive]
 pub struct OverlayEntry<'a, R> {
     /// Overlay identifier.
     pub id: OverlayId,

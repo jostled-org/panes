@@ -17,10 +17,12 @@ mod stacked;
 mod tabbed;
 
 pub use centered_master::CenteredMaster;
+#[allow(deprecated)]
 pub use columns::Columns;
 pub use dashboard::Dashboard;
 pub use deck::Deck;
 pub use dwindle::Dwindle;
+#[allow(deprecated)]
 pub use grid::Grid;
 pub use holy_grail::HolyGrail;
 pub use master_stack::MasterStack;
@@ -36,8 +38,6 @@ pub use catalog::{PanelInputKind, PresetInfo};
 
 pub(crate) use common::collect_kinds;
 pub(crate) use common::impl_preset;
-pub(super) use common::{
-    add_active_hidden_panels, add_grow_panels, add_panels, build_single, col_style, row_style,
-};
-pub(super) use common::{simple_grid_style, validate_grid_columns};
+pub(super) use common::simple_grid_style;
+pub(super) use common::{add_active_hidden_panels, add_panels, build_single, col_style, row_style};
 pub(crate) use common::{validate_active, validate_f32_param, validate_kinds};

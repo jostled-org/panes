@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::breakpoint::{self, BreakpointEntry};
-use crate::compiler::{CompileResult, compile, compute_layout};
+use crate::compiler::{CompileResult, compute_layout};
 use crate::diff::{self, LayoutDiff, OverlayDiff, OverlayDiffScratch};
 use crate::error::{MutationError, PaneError, TreeError, ViewportError};
 use crate::focus::{self, FocusDirection};
@@ -521,10 +521,9 @@ impl LayoutRuntime {
             true => {}
             false => {
                 let target = ((idx as isize + delta).rem_euclid(len as isize)) as usize;
-                // move_panel can only fail if: no strategy (impossible,
-                // swap_by requires a strategy), OOB index (impossible,
-                // rem_euclid guarantees bounds), or rebuild fails on empty
-                // kinds (impossible, len > 1 checked above).
+                // Slotted strategies return MoveNotSupported (swap is a no-op).
+                // Other strategies: OOB is impossible (rem_euclid guarantees
+                // bounds) and rebuild cannot fail (len > 1 checked above).
                 let _ = self.move_panel(pid, target);
             }
         }
@@ -799,6 +798,7 @@ impl LayoutRuntime {
         // Reclaim the previous frame's buffers if no other consumers hold a reference.
         if let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) {
             self.rects_buf = Some(prev_layout.take_rects());
+            self.overlay_rects_buf = prev_layout.take_overlay_rects();
         }
 
         Ok(Frame { layout })
@@ -861,9 +861,10 @@ impl LayoutRuntime {
     ) -> Result<(CompileResult, Option<resolver::KindIndex>), PaneError> {
         let result = match (tree_dirty, self.cached_compile.take()) {
             (false, Some(cached)) => cached,
-            _ => {
+            (_, old) => {
                 self.tree.clear_dirty();
-                compile(&self.tree)?
+                let reuse = old.map(|c| c.taffy_tree);
+                crate::compiler::compile_with(&self.tree, reuse)?
             }
         };
         let cached_kinds = match tree_dirty {
@@ -886,7 +887,7 @@ impl LayoutRuntime {
                 &mut self.resolve_scratch,
                 self.rects_buf.take(),
             )?,
-            None => resolver::resolve(result, &self.tree)?,
+            None => resolver::resolve_dirty(result, &self.tree, &mut self.resolve_scratch)?,
         };
         self.cached_kinds = Some(Arc::clone(layout.kinds_arc()));
         Ok(layout)

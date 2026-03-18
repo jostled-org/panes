@@ -238,9 +238,10 @@ fn swap_next_after_add_on_all_strategies() {
             ratio: 0.5,
             gap: 0.0,
         },
-        StrategyKind::ColumnGrid {
+        StrategyKind::Dashboard {
             columns: 2,
             gap: 0.0,
+            spans: std::sync::Arc::from([]),
         },
     ];
 

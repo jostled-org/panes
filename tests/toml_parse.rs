@@ -758,6 +758,41 @@ panels = ["a", "b", "c"]
 }
 
 #[test]
+fn dashboard_full_width_span_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+columns = 4
+
+[[layout.panels]]
+kind = "sidebar"
+
+[[layout.panels]]
+kind = "content"
+span = "full-width"
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(100.0, 100.0).unwrap();
+    let content = resolved.by_kind("content")[0];
+    assert_eq!(resolved.get(content).unwrap().w, 100.0);
+}
+
+#[test]
+fn dashboard_invalid_span_string_errors() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+columns = 4
+
+[[layout.panels]]
+kind = "a"
+span = "stretch"
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(matches!(err, TomlError::InvalidValue { ref field, .. } if field.as_ref() == "span"));
+}
+
+#[test]
 fn dashboard_columns_and_min_column_width_conflict() {
     let toml = r#"
 [layout]

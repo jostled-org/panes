@@ -116,6 +116,7 @@ fn container_style(node: &Node, is_root: bool) -> taffy::Style {
             },
             ..Default::default()
         },
+        // Deep-clones the taffy::Style; known cost accepted for correctness.
         Node::TaffyPassthrough { style, .. } => style.as_ref().clone(),
         Node::Panel { .. } => taffy::Style::default(),
     }
@@ -142,6 +143,14 @@ pub(crate) fn direction_of(node: &Node) -> Direction {
 /// Validates the tree, then recursively walks from root, mapping each panes
 /// node to a corresponding Taffy node.
 pub fn compile(tree: &LayoutTree) -> Result<CompileResult, PaneError> {
+    compile_with(tree, None)
+}
+
+/// Compile a `LayoutTree`, optionally reusing a `TaffyTree` from a previous compile.
+pub fn compile_with(
+    tree: &LayoutTree,
+    reuse: Option<taffy::TaffyTree>,
+) -> Result<CompileResult, PaneError> {
     #[cfg(debug_assertions)]
     tree.validate()?;
 
@@ -149,8 +158,16 @@ pub fn compile(tree: &LayoutTree) -> Result<CompileResult, PaneError> {
         .root()
         .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
+    let taffy_tree = match reuse {
+        Some(mut t) => {
+            t.clear();
+            t
+        }
+        None => taffy::TaffyTree::new(),
+    };
+
     let mut ctx = CompileCtx {
-        taffy_tree: taffy::TaffyTree::new(),
+        taffy_tree,
         node_map: vec![None; tree.arena_len()],
     };
 

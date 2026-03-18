@@ -173,10 +173,15 @@ fn emit_grid_children(tree: &LayoutTree, children: &[NodeId], counter: &mut u32,
 }
 
 fn write_grid_card_rule(sel: &str, style: &taffy::Style, css: &mut String) {
-    let span = grid_column_span(style);
     let _ = write!(css, "{sel} {{ display: flex;");
-    if span > 1 {
-        let _ = write!(css, " grid-column: span {span};");
+    match grid_column_placement(style) {
+        GridColumnPlacement::FullWidth => {
+            css.push_str(" grid-column: 1 / -1;");
+        }
+        GridColumnPlacement::Span(n) if n > 1 => {
+            let _ = write!(css, " grid-column: span {n};");
+        }
+        _ => {}
     }
     css.push_str(" flex-grow: 1; flex-basis: 0px; flex-shrink: 1; }\n");
 }
@@ -196,10 +201,20 @@ fn emit_grid_card_panels(tree: &LayoutTree, card_id: NodeId, css: &mut String) {
     }
 }
 
-fn grid_column_span(style: &taffy::Style) -> u16 {
-    match style.grid_column.end {
-        taffy::GridPlacement::Span(n) => n,
-        _ => 1,
+enum GridColumnPlacement {
+    Span(u16),
+    FullWidth,
+}
+
+fn grid_column_placement(style: &taffy::Style) -> GridColumnPlacement {
+    match (&style.grid_column.start, &style.grid_column.end) {
+        (taffy::GridPlacement::Line(s), taffy::GridPlacement::Line(e))
+            if s.as_i16() == 1 && e.as_i16() == -1 =>
+        {
+            GridColumnPlacement::FullWidth
+        }
+        (_, taffy::GridPlacement::Span(n)) => GridColumnPlacement::Span(*n),
+        _ => GridColumnPlacement::Span(1),
     }
 }
 

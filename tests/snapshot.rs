@@ -278,6 +278,7 @@ fn dashboard_auto_fill_round_trips() {
     assert_eq!(frame.layout().panels().count(), 3);
 }
 
+#[allow(deprecated)]
 #[test]
 fn grid_auto_fill_snapshot_round_trip() {
     let rt = Layout::grid(2, ["a", "b", "c", "d"])
@@ -289,10 +290,7 @@ fn grid_auto_fill_snapshot_round_trip() {
     let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, panels } => {
-            assert!(matches!(
-                strategy,
-                StrategyConfig::ColumnGridAutoFill { .. }
-            ));
+            assert!(matches!(strategy, StrategyConfig::DashboardAutoFill { .. }));
             assert_eq!(panels.len(), 4);
         }
         _ => panic!("expected Strategy source"),
@@ -303,6 +301,7 @@ fn grid_auto_fill_snapshot_round_trip() {
     assert_eq!(frame.layout().panels().count(), 4);
 }
 
+#[allow(deprecated)]
 #[test]
 fn grid_auto_fit_snapshot_round_trip() {
     let rt = Layout::grid(2, ["a", "b"])
@@ -313,7 +312,7 @@ fn grid_auto_fit_snapshot_round_trip() {
     let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::ColumnGridAutoFit { .. }));
+            assert!(matches!(strategy, StrategyConfig::DashboardAutoFit { .. }));
         }
         _ => panic!("expected Strategy source"),
     }
@@ -323,6 +322,7 @@ fn grid_auto_fit_snapshot_round_trip() {
     assert_eq!(frame.layout().panels().count(), 2);
 }
 
+#[allow(deprecated)]
 #[test]
 fn columns_fixed_snapshot_round_trip() {
     let rt = Layout::columns(2, ["a", "b", "c", "d"])
@@ -333,7 +333,7 @@ fn columns_fixed_snapshot_round_trip() {
     let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::Columns { .. }));
+            assert!(matches!(strategy, StrategyConfig::Dashboard { .. }));
         }
         _ => panic!("expected Strategy source"),
     }
@@ -343,6 +343,7 @@ fn columns_fixed_snapshot_round_trip() {
     assert_eq!(frame.layout().panels().count(), 4);
 }
 
+#[allow(deprecated)]
 #[test]
 fn columns_auto_fill_snapshot_round_trip() {
     let rt = Layout::columns(3, ["a", "b", "c"])
@@ -353,7 +354,7 @@ fn columns_auto_fill_snapshot_round_trip() {
     let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::ColumnsAutoFill { .. }));
+            assert!(matches!(strategy, StrategyConfig::DashboardAutoFill { .. }));
         }
         _ => panic!("expected Strategy source"),
     }
@@ -363,6 +364,7 @@ fn columns_auto_fill_snapshot_round_trip() {
     assert_eq!(frame.layout().panels().count(), 3);
 }
 
+#[allow(deprecated)]
 #[test]
 fn columns_auto_fit_snapshot_round_trip() {
     let rt = Layout::columns(3, ["a", "b", "c"])
@@ -373,7 +375,7 @@ fn columns_auto_fit_snapshot_round_trip() {
     let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::ColumnsAutoFit { .. }));
+            assert!(matches!(strategy, StrategyConfig::DashboardAutoFit { .. }));
         }
         _ => panic!("expected Strategy source"),
     }

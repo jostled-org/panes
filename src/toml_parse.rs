@@ -14,7 +14,7 @@ macro_rules! apply_opt {
 }
 
 /// Errors arising from TOML configuration parsing.
-#[non_exhaustive]
+
 #[derive(Debug, thiserror::Error)]
 pub enum TomlError {
     /// TOML deserialization failed.
@@ -93,11 +93,33 @@ enum PanelsList {
 struct CardDef {
     kind: Box<str>,
     #[serde(default = "default_span")]
-    span: usize,
+    span: SpanValue,
 }
 
-fn default_span() -> usize {
-    1
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SpanValue {
+    Number(usize),
+    String(Box<str>),
+}
+
+impl SpanValue {
+    fn to_card_span(&self) -> Result<crate::strategy::CardSpan, TomlError> {
+        match self {
+            Self::Number(n) => Ok(crate::strategy::CardSpan::Columns(*n)),
+            Self::String(s) if s.as_ref() == "full-width" => {
+                Ok(crate::strategy::CardSpan::FullWidth)
+            }
+            Self::String(s) => Err(TomlError::InvalidValue {
+                field: "span".into(),
+                reason: format!("expected a number or 'full-width', got '{s}'").into(),
+            }),
+        }
+    }
+}
+
+fn default_span() -> SpanValue {
+    SpanValue::Number(1)
 }
 
 #[derive(Deserialize)]
@@ -161,8 +183,7 @@ fn build_from_def(def: LayoutDef) -> Result<Layout, TomlError> {
         "deck" => build_preset!(def, Layout::deck, master_ratio, active, gap),
         "tabbed" => build_preset!(def, Layout::tabbed, active, tab_height, gap),
         "stacked" => build_preset!(def, Layout::stacked, active, title_height, gap),
-        "columns" => build_columns(def),
-        "grid" => build_grid(def),
+        "columns" | "grid" => build_grid_or_columns(def),
         "sidebar" => build_sidebar(def),
         "split" => build_split(def),
         "holy-grail" => build_holy_grail(def),
@@ -198,78 +219,28 @@ fn require_field<'a>(value: &'a Option<Box<str>>, name: &str) -> Result<&'a str,
 
 // -- Count + list / named-param / dashboard builders --
 
-fn build_columns(def: LayoutDef) -> Result<Layout, TomlError> {
-    let panels = require_panels_strings(&def)?;
+/// Build a grid or columns strategy as a dashboard with span-1 cards.
+fn build_grid_or_columns(mut def: LayoutDef) -> Result<Layout, TomlError> {
     match (def.columns.is_some(), def.min_column_width.is_some()) {
+        (false, false) => return Err(TomlError::MissingField("columns".into())),
         (true, true) => {
             return Err(TomlError::InvalidValue {
                 field: "columns".into(),
                 reason: "columns and min_column_width are mutually exclusive".into(),
             });
         }
-        (false, false) => {
-            return Err(TomlError::MissingField("columns".into()));
-        }
         _ => {}
     }
-    let cols = def.columns.unwrap_or(1);
-    let mut preset = Layout::columns(cols, panels.iter().map(Box::as_ref));
-    preset = match (def.min_column_width, def.column_mode.as_deref()) {
-        (Some(w), Some("auto-fit")) => preset.auto_fit(w),
-        (Some(w), Some("auto-fill") | None) => preset.auto_fill(w),
-        (Some(_), Some(other)) => {
-            return Err(TomlError::InvalidValue {
-                field: "column_mode".into(),
-                reason: format!("expected 'auto-fill' or 'auto-fit', got '{other}'").into(),
-            });
-        }
-        (None, Some(_)) => {
-            return Err(TomlError::InvalidValue {
-                field: "column_mode".into(),
-                reason: "column_mode requires min_column_width".into(),
-            });
-        }
-        (None, None) => preset,
-    };
-    apply_opt!(preset, def, gap);
-    preset.build().map_err(into_toml_error)
-}
-
-fn build_grid(def: LayoutDef) -> Result<Layout, TomlError> {
     let panels = require_panels_strings(&def)?;
-    match (def.columns.is_some(), def.min_column_width.is_some()) {
-        (true, true) => {
-            return Err(TomlError::InvalidValue {
-                field: "columns".into(),
-                reason: "columns and min_column_width are mutually exclusive".into(),
-            });
-        }
-        (false, false) => {
-            return Err(TomlError::MissingField("columns".into()));
-        }
-        _ => {}
-    }
-    let cols = def.columns.unwrap_or(1);
-    let mut preset = Layout::grid(cols, panels.iter().map(Box::as_ref));
-    preset = match (def.min_column_width, def.column_mode.as_deref()) {
-        (Some(w), Some("auto-fit")) => preset.auto_fit(w),
-        (Some(w), Some("auto-fill") | None) => preset.auto_fill(w),
-        (Some(_), Some(other)) => {
-            return Err(TomlError::InvalidValue {
-                field: "column_mode".into(),
-                reason: format!("expected 'auto-fill' or 'auto-fit', got '{other}'").into(),
-            });
-        }
-        (None, Some(_)) => {
-            return Err(TomlError::InvalidValue {
-                field: "column_mode".into(),
-                reason: "column_mode requires min_column_width".into(),
-            });
-        }
-        (None, None) => preset,
-    };
-    apply_opt!(preset, def, gap);
-    preset.build().map_err(into_toml_error)
+    let cards: Vec<CardDef> = panels
+        .iter()
+        .map(|k| CardDef {
+            kind: k.clone(),
+            span: SpanValue::Number(1),
+        })
+        .collect();
+    def.panels = Some(PanelsList::Cards(cards));
+    build_dashboard(def)
 }
 
 fn build_sidebar(def: LayoutDef) -> Result<Layout, TomlError> {
@@ -322,11 +293,11 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
     let cards = match &def.panels {
         Some(PanelsList::Cards(cards)) => cards
             .iter()
-            .map(|c| (c.kind.clone(), c.span))
-            .collect::<Vec<_>>(),
+            .map(|c| Ok((c.kind.clone(), c.span.to_card_span()?)))
+            .collect::<Result<Vec<_>, TomlError>>()?,
         Some(PanelsList::Strings(strings)) => strings
             .iter()
-            .map(|s| (s.clone(), 1usize))
+            .map(|s| (s.clone(), crate::strategy::CardSpan::Columns(1)))
             .collect::<Vec<_>>(),
         None => return Err(TomlError::MissingField("panels".into())),
     };
@@ -517,36 +488,10 @@ fn breakpoint_def_to_strategy(
         "scrollable" => build_bp_strategy!(Strategy::scrollable(), bp, size, gap),
         "dwindle" => build_bp_strategy!(Strategy::dwindle(), bp, ratio, gap),
         "spiral" => build_bp_strategy!(Strategy::spiral(), bp, ratio, gap),
-        "columns" => build_bp_columns(bp),
+        "columns" | "grid" | "dashboard" => build_bp_dashboard(bp),
         "split" => build_bp_strategy!(Strategy::split(), bp, ratio, gap),
-        "grid" => build_bp_grid(bp),
-        "dashboard" => build_bp_dashboard(bp),
         other => Err(TomlError::UnknownStrategy(other.into())),
     }
-}
-
-fn build_bp_grid(bp: &BreakpointDef) -> Result<crate::strategy::builder::Strategy, TomlError> {
-    use crate::strategy::builder::Strategy;
-    let base = Strategy::grid(bp.columns.unwrap_or(1));
-    let configured = match (bp.min_column_width, bp.column_mode.as_deref(), bp.columns) {
-        (Some(w), Some("auto-fit"), _) => base.auto_fit(w),
-        (Some(w), _, _) => base.auto_fill(w),
-        (None, _, Some(c)) => Strategy::grid(c),
-        (None, _, None) => return Err(TomlError::MissingField("columns".into())),
-    };
-    build_bp_strategy!(configured, bp, gap)
-}
-
-fn build_bp_columns(bp: &BreakpointDef) -> Result<crate::strategy::builder::Strategy, TomlError> {
-    use crate::strategy::builder::Strategy;
-    let base = Strategy::columns();
-    let configured = match (bp.min_column_width, bp.column_mode.as_deref(), bp.columns) {
-        (Some(w), Some("auto-fit"), _) => base.auto_fit(w),
-        (Some(w), _, _) => base.auto_fill(w),
-        (None, _, Some(c)) => base.columns(c),
-        (None, _, None) => base,
-    };
-    build_bp_strategy!(configured, bp, gap)
 }
 
 fn build_bp_dashboard(bp: &BreakpointDef) -> Result<crate::strategy::builder::Strategy, TomlError> {

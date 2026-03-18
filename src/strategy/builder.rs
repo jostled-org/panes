@@ -6,7 +6,7 @@ use crate::runtime::LayoutRuntime;
 use crate::tree::LayoutTree;
 
 use super::build::build_tree_for_strategy;
-use super::{ActivePanelVariant, Direction, GridColumnMode, SlotDef, StrategyKind};
+use super::{ActivePanelVariant, CardSpan, Direction, GridColumnMode, SlotDef, StrategyKind};
 
 /// Generate a `build() -> Strategy` method from 1:1 field-to-variant mapping.
 macro_rules! impl_build_strategy {
@@ -50,8 +50,6 @@ impl_with_panels!(
     ActivePanelStrategy,
     WindowStrategy,
     BinarySplitStrategy,
-    ColumnsStrategy,
-    ColumnGridStrategy,
 );
 
 /// Generate `From<Builder> for Strategy` impls via `.build()`.
@@ -72,9 +70,7 @@ impl_into_strategy!(
     ActivePanelStrategy,
     WindowStrategy,
     BinarySplitStrategy,
-    ColumnsStrategy,
     SplitStrategy,
-    ColumnGridStrategy,
     DashboardStrategy,
 );
 
@@ -187,7 +183,9 @@ impl Strategy {
         }
     }
 
-    /// Columns strategy: CSS Grid-based equal columns.
+    /// Columns strategy. Deprecated — use [`Strategy::dashboard`] instead.
+    #[deprecated(since = "0.12.0", note = "use Strategy::dashboard() instead")]
+    #[allow(deprecated)]
     pub fn columns() -> ColumnsStrategy {
         ColumnsStrategy {
             columns: GridColumnMode::Fixed(0),
@@ -204,7 +202,9 @@ impl Strategy {
         }
     }
 
-    /// Grid strategy: uniform grid with a fixed number of columns.
+    /// Grid strategy. Deprecated — use [`Strategy::dashboard`] instead.
+    #[deprecated(since = "0.12.0", note = "use Strategy::dashboard() instead")]
+    #[allow(deprecated)]
     pub fn grid(columns: usize) -> ColumnGridStrategy {
         ColumnGridStrategy {
             columns: GridColumnMode::Fixed(columns),
@@ -282,25 +282,29 @@ impl BoundStrategy {
 // Builder structs — one per strategy family.
 // ---------------------------------------------------------------------------
 
+macro_rules! impl_master_ratio_gap {
+    ($($Builder:ident),+) => { $(
+        impl $Builder {
+            /// Set the master panel's share of the viewport (0.0–1.0).
+            pub fn master_ratio(mut self, ratio: f32) -> Self {
+                self.master_ratio = ratio;
+                self
+            }
+
+            /// Set the gap between panels.
+            pub fn gap(mut self, gap: f32) -> Self {
+                self.gap = gap;
+                self
+            }
+        }
+    )+ };
+}
+
 /// Builder for [`StrategyKind::MasterStack`].
 #[derive(Debug, Clone)]
 pub struct MasterStackStrategy {
     master_ratio: f32,
     gap: f32,
-}
-
-impl MasterStackStrategy {
-    /// Set the master panel's share of the viewport (0.0–1.0).
-    pub fn master_ratio(mut self, ratio: f32) -> Self {
-        self.master_ratio = ratio;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
 }
 
 /// Builder for [`StrategyKind::CenteredMaster`].
@@ -310,20 +314,6 @@ pub struct CenteredMasterStrategy {
     gap: f32,
 }
 
-impl CenteredMasterStrategy {
-    /// Set the master panel's share of the viewport (0.0–1.0).
-    pub fn master_ratio(mut self, ratio: f32) -> Self {
-        self.master_ratio = ratio;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
-}
-
 /// Builder for [`StrategyKind::Deck`].
 #[derive(Debug, Clone)]
 pub struct DeckStrategy {
@@ -331,19 +321,7 @@ pub struct DeckStrategy {
     gap: f32,
 }
 
-impl DeckStrategy {
-    /// Set the master panel's share of the viewport (0.0–1.0).
-    pub fn master_ratio(mut self, ratio: f32) -> Self {
-        self.master_ratio = ratio;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
-}
+impl_master_ratio_gap!(MasterStackStrategy, CenteredMasterStrategy, DeckStrategy);
 
 /// Builder for [`StrategyKind::ActivePanel`] (monocle, tabbed, stacked).
 #[derive(Debug, Clone)]
@@ -403,7 +381,8 @@ impl BinarySplitStrategy {
     }
 }
 
-/// Builder for columns strategy (CSS Grid-based).
+/// Builder for columns strategy. Deprecated — use [`DashboardStrategy`] instead.
+#[deprecated(since = "0.12.0", note = "use Strategy::dashboard() instead")]
 #[derive(Debug, Clone)]
 pub struct ColumnsStrategy {
     columns: GridColumnMode,
@@ -411,8 +390,11 @@ pub struct ColumnsStrategy {
 }
 
 /// Backward-compatible alias.
+#[deprecated(since = "0.12.0", note = "use DashboardStrategy instead")]
+#[allow(deprecated)]
 pub type SequenceStrategy = ColumnsStrategy;
 
+#[allow(deprecated)]
 impl ColumnsStrategy {
     /// Set a fixed number of columns. When 0 (default), uses panel count.
     pub fn columns(mut self, columns: usize) -> Self {
@@ -440,21 +422,45 @@ impl ColumnsStrategy {
 
     /// Convert to a generic [`Strategy`].
     pub fn build(self) -> Strategy {
-        let kind = match self.columns {
-            GridColumnMode::Fixed(columns) => StrategyKind::Columns {
-                columns,
-                gap: self.gap,
-            },
-            GridColumnMode::AutoFill { min_width } => StrategyKind::ColumnsAutoFill {
-                min_width,
-                gap: self.gap,
-            },
-            GridColumnMode::AutoFit { min_width } => StrategyKind::ColumnsAutoFit {
-                min_width,
-                gap: self.gap,
-            },
+        self.into_dashboard().build()
+    }
+
+    fn into_dashboard(self) -> DashboardStrategy {
+        DashboardStrategy {
+            columns: self.columns,
+            gap: self.gap,
+        }
+    }
+
+    /// Bind panels directly.
+    pub fn with_panels(
+        self,
+        panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
+    ) -> BoundStrategy {
+        let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
+        let resolved = match self.columns {
+            GridColumnMode::Fixed(0) => GridColumnMode::Fixed(panels.len()),
+            other => other,
         };
-        Strategy { kind }
+        let d = DashboardStrategy {
+            columns: resolved,
+            gap: self.gap,
+        };
+        d.with_panels(panels)
+    }
+}
+
+#[allow(deprecated)]
+impl From<ColumnsStrategy> for Strategy {
+    fn from(builder: ColumnsStrategy) -> Self {
+        builder.build()
+    }
+}
+
+#[allow(deprecated)]
+impl From<ColumnGridStrategy> for Strategy {
+    fn from(builder: ColumnGridStrategy) -> Self {
+        builder.build()
     }
 }
 
@@ -515,13 +521,15 @@ impl SplitStrategy {
     }
 }
 
-/// Builder for grid strategies (`ColumnGrid`, `ColumnGridAutoFill`, `ColumnGridAutoFit`).
+/// Builder for grid strategies. Deprecated — use [`DashboardStrategy`] instead.
+#[deprecated(since = "0.12.0", note = "use Strategy::dashboard() instead")]
 #[derive(Debug, Clone)]
 pub struct ColumnGridStrategy {
     columns: GridColumnMode,
     gap: f32,
 }
 
+#[allow(deprecated)]
 impl ColumnGridStrategy {
     /// Use responsive `repeat(auto-fill, minmax(min_width, 1fr))` columns.
     pub fn auto_fill(mut self, min_width: f32) -> Self {
@@ -543,21 +551,22 @@ impl ColumnGridStrategy {
 
     /// Convert to a generic [`Strategy`].
     pub fn build(self) -> Strategy {
-        let kind = match self.columns {
-            GridColumnMode::Fixed(columns) => StrategyKind::ColumnGrid {
-                columns,
-                gap: self.gap,
-            },
-            GridColumnMode::AutoFill { min_width } => StrategyKind::ColumnGridAutoFill {
-                min_width,
-                gap: self.gap,
-            },
-            GridColumnMode::AutoFit { min_width } => StrategyKind::ColumnGridAutoFit {
-                min_width,
-                gap: self.gap,
-            },
-        };
-        Strategy { kind }
+        self.into_dashboard().build()
+    }
+
+    /// Bind panels directly.
+    pub fn with_panels(
+        self,
+        panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
+    ) -> BoundStrategy {
+        self.into_dashboard().with_panels(panels)
+    }
+
+    fn into_dashboard(self) -> DashboardStrategy {
+        DashboardStrategy {
+            columns: self.columns,
+            gap: self.gap,
+        }
     }
 }
 
@@ -600,11 +609,14 @@ impl DashboardStrategy {
     /// Bind cards with explicit column spans.
     pub fn with_cards(
         self,
-        cards: impl IntoIterator<Item = (impl Into<Arc<str>>, usize)>,
+        cards: impl IntoIterator<Item = (impl Into<Arc<str>>, impl Into<CardSpan>)>,
     ) -> BoundStrategy {
-        let cards: Vec<(Arc<str>, usize)> = cards.into_iter().map(|(k, s)| (k.into(), s)).collect();
+        let cards: Vec<(Arc<str>, CardSpan)> = cards
+            .into_iter()
+            .map(|(k, s)| (k.into(), s.into()))
+            .collect();
         let panels: Vec<Arc<str>> = cards.iter().map(|(k, _)| Arc::clone(k)).collect();
-        let spans: Arc<[usize]> = cards.iter().map(|(_, s)| *s).collect();
+        let spans: Arc<[CardSpan]> = cards.iter().map(|(_, s)| *s).collect();
         let kind = self.to_strategy_kind(spans);
         BoundStrategy {
             kind,
@@ -619,7 +631,7 @@ impl DashboardStrategy {
         panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> BoundStrategy {
         let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
-        let spans: Arc<[usize]> = vec![1; panels.len()].into();
+        let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); panels.len()].into();
         let kind = self.to_strategy_kind(spans);
         BoundStrategy {
             kind,
@@ -632,13 +644,13 @@ impl DashboardStrategy {
     /// The resulting strategy will have empty spans — bind panels via
     /// [`Strategy::with_panels`] (all spans default to 1).
     pub fn build(self) -> Strategy {
-        let spans: Arc<[usize]> = Arc::from([]);
+        let spans: Arc<[CardSpan]> = Arc::from([]);
         Strategy {
             kind: self.to_strategy_kind(spans),
         }
     }
 
-    fn to_strategy_kind(&self, spans: Arc<[usize]>) -> StrategyKind {
+    fn to_strategy_kind(&self, spans: Arc<[CardSpan]>) -> StrategyKind {
         match self.columns {
             GridColumnMode::Fixed(columns) => StrategyKind::Dashboard {
                 columns,

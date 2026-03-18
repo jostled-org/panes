@@ -4,7 +4,7 @@ use crate::error::{PaneError, TreeError};
 use crate::node::{Node, NodeId};
 use crate::overlay::{OverlayDef, SnapshotOverlay};
 use crate::panel::Constraints;
-use crate::strategy::{ActivePanelVariant, Direction, SlotDef, StrategyKind};
+use crate::strategy::{ActivePanelVariant, CardSpan, Direction, SlotDef, StrategyKind};
 use crate::tree::LayoutTree;
 
 /// Serializable snapshot of a [`LayoutRuntime`](crate::runtime::LayoutRuntime)
@@ -69,7 +69,7 @@ impl LayoutSnapshot {
 
 /// What a snapshot restores from: a strategy recipe, a tree topology,
 /// or an adaptive breakpoint set.
-#[non_exhaustive]
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SnapshotSource {
@@ -108,7 +108,7 @@ pub struct SnapshotBreakpoint {
 
 /// Serializable strategy configuration — mirrors [`StrategyKind`] with
 /// owned collections instead of `Arc<[T]>`.
-#[non_exhaustive]
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StrategyConfig {
@@ -155,56 +155,14 @@ pub enum StrategyConfig {
         /// Gap between panels.
         gap: f32,
     },
-    /// Fixed number of equal columns with panels distributed.
-    ColumnGrid {
-        /// Number of columns.
-        columns: usize,
-        /// Gap between panels.
-        gap: f32,
-    },
-    /// Grid with responsive auto-fill columns.
-    ColumnGridAutoFill {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-    /// Grid with responsive auto-fit columns.
-    ColumnGridAutoFit {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-    /// Equal columns of panels.
-    Columns {
-        /// Number of columns.
-        columns: usize,
-        /// Gap between panels.
-        gap: f32,
-    },
-    /// Columns with responsive auto-fill.
-    ColumnsAutoFill {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-    /// Columns with responsive auto-fit.
-    ColumnsAutoFit {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-    /// Grid with per-panel column spans.
+    /// CSS Grid with per-panel column spans (dashboard, grid, columns).
     Dashboard {
         /// Fixed number of columns.
         columns: usize,
         /// Gap between panels.
         gap: f32,
         /// Column span for each panel.
-        spans: Box<[usize]>,
+        spans: Box<[CardSpan]>,
     },
     /// Dashboard with responsive auto-fill columns.
     DashboardAutoFill {
@@ -213,7 +171,7 @@ pub enum StrategyConfig {
         /// Gap between panels.
         gap: f32,
         /// Column span for each panel.
-        spans: Box<[usize]>,
+        spans: Box<[CardSpan]>,
     },
     /// Dashboard with responsive auto-fit columns.
     DashboardAutoFit {
@@ -222,7 +180,7 @@ pub enum StrategyConfig {
         /// Gap between panels.
         gap: f32,
         /// Column span for each panel.
-        spans: Box<[usize]>,
+        spans: Box<[CardSpan]>,
     },
     /// Only one panel visible at a time (monocle, tabbed, stacked).
     ActivePanel {
@@ -335,12 +293,6 @@ strategy_convert! {
         Deck { master_ratio, gap },
         CenteredMaster { master_ratio, gap },
         BinarySplit { spiral, ratio, gap },
-        ColumnGrid { columns, gap },
-        ColumnGridAutoFill { min_width, gap },
-        ColumnGridAutoFit { min_width, gap },
-        Columns { columns, gap },
-        ColumnsAutoFill { min_width, gap },
-        ColumnsAutoFit { min_width, gap },
         ActivePanel { variant, bar_height },
         Window { size, gap },
     ],

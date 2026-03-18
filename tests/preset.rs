@@ -1,4 +1,4 @@
-use panes::{Layout, PanelInputKind, Rect};
+use panes::{CardSpan, Layout, PanelInputKind, Rect};
 
 // -- Step 1: master_stack, sidebar, split --
 
@@ -432,6 +432,35 @@ fn dashboard_auto_fill_with_spans() {
     let wide = resolved.by_kind("wide")[0];
     let narrow = resolved.by_kind("narrow")[0];
     assert!(resolved.get(wide).unwrap().w > resolved.get(narrow).unwrap().w);
+}
+
+#[test]
+fn dashboard_full_width_spans_all_columns() {
+    let resolved = Layout::dashboard([
+        ("narrow", CardSpan::Columns(1)),
+        ("wide", CardSpan::FullWidth),
+    ])
+    .columns(4)
+    .resolve(100.0, 100.0)
+    .unwrap();
+
+    let wide = resolved.by_kind("wide")[0];
+    assert_eq!(resolved.get(wide).unwrap().w, 100.0);
+}
+
+#[test]
+fn dashboard_full_width_with_auto_fill() {
+    let resolved = Layout::dashboard([
+        ("sidebar", CardSpan::Columns(1)),
+        ("content", CardSpan::FullWidth),
+        ("footer", CardSpan::Columns(1)),
+    ])
+    .auto_fill(200.0)
+    .resolve(800.0, 600.0)
+    .unwrap();
+
+    let content = resolved.by_kind("content")[0];
+    assert_eq!(resolved.get(content).unwrap().w, 800.0);
 }
 
 #[test]
@@ -898,8 +927,8 @@ fn scrollable_single_panel_fills_viewport() {
 // -- Preset catalog --
 
 #[test]
-fn presets_returns_15_entries() {
-    assert_eq!(Layout::presets().len(), 15);
+fn presets_returns_13_entries() {
+    assert_eq!(Layout::presets().len(), 13);
 }
 
 #[test]

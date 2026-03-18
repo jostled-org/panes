@@ -421,10 +421,15 @@ fn dashboard_empty_cards_is_error() {
     assert!(result.is_err());
 }
 
+#[allow(deprecated)]
 #[test]
-fn zero_columns_grid_is_error() {
-    let result = Strategy::grid(0).with_panels(["a", "b"]).into_runtime();
-    assert!(result.is_err());
+fn zero_columns_grid_resolves_to_panel_count() {
+    let mut rt = Strategy::grid(0)
+        .with_panels(["a", "b"])
+        .into_runtime()
+        .unwrap();
+    let frame = rt.resolve(100.0, 100.0).unwrap();
+    assert_eq!(frame.layout().panels().count(), 2);
 }
 
 #[test]

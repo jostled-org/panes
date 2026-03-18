@@ -22,13 +22,6 @@ pub(crate) fn build_single(kind: Arc<str>) -> Result<Layout, PaneError> {
     b.build()
 }
 
-/// Add one grow(1.0) panel per kind. Shared by columns and grid presets.
-pub(crate) fn add_grow_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>]) {
-    for kind in kinds {
-        ctx.panel(Arc::clone(kind));
-    }
-}
-
 /// Validate that at least one kind was provided.
 pub(crate) fn validate_kinds(kinds: &[Arc<str>]) -> Result<(), PaneError> {
     match kinds.is_empty() {
@@ -137,20 +130,7 @@ pub(crate) fn auto_repeat_track(kind: &str, min_width: f32) -> GridTemplateCompo
     repeat(kind, vec![track])
 }
 
-/// Validate a [`GridColumnMode`] for CSS Grid presets.
-pub(crate) fn validate_grid_columns(mode: GridColumnMode) -> Result<(), PaneError> {
-    match mode {
-        GridColumnMode::Fixed(0) => Err(PaneError::InvalidTree(TreeError::ColumnsCountZero)),
-        GridColumnMode::AutoFill { min_width } | GridColumnMode::AutoFit { min_width }
-            if !(min_width > 0.0 && min_width.is_finite()) =>
-        {
-            Err(PaneError::InvalidTree(TreeError::GridMinWidthInvalid))
-        }
-        _ => Ok(()),
-    }
-}
-
-/// Build a `Display::Grid` root style for flat grid presets (grid, columns).
+/// Build a `Display::Grid` root style for CSS Grid presets.
 pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32) -> taffy::Style {
     let gap_len = taffy::LengthPercentage::length(gap);
     taffy::Style {
@@ -184,6 +164,7 @@ macro_rules! impl_preset {
         super::impl_preset!($Type);
     };
     ($Type:ty) => {
+        #[allow(deprecated)]
         impl $Type {
             /// Build and resolve the preset at the given viewport size.
             pub fn resolve(
@@ -195,6 +176,7 @@ macro_rules! impl_preset {
             }
         }
 
+        #[allow(deprecated)]
         impl TryFrom<$Type> for $crate::Layout {
             type Error = $crate::PaneError;
 

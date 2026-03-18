@@ -1,23 +1,27 @@
 use std::sync::Arc;
 
+use taffy::prelude::TaffyGridLine;
+
 use crate::builder::LayoutBuilder;
 use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::layout::Layout;
-use crate::strategy::GridColumnMode;
+use crate::strategy::{CardSpan, GridColumnMode};
 
 /// Builder for the grid-based dashboard preset layout.
 pub struct Dashboard {
-    cards: Arc<[(Arc<str>, usize)]>,
+    cards: Arc<[(Arc<str>, CardSpan)]>,
     columns: GridColumnMode,
     gap: f32,
 }
 
 impl Dashboard {
-    pub(crate) fn new(cards: impl IntoIterator<Item = (impl Into<Arc<str>>, usize)>) -> Self {
+    pub(crate) fn new(
+        cards: impl IntoIterator<Item = (impl Into<Arc<str>>, impl Into<CardSpan>)>,
+    ) -> Self {
         Self {
             cards: cards
                 .into_iter()
-                .map(|(k, span)| (k.into(), span))
+                .map(|(k, span)| (k.into(), span.into()))
                 .collect(),
             columns: GridColumnMode::Fixed(4),
             gap: 0.0,
@@ -74,25 +78,34 @@ fn validate_dashboard_columns(columns: GridColumnMode) -> Result<(), PaneError> 
         GridColumnMode::AutoFill { min_width } | GridColumnMode::AutoFit { min_width }
             if !(min_width > 0.0 && min_width.is_finite()) =>
         {
-            Err(PaneError::InvalidTree(TreeError::GridMinWidthInvalid))
+            Err(PaneError::InvalidTree(TreeError::DashboardMinWidthInvalid))
         }
         _ => Ok(()),
     }
 }
 
-fn card_style(span: usize) -> Result<taffy::Style, PaneError> {
-    let span_u16 = u16::try_from(span)
-        .map_err(|_| PaneError::InvalidConstraint(ConstraintError::GridSpanOverflow(span)))?;
-    Ok(taffy::Style {
-        grid_column: taffy::Line {
-            start: taffy::GridPlacement::Auto,
-            end: taffy::GridPlacement::Span(span_u16),
+fn card_style(span: CardSpan) -> Result<taffy::Style, PaneError> {
+    let grid_column = match span {
+        CardSpan::FullWidth => taffy::Line {
+            start: taffy::GridPlacement::from_line_index(1),
+            end: taffy::GridPlacement::from_line_index(-1),
         },
+        CardSpan::Columns(n) => {
+            let span_u16 = u16::try_from(n)
+                .map_err(|_| PaneError::InvalidConstraint(ConstraintError::GridSpanOverflow(n)))?;
+            taffy::Line {
+                start: taffy::GridPlacement::Auto,
+                end: taffy::GridPlacement::Span(span_u16),
+            }
+        }
+    };
+    Ok(taffy::Style {
+        grid_column,
         ..Default::default()
     })
 }
 
-fn add_cards(ctx: &mut crate::ContainerCtx, cards: &[(Arc<str>, usize)]) {
+fn add_cards(ctx: &mut crate::ContainerCtx, cards: &[(Arc<str>, CardSpan)]) {
     for (kind, span) in cards {
         match card_style(*span) {
             Ok(style) => {
@@ -111,7 +124,7 @@ fn add_cards(ctx: &mut crate::ContainerCtx, cards: &[(Arc<str>, usize)]) {
 impl Dashboard {
     /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
     pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let spans: Arc<[usize]> = self.cards.iter().map(|(_, s)| *s).collect();
+        let spans: Arc<[CardSpan]> = self.cards.iter().map(|(_, s)| *s).collect();
         let kinds: Vec<Arc<str>> = self.cards.iter().map(|(k, _)| Arc::clone(k)).collect();
         let strategy = match self.columns {
             GridColumnMode::Fixed(columns) => crate::strategy::StrategyKind::Dashboard {

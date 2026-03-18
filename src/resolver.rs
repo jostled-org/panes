@@ -12,7 +12,6 @@ use crate::tree::LayoutTree;
 ///
 /// Generic over `R` so the core crate yields `PanelEntry<'_, &Rect>` while
 /// output crates yield their own rect type (e.g. `ratatui::Rect`, `egui::Rect`).
-#[non_exhaustive]
 pub struct PanelEntry<'a, R> {
     /// Panel identifier.
     pub id: PanelId,
@@ -147,6 +146,11 @@ impl ResolvedLayout {
         std::mem::take(&mut self.rects)
     }
 
+    /// Take ownership of the overlay rects buffer for reuse.
+    pub fn take_overlay_rects(&mut self) -> Vec<(OverlayId, Arc<str>, Rect)> {
+        std::mem::take(&mut self.overlay_rects)
+    }
+
     /// Linearly interpolate between two resolved layouts.
     ///
     /// Panels in `self` but not `other` interpolate against themselves (no-op).
@@ -251,10 +255,11 @@ fn resolve_children(
     Ok(())
 }
 
-/// Reusable scratch state for iterative DFS resolution.
+/// Reusable scratch state for DFS resolution.
 #[derive(Default)]
 pub(crate) struct ResolveScratch {
     stack: Vec<(NodeId, f32, f32)>,
+    kinds_buf: FxHashMap<Arc<str>, Vec<PanelId>>,
 }
 
 /// Iterative DFS that only populates rects. Reuses the stack across frames.
@@ -340,20 +345,33 @@ pub(crate) fn resolve_with_cached_kinds(
 
 /// Walk the compiled Taffy tree and produce a `ResolvedLayout` mapping each panel to its rect.
 pub fn resolve(result: &CompileResult, tree: &LayoutTree) -> Result<ResolvedLayout, PaneError> {
+    resolve_dirty(result, tree, &mut ResolveScratch::default())
+}
+
+/// Like [`resolve`] but reuses scratch buffers across frames.
+pub(crate) fn resolve_dirty(
+    result: &CompileResult,
+    tree: &LayoutTree,
+    scratch: &mut ResolveScratch,
+) -> Result<ResolvedLayout, PaneError> {
     let root_id = tree
         .root()
         .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
     let mut rects = vec![None; tree.panel_id_high_water() as usize];
-    let mut kinds: FxHashMap<Arc<str>, Vec<PanelId>> =
-        FxHashMap::with_capacity_and_hasher(tree.kind_count(), Default::default());
 
-    resolve_dfs(tree, result, root_id, 0.0, 0.0, &mut rects, &mut kinds)?;
+    // Reuse kinds buffer: clear values but retain map capacity.
+    let kinds_buf = &mut scratch.kinds_buf;
+    for v in kinds_buf.values_mut() {
+        v.clear();
+    }
+
+    resolve_dfs(tree, result, root_id, 0.0, 0.0, &mut rects, kinds_buf)?;
 
     let kinds = Arc::new(
-        kinds
-            .into_iter()
-            .map(|(k, v)| (k, v.into_boxed_slice()))
+        kinds_buf
+            .iter()
+            .map(|(k, v)| (Arc::clone(k), v.as_slice().into()))
             .collect(),
     );
 

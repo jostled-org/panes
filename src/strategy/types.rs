@@ -33,6 +33,23 @@ pub struct SlotDef {
     pub constraints: Constraints,
 }
 
+/// Column span for a dashboard card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CardSpan {
+    /// Span a fixed number of columns.
+    Columns(usize),
+    /// Span all columns regardless of how many the viewport produces.
+    /// Emits `grid-column: 1 / -1` in CSS.
+    FullWidth,
+}
+
+impl From<usize> for CardSpan {
+    fn from(n: usize) -> Self {
+        Self::Columns(n)
+    }
+}
+
 /// Column mode for CSS Grid-based presets.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -53,7 +70,7 @@ pub(crate) enum GridColumnMode {
 
 /// Behavioral strategy for a layout, determining how add/remove/move/focus
 /// mutations are applied to the tree.
-#[non_exhaustive]
+
 #[derive(Debug, Clone)]
 pub enum StrategyKind {
     /// Linear sequence of equal panels (split, columns).
@@ -101,62 +118,14 @@ pub enum StrategyKind {
         gap: f32,
     },
 
-    /// Uniform grid of panels (grid) with fixed columns.
-    ColumnGrid {
-        /// Number of columns.
-        columns: usize,
-        /// Gap between panels.
-        gap: f32,
-    },
-
-    /// Grid with responsive auto-fill columns.
-    ColumnGridAutoFill {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-
-    /// Grid with responsive auto-fit columns.
-    ColumnGridAutoFit {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-
-    /// Equal columns of panels (columns) with fixed column count.
-    Columns {
-        /// Number of columns.
-        columns: usize,
-        /// Gap between panels.
-        gap: f32,
-    },
-
-    /// Columns with responsive auto-fill.
-    ColumnsAutoFill {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-
-    /// Columns with responsive auto-fit.
-    ColumnsAutoFit {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-    },
-
-    /// CSS-grid dashboard with per-card column spans (dashboard).
+    /// CSS-grid dashboard with per-card column spans (dashboard, grid, columns).
     Dashboard {
         /// Fixed number of columns.
         columns: usize,
         /// Gap between panels.
         gap: f32,
         /// Column span per card, in order.
-        spans: Arc<[usize]>,
+        spans: Arc<[CardSpan]>,
     },
 
     /// Dashboard with responsive auto-fill columns.
@@ -166,7 +135,7 @@ pub enum StrategyKind {
         /// Gap between panels.
         gap: f32,
         /// Column span per card, in order.
-        spans: Arc<[usize]>,
+        spans: Arc<[CardSpan]>,
     },
 
     /// Dashboard with responsive auto-fit columns.
@@ -176,7 +145,7 @@ pub enum StrategyKind {
         /// Gap between panels.
         gap: f32,
         /// Column span per card, in order.
-        spans: Arc<[usize]>,
+        spans: Arc<[CardSpan]>,
     },
 
     /// Only one panel visible at a time (monocle, tabbed, stacked).
@@ -216,12 +185,6 @@ impl StrategyKind {
             | Self::Deck { gap, .. }
             | Self::CenteredMaster { gap, .. }
             | Self::BinarySplit { gap, .. }
-            | Self::ColumnGrid { gap, .. }
-            | Self::ColumnGridAutoFill { gap, .. }
-            | Self::ColumnGridAutoFit { gap, .. }
-            | Self::Columns { gap, .. }
-            | Self::ColumnsAutoFill { gap, .. }
-            | Self::ColumnsAutoFit { gap, .. }
             | Self::Dashboard { gap, .. }
             | Self::DashboardAutoFill { gap, .. }
             | Self::DashboardAutoFit { gap, .. }

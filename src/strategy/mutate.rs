@@ -200,6 +200,10 @@ fn rebuild_from_sequence(
 }
 
 /// Rebuild the tree from a kinds list and repopulate the sequence.
+///
+/// Full tree rebuild on every mutation is a deliberate design trade-off:
+/// strategy trees are structurally determined by kind order, so in-place
+/// patching would duplicate each strategy's topology logic.
 fn rebuild_tree_and_sequence(
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,

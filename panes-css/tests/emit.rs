@@ -1,4 +1,4 @@
-use panes::{Layout, LayoutBuilder, fixed, grow};
+use panes::{CardSpan, Layout, LayoutBuilder, fixed, grow};
 
 #[test]
 fn simple_row_emits_flex_row() {
@@ -342,5 +342,62 @@ fn columns_fixed_css_emits_grid() {
     assert!(
         css.contains("repeat(4, 1fr)"),
         "fixed columns should use repeat(N, 1fr), got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_full_width_card_emits_1_to_neg1() {
+    let layout = Layout::dashboard([
+        ("sidebar", CardSpan::Columns(1)),
+        ("content", CardSpan::FullWidth),
+    ])
+    .auto_fill(200.0)
+    .build()
+    .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("grid-column: 1 / -1"),
+        "full-width card should emit grid-column: 1 / -1, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_full_width_with_fixed_columns() {
+    let layout = Layout::dashboard([
+        ("narrow", CardSpan::Columns(1)),
+        ("wide", CardSpan::FullWidth),
+    ])
+    .columns(4)
+    .build()
+    .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("grid-column: 1 / -1"),
+        "full-width card should emit 1 / -1 even with fixed columns, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_span_and_full_width_coexist() {
+    let layout = Layout::dashboard([
+        ("a", CardSpan::Columns(2)),
+        ("b", CardSpan::FullWidth),
+        ("c", CardSpan::Columns(1)),
+    ])
+    .columns(4)
+    .gap(4.0)
+    .build()
+    .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("grid-column: span 2"),
+        "span-2 card should use span 2, got: {css}"
+    );
+    assert!(
+        css.contains("grid-column: 1 / -1"),
+        "full-width card should use 1 / -1, got: {css}"
     );
 }

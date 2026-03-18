@@ -1,7 +1,7 @@
 use crate::{NodeId, PanelId};
 
 /// Invalid constraint parameter.
-#[non_exhaustive]
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConstraintError {
     /// A constraint value is NaN.
@@ -28,7 +28,7 @@ pub enum ConstraintError {
 }
 
 /// Tree structure validation failure.
-#[non_exhaustive]
+
 #[derive(Debug, thiserror::Error)]
 pub enum TreeError {
     /// Root is not set.
@@ -99,9 +99,6 @@ pub enum TreeError {
     /// Dashboard min_column_width must be positive and finite.
     #[error("dashboard min_column_width must be positive and finite")]
     DashboardMinWidthInvalid,
-    /// Grid min_column_width must be positive and finite.
-    #[error("min_column_width must be positive and finite")]
-    GridMinWidthInvalid,
     /// Window size must be at least 1.
     #[error("window size must be at least 1")]
     WindowSizeZero,
@@ -111,9 +108,6 @@ pub enum TreeError {
     /// No root node.
     #[error("no root")]
     NoRoot,
-    /// Column count must be at least 1.
-    #[error("column count must be at least 1")]
-    ColumnsCountZero,
     /// Tree has no serializable root for snapshot.
     #[error("no serializable root for snapshot")]
     SnapshotNoRoot,
@@ -137,7 +131,7 @@ pub enum TreeError {
 }
 
 /// Invalid viewport dimensions.
-#[non_exhaustive]
+
 #[derive(Debug, thiserror::Error)]
 pub enum ViewportError {
     /// Dimension is NaN.
@@ -158,7 +152,7 @@ pub enum ViewportError {
 }
 
 /// A mutation is not supported or invalid for the current state.
-#[non_exhaustive]
+
 #[derive(Debug, thiserror::Error)]
 pub enum MutationError {
     /// No strategy set on the runtime.
@@ -200,7 +194,7 @@ pub enum MutationError {
 }
 
 /// Errors arising from layout operations on panels and nodes.
-#[non_exhaustive]
+
 #[derive(Debug, thiserror::Error)]
 pub enum PaneError {
     /// A panel ID does not exist in the tree.

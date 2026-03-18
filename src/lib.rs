@@ -49,6 +49,7 @@ pub use overlay::{
     OverlayId, SnapshotOverlay, VAlign,
 };
 pub use panel::{Constraints, PanelIdGenerator, fixed, grow};
+#[allow(deprecated)]
 pub use preset::{
     CenteredMaster, Columns, Dashboard, Deck, Dwindle, Grid, HolyGrail, MasterStack, Monocle,
     PanelInputKind, PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
@@ -61,8 +62,9 @@ pub use snapshot::{
     LayoutSnapshot, SnapshotBreakpoint, SnapshotNode, SnapshotSlotDef, SnapshotSource,
     StrategyConfig,
 };
+#[allow(deprecated)]
 pub use strategy::{
-    ActivePanelStrategy, ActivePanelVariant, BinarySplitStrategy, BoundStrategy,
+    ActivePanelStrategy, ActivePanelVariant, BinarySplitStrategy, BoundStrategy, CardSpan,
     CenteredMasterStrategy, ColumnGridStrategy, ColumnsStrategy, DashboardStrategy, DeckStrategy,
     Direction, HolyGrailStrategy, MasterStackStrategy, SequenceStrategy, SidebarStrategy, SlotDef,
     SlottedStrategy, SplitStrategy, Strategy, StrategyKind, WindowStrategy,

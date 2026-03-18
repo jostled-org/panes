@@ -5,7 +5,7 @@ use crate::error::PaneError;
 use crate::sequence::PanelSequence;
 use crate::tree::LayoutTree;
 
-use super::{ActivePanelVariant, Direction, SlotDef, StrategyKind};
+use super::{ActivePanelVariant, CardSpan, Direction, SlotDef, StrategyKind};
 
 /// Build the initial tree for a strategy and panel kinds.
 /// Returns the tree and populates the sequence with panel IDs in order.
@@ -136,75 +136,32 @@ pub(super) fn build_binary_split_tree(
     Ok(LayoutTree::from(layout))
 }
 
-pub(super) fn build_column_grid_tree(
-    kinds: &[Arc<str>],
-    columns: usize,
-    gap_px: f32,
-) -> Result<LayoutTree, PaneError> {
-    let layout = crate::preset::Grid::new(columns, kinds.iter().map(Arc::clone))
-        .gap(gap_px)
-        .build()?;
-    Ok(LayoutTree::from(layout))
-}
-
-pub(super) fn build_responsive_grid_tree(
-    kinds: &[Arc<str>],
-    min_width: f32,
-    auto_fit: bool,
-    gap_px: f32,
-) -> Result<LayoutTree, PaneError> {
-    let preset = crate::preset::Grid::new(1, kinds.iter().map(Arc::clone));
-    let preset = match auto_fit {
-        true => preset.auto_fit(min_width),
-        false => preset.auto_fill(min_width),
-    };
-    let layout = preset.gap(gap_px).build()?;
-    Ok(LayoutTree::from(layout))
-}
-
-pub(super) fn build_columns_tree(
-    kinds: &[Arc<str>],
-    columns: usize,
-    gap_px: f32,
-) -> Result<LayoutTree, PaneError> {
-    let cols = match columns {
-        0 => kinds.len(),
-        n => n,
-    };
-    let layout = crate::preset::Columns::new(cols, kinds.iter().map(Arc::clone))
-        .gap(gap_px)
-        .build()?;
-    Ok(LayoutTree::from(layout))
-}
-
-pub(super) fn build_responsive_columns_tree(
-    kinds: &[Arc<str>],
-    min_width: f32,
-    auto_fit: bool,
-    gap_px: f32,
-) -> Result<LayoutTree, PaneError> {
-    let preset = crate::preset::Columns::new(1, kinds.iter().map(Arc::clone));
-    let preset = match auto_fit {
-        true => preset.auto_fit(min_width),
-        false => preset.auto_fill(min_width),
-    };
-    let layout = preset.gap(gap_px).build()?;
-    Ok(LayoutTree::from(layout))
+fn build_cards(kinds: &[Arc<str>], spans: &[CardSpan]) -> Vec<(Arc<str>, CardSpan)> {
+    kinds
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            (
+                Arc::clone(k),
+                spans.get(i).copied().unwrap_or(CardSpan::Columns(1)),
+            )
+        })
+        .collect()
 }
 
 pub(super) fn build_dashboard_tree(
     kinds: &[Arc<str>],
     columns: usize,
     gap_px: f32,
-    spans: &[usize],
+    spans: &[CardSpan],
 ) -> Result<LayoutTree, PaneError> {
-    let cards: Vec<(Arc<str>, usize)> = kinds
-        .iter()
-        .enumerate()
-        .map(|(i, k)| (Arc::clone(k), spans.get(i).copied().unwrap_or(1)))
-        .collect();
+    let cards = build_cards(kinds, spans);
+    let resolved_columns = match columns {
+        0 => kinds.len(),
+        n => n,
+    };
     let layout = crate::preset::Dashboard::new(cards)
-        .columns(columns)
+        .columns(resolved_columns)
         .gap(gap_px)
         .build()?;
     Ok(LayoutTree::from(layout))
@@ -215,13 +172,9 @@ pub(super) fn build_responsive_dashboard_tree(
     min_width: f32,
     auto_fit: bool,
     gap_px: f32,
-    spans: &[usize],
+    spans: &[CardSpan],
 ) -> Result<LayoutTree, PaneError> {
-    let cards: Vec<(Arc<str>, usize)> = kinds
-        .iter()
-        .enumerate()
-        .map(|(i, k)| (Arc::clone(k), spans.get(i).copied().unwrap_or(1)))
-        .collect();
+    let cards = build_cards(kinds, spans);
     let preset = match auto_fit {
         true => crate::preset::Dashboard::new(cards).auto_fit(min_width),
         false => crate::preset::Dashboard::new(cards).auto_fill(min_width),
@@ -303,20 +256,6 @@ pub(crate) fn build_tree_for_strategy(
         }
         StrategyKind::BinarySplit { spiral, ratio, gap } => {
             build_binary_split_tree(kinds, *spiral, *ratio, *gap)
-        }
-        StrategyKind::ColumnGrid { columns, gap } => build_column_grid_tree(kinds, *columns, *gap),
-        StrategyKind::ColumnGridAutoFill { min_width, gap } => {
-            build_responsive_grid_tree(kinds, *min_width, false, *gap)
-        }
-        StrategyKind::ColumnGridAutoFit { min_width, gap } => {
-            build_responsive_grid_tree(kinds, *min_width, true, *gap)
-        }
-        StrategyKind::Columns { columns, gap } => build_columns_tree(kinds, *columns, *gap),
-        StrategyKind::ColumnsAutoFill { min_width, gap } => {
-            build_responsive_columns_tree(kinds, *min_width, false, *gap)
-        }
-        StrategyKind::ColumnsAutoFit { min_width, gap } => {
-            build_responsive_columns_tree(kinds, *min_width, true, *gap)
         }
         StrategyKind::Dashboard {
             columns,

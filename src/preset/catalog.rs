@@ -18,21 +18,16 @@ pub struct PresetInfo {
     pub description: &'static str,
 }
 
-pub(crate) const PRESETS: [PresetInfo; 15] = [
+pub(crate) const PRESETS: [PresetInfo; 13] = [
     PresetInfo {
         name: "centered-master",
         input: PanelInputKind::DynamicList,
         description: "Master pane centered, remaining panes split left and right",
     },
     PresetInfo {
-        name: "columns",
-        input: PanelInputKind::DynamicList,
-        description: "Equal-width vertical columns with round-robin distribution",
-    },
-    PresetInfo {
         name: "dashboard",
         input: PanelInputKind::DynamicList,
-        description: "Mixed-size cards in a CSS Grid with column spans",
+        description: "CSS Grid with per-card column spans, responsive reflow, and full-width cards",
     },
     PresetInfo {
         name: "deck",
@@ -43,11 +38,6 @@ pub(crate) const PRESETS: [PresetInfo; 15] = [
         name: "dwindle",
         input: PanelInputKind::DynamicList,
         description: "Recursive split alternating horizontal and vertical",
-    },
-    PresetInfo {
-        name: "grid",
-        input: PanelInputKind::DynamicList,
-        description: "Equal-sized cells in an N-column arrangement",
     },
     PresetInfo {
         name: "holy-grail",

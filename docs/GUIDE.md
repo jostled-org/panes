@@ -1006,7 +1006,7 @@ for entry in resolved.panels() {
 }
 ```
 
-`PanelEntry` is `#[non_exhaustive]`, so it cannot be constructed outside the crate. Use `map_rect` to transform the rectangle type while preserving identity fields:
+Use `map_rect` to transform the rectangle type while preserving identity fields:
 
 ```rust
 let entries: Vec<_> = resolved
