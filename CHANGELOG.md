@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/jostled-org/panes/compare/panes-v0.11.2...panes-v0.12.0) - 2026-03-18
+
+### Added
+
+- [**breaking**] complete responsive layout implementation
+
 ## [0.11.2](https://github.com/jostled-org/panes/compare/panes-v0.11.1...panes-v0.11.2) - 2026-03-14
 
 ### Other
