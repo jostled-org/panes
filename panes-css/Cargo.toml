@@ -1,6 +1,6 @@
 [package]
 name = "panes-css"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 description = "CSS transpiler for the panes layout engine"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ keywords = ["layout", "css", "flexbox", "grid"]
 categories = ["gui", "web-programming"]
 
 [dependencies]
-panes = { version = "0.12", path = ".." }
+panes = { version = "0.13", path = ".." }
 taffy = "0.9"
 
 [lints]
