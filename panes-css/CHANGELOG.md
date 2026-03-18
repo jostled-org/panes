@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/jostled-org/panes/compare/panes-css-v0.3.0...panes-css-v0.4.0) - 2026-03-18
+
+### Added
+
+- [**breaking**] add CardSpan::FullWidth, consolidate grid strategies into Dashboard, optimize hot paths
+
 ## [0.3.0](https://github.com/jostled-org/panes/compare/panes-css-v0.2.6...panes-css-v0.3.0) - 2026-03-18
 
 ### Added
