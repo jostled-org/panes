@@ -96,8 +96,9 @@ impl LayoutBuilder {
 
     /// Validate the tree and produce a [`Layout`](crate::layout::Layout).
     pub fn build(self) -> Result<crate::layout::Layout, PaneError> {
-        if !self.root_set {
-            return Err(PaneError::InvalidTree(TreeError::RootNotSet));
+        match self.root_set {
+            false => return Err(PaneError::InvalidTree(TreeError::RootNotSet)),
+            true => {}
         }
         self.tree.validate()?;
         Ok(crate::layout::Layout::from_tree(self.tree))
@@ -130,8 +131,9 @@ pub struct ContainerCtx<'a> {
 impl ContainerCtx<'_> {
     /// Place a pre-created panel into this container.
     pub fn add(&mut self, pid: PanelId) {
-        if self.error.is_some() {
-            return;
+        match self.error {
+            Some(_) => return,
+            None => {}
         }
         match self.tree.node_for_panel(pid) {
             Some(nid) => self.children.push(nid),
@@ -150,8 +152,9 @@ impl ContainerCtx<'_> {
         kind: impl Into<std::sync::Arc<str>>,
         constraints: Constraints,
     ) -> PanelId {
-        if self.error.is_some() {
-            return sentinel_panel();
+        match self.error {
+            Some(_) => return sentinel_panel(),
+            None => {}
         }
         match self.tree.add_panel(kind, constraints) {
             Ok((pid, nid)) => {
@@ -172,11 +175,7 @@ impl ContainerCtx<'_> {
 
     /// Create a nested row container with the specified gap.
     pub fn row_gap(&mut self, gap: f32, f: impl FnOnce(&mut ContainerCtx)) {
-        if let Err(e) = validate_gap(gap) {
-            self.set_error(e);
-            return;
-        }
-        self.add_container(f, |tree, c| tree.add_row(gap, c));
+        self.container_with_gap(gap, f, |tree, c| tree.add_row(gap, c));
     }
 
     /// Create a nested column container with zero gap.
@@ -186,11 +185,7 @@ impl ContainerCtx<'_> {
 
     /// Create a nested column container with the specified gap.
     pub fn col_gap(&mut self, gap: f32, f: impl FnOnce(&mut ContainerCtx)) {
-        if let Err(e) = validate_gap(gap) {
-            self.set_error(e);
-            return;
-        }
-        self.add_container(f, |tree, c| tree.add_col(gap, c));
+        self.container_with_gap(gap, f, |tree, c| tree.add_col(gap, c));
     }
 
     /// Escape hatch: insert a raw Taffy node with a custom style.
@@ -198,13 +193,26 @@ impl ContainerCtx<'_> {
         self.add_container(f, |tree, c| tree.add_taffy_node(style, c));
     }
 
+    fn container_with_gap(
+        &mut self,
+        gap: f32,
+        f: impl FnOnce(&mut ContainerCtx),
+        build: impl FnOnce(&mut LayoutTree, Vec<NodeId>) -> Result<NodeId, PaneError>,
+    ) {
+        match validate_gap(gap) {
+            Err(e) => self.set_error(e),
+            Ok(()) => self.add_container(f, build),
+        }
+    }
+
     fn add_container(
         &mut self,
         f: impl FnOnce(&mut ContainerCtx),
         build: impl FnOnce(&mut LayoutTree, Vec<NodeId>) -> Result<NodeId, PaneError>,
     ) {
-        if self.error.is_some() {
-            return;
+        match self.error {
+            Some(_) => return,
+            None => {}
         }
         let children = match collect_children(self.tree, f) {
             Ok(c) => c,
@@ -222,8 +230,9 @@ impl ContainerCtx<'_> {
     /// Store an error in the deferred error slot.
     /// Subsequent operations will no-op.
     pub(crate) fn set_error(&mut self, err: PaneError) {
-        if self.error.is_none() {
-            self.error = Some(err);
+        match self.error {
+            None => self.error = Some(err),
+            Some(_) => {}
         }
     }
 }

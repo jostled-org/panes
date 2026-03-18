@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use serde::Deserialize;
 
 use crate::layout::Layout;
+use crate::runtime::LayoutRuntime;
 
 macro_rules! apply_opt {
     ($preset:expr, $def:expr, $($field:ident),+ $(,)?) => {
@@ -50,6 +53,8 @@ struct LayoutDef {
     strategy: Box<str>,
     panels: Option<PanelsList>,
     columns: Option<usize>,
+    min_column_width: Option<f32>,
+    column_mode: Option<Box<str>>,
     // Named-param fields
     sidebar: Option<Box<str>>,
     content: Option<Box<str>>,
@@ -73,6 +78,8 @@ struct LayoutDef {
     footer_height: Option<f32>,
     // Custom tree
     root: Option<TreeNodeDef>,
+    // Adaptive breakpoints
+    breakpoints: Option<Vec<BreakpointDef>>,
 }
 
 #[derive(Deserialize)]
@@ -105,6 +112,20 @@ struct TreeNodeDef {
     gap: Option<f32>,
     #[serde(default)]
     children: Vec<TreeNodeDef>,
+}
+
+#[derive(Deserialize)]
+struct BreakpointDef {
+    min_width: u32,
+    strategy: Box<str>,
+    gap: Option<f32>,
+    master_ratio: Option<f32>,
+    ratio: Option<f32>,
+    columns: Option<usize>,
+    min_column_width: Option<f32>,
+    column_mode: Option<Box<str>>,
+    bar_height: Option<f32>,
+    size: Option<usize>,
 }
 
 /// Parse a TOML string into a `Layout`.
@@ -178,21 +199,75 @@ fn require_field<'a>(value: &'a Option<Box<str>>, name: &str) -> Result<&'a str,
 // -- Count + list / named-param / dashboard builders --
 
 fn build_columns(def: LayoutDef) -> Result<Layout, TomlError> {
-    let cols = def
-        .columns
-        .ok_or(TomlError::MissingField("columns".into()))?;
     let panels = require_panels_strings(&def)?;
+    match (def.columns.is_some(), def.min_column_width.is_some()) {
+        (true, true) => {
+            return Err(TomlError::InvalidValue {
+                field: "columns".into(),
+                reason: "columns and min_column_width are mutually exclusive".into(),
+            });
+        }
+        (false, false) => {
+            return Err(TomlError::MissingField("columns".into()));
+        }
+        _ => {}
+    }
+    let cols = def.columns.unwrap_or(1);
     let mut preset = Layout::columns(cols, panels.iter().map(Box::as_ref));
+    preset = match (def.min_column_width, def.column_mode.as_deref()) {
+        (Some(w), Some("auto-fit")) => preset.auto_fit(w),
+        (Some(w), Some("auto-fill") | None) => preset.auto_fill(w),
+        (Some(_), Some(other)) => {
+            return Err(TomlError::InvalidValue {
+                field: "column_mode".into(),
+                reason: format!("expected 'auto-fill' or 'auto-fit', got '{other}'").into(),
+            });
+        }
+        (None, Some(_)) => {
+            return Err(TomlError::InvalidValue {
+                field: "column_mode".into(),
+                reason: "column_mode requires min_column_width".into(),
+            });
+        }
+        (None, None) => preset,
+    };
     apply_opt!(preset, def, gap);
     preset.build().map_err(into_toml_error)
 }
 
 fn build_grid(def: LayoutDef) -> Result<Layout, TomlError> {
-    let cols = def
-        .columns
-        .ok_or(TomlError::MissingField("columns".into()))?;
     let panels = require_panels_strings(&def)?;
+    match (def.columns.is_some(), def.min_column_width.is_some()) {
+        (true, true) => {
+            return Err(TomlError::InvalidValue {
+                field: "columns".into(),
+                reason: "columns and min_column_width are mutually exclusive".into(),
+            });
+        }
+        (false, false) => {
+            return Err(TomlError::MissingField("columns".into()));
+        }
+        _ => {}
+    }
+    let cols = def.columns.unwrap_or(1);
     let mut preset = Layout::grid(cols, panels.iter().map(Box::as_ref));
+    preset = match (def.min_column_width, def.column_mode.as_deref()) {
+        (Some(w), Some("auto-fit")) => preset.auto_fit(w),
+        (Some(w), Some("auto-fill") | None) => preset.auto_fill(w),
+        (Some(_), Some(other)) => {
+            return Err(TomlError::InvalidValue {
+                field: "column_mode".into(),
+                reason: format!("expected 'auto-fill' or 'auto-fit', got '{other}'").into(),
+            });
+        }
+        (None, Some(_)) => {
+            return Err(TomlError::InvalidValue {
+                field: "column_mode".into(),
+                reason: "column_mode requires min_column_width".into(),
+            });
+        }
+        (None, None) => preset,
+    };
     apply_opt!(preset, def, gap);
     preset.build().map_err(into_toml_error)
 }
@@ -264,7 +339,33 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
         }
         false => {}
     }
+    match (def.columns.is_some(), def.min_column_width.is_some()) {
+        (true, true) => {
+            return Err(TomlError::InvalidValue {
+                field: "columns".into(),
+                reason: "columns and min_column_width are mutually exclusive".into(),
+            });
+        }
+        _ => {}
+    }
     let mut preset = Layout::dashboard(cards);
+    preset = match (def.min_column_width, def.column_mode.as_deref()) {
+        (Some(w), Some("auto-fit")) => preset.auto_fit(w),
+        (Some(w), Some("auto-fill") | None) => preset.auto_fill(w),
+        (Some(_), Some(other)) => {
+            return Err(TomlError::InvalidValue {
+                field: "column_mode".into(),
+                reason: format!("expected 'auto-fill' or 'auto-fit', got '{other}'").into(),
+            });
+        }
+        (None, Some(_)) => {
+            return Err(TomlError::InvalidValue {
+                field: "column_mode".into(),
+                reason: "column_mode requires min_column_width".into(),
+            });
+        }
+        (None, None) => preset,
+    };
     apply_opt!(preset, def, columns, gap);
     preset.build().map_err(into_toml_error)
 }
@@ -311,6 +412,11 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
                 ),
             ));
         }
+        (Some(_), None) if node.grow.is_some() && node.fixed.is_some() => {
+            ctx.set_error(crate::error::PaneError::InvalidConstraint(
+                crate::error::ConstraintError::GrowFixedExclusive,
+            ));
+        }
         (Some(kind), None) => {
             let constraints = node_constraints(&node);
             ctx.panel_with(kind, constraints);
@@ -355,4 +461,102 @@ fn node_constraints(node: &TreeNodeDef) -> crate::panel::Constraints {
         c = c.max(hi);
     }
     c
+}
+
+// -- Adaptive / runtime parsing --
+
+/// Parse a TOML string into a `LayoutRuntime`.
+///
+/// Supports both single-strategy configs (builds a strategy runtime) and
+/// adaptive configs with `[[layout.breakpoints]]` (builds an adaptive runtime).
+pub(crate) fn parse_runtime(input: &str) -> Result<LayoutRuntime, TomlError> {
+    let doc: TomlDocument = toml::from_str(input)?;
+    let def = doc.layout;
+    match def.breakpoints.as_ref() {
+        Some(_) => build_adaptive(def),
+        None => {
+            let layout = build_from_def(def)?;
+            Ok(LayoutRuntime::new(crate::tree::LayoutTree::from(layout)))
+        }
+    }
+}
+
+fn build_adaptive(def: LayoutDef) -> Result<LayoutRuntime, TomlError> {
+    let panels = require_panels_strings(&def)?;
+    let panel_arcs: Vec<Arc<str>> = panels.iter().map(|s| Arc::from(s.as_ref())).collect();
+    let bp_defs = def
+        .breakpoints
+        .ok_or(TomlError::MissingField("breakpoints".into()))?;
+    let mut builder = Layout::adaptive(panel_arcs);
+    for bp in bp_defs {
+        let strategy = breakpoint_def_to_strategy(&bp)?;
+        builder = builder.at(bp.min_width, strategy);
+    }
+    builder.into_runtime().map_err(into_toml_error)
+}
+
+macro_rules! build_bp_strategy {
+    ($ctor:expr, $bp:expr $(, $field:ident)*) => {{
+        let mut s = $ctor;
+        apply_opt!(s, $bp, $($field),*);
+        Ok(s.build())
+    }};
+}
+
+fn breakpoint_def_to_strategy(
+    bp: &BreakpointDef,
+) -> Result<crate::strategy::builder::Strategy, TomlError> {
+    use crate::strategy::builder::Strategy;
+    match bp.strategy.as_ref() {
+        "master-stack" => build_bp_strategy!(Strategy::master_stack(), bp, master_ratio, gap),
+        "centered-master" => build_bp_strategy!(Strategy::centered_master(), bp, master_ratio, gap),
+        "deck" => build_bp_strategy!(Strategy::deck(), bp, master_ratio, gap),
+        "monocle" => build_bp_strategy!(Strategy::monocle(), bp, bar_height),
+        "tabbed" => build_bp_strategy!(Strategy::tabbed(), bp, bar_height),
+        "stacked" => build_bp_strategy!(Strategy::stacked(), bp, bar_height),
+        "scrollable" => build_bp_strategy!(Strategy::scrollable(), bp, size, gap),
+        "dwindle" => build_bp_strategy!(Strategy::dwindle(), bp, ratio, gap),
+        "spiral" => build_bp_strategy!(Strategy::spiral(), bp, ratio, gap),
+        "columns" => build_bp_columns(bp),
+        "split" => build_bp_strategy!(Strategy::split(), bp, ratio, gap),
+        "grid" => build_bp_grid(bp),
+        "dashboard" => build_bp_dashboard(bp),
+        other => Err(TomlError::UnknownStrategy(other.into())),
+    }
+}
+
+fn build_bp_grid(bp: &BreakpointDef) -> Result<crate::strategy::builder::Strategy, TomlError> {
+    use crate::strategy::builder::Strategy;
+    let base = Strategy::grid(bp.columns.unwrap_or(1));
+    let configured = match (bp.min_column_width, bp.column_mode.as_deref(), bp.columns) {
+        (Some(w), Some("auto-fit"), _) => base.auto_fit(w),
+        (Some(w), _, _) => base.auto_fill(w),
+        (None, _, Some(c)) => Strategy::grid(c),
+        (None, _, None) => return Err(TomlError::MissingField("columns".into())),
+    };
+    build_bp_strategy!(configured, bp, gap)
+}
+
+fn build_bp_columns(bp: &BreakpointDef) -> Result<crate::strategy::builder::Strategy, TomlError> {
+    use crate::strategy::builder::Strategy;
+    let base = Strategy::columns();
+    let configured = match (bp.min_column_width, bp.column_mode.as_deref(), bp.columns) {
+        (Some(w), Some("auto-fit"), _) => base.auto_fit(w),
+        (Some(w), _, _) => base.auto_fill(w),
+        (None, _, Some(c)) => base.columns(c),
+        (None, _, None) => base,
+    };
+    build_bp_strategy!(configured, bp, gap)
+}
+
+fn build_bp_dashboard(bp: &BreakpointDef) -> Result<crate::strategy::builder::Strategy, TomlError> {
+    use crate::strategy::builder::Strategy;
+    let base = Strategy::dashboard();
+    let configured = match (bp.min_column_width, bp.column_mode.as_deref(), bp.columns) {
+        (Some(w), Some("auto-fit"), _) => base.auto_fit(w),
+        (Some(w), _, _) => base.auto_fill(w),
+        (None, _, Some(c)) => base.columns(c),
+        (None, _, None) => base,
+    };
+    build_bp_strategy!(configured, bp, gap)
 }

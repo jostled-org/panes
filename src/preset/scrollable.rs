@@ -79,15 +79,10 @@ fn add_scroll_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>], window: 
     }
 }
 
-impl Scrollable {
-    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
-    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::Window {
-            size: 2,
-            gap: self.gap,
-        };
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
-    }
-}
-
-super::impl_preset!(Scrollable);
+super::impl_preset!(
+    Scrollable,
+    runtime(kinds, |this| crate::strategy::StrategyKind::Window {
+        size: 2,
+        gap: this.gap,
+    })
+);

@@ -3,11 +3,12 @@ use std::sync::Arc;
 use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
-use crate::preset::{col_style, collect_kinds, validate_kinds};
+use crate::preset::{collect_kinds, validate_grid_columns, validate_kinds};
+use crate::strategy::GridColumnMode;
 
 /// Builder for the equal-columns preset layout.
 pub struct Columns {
-    count: usize,
+    cols: GridColumnMode,
     kinds: Arc<[Arc<str>]>,
     gap: f32,
 }
@@ -15,10 +16,22 @@ pub struct Columns {
 impl Columns {
     pub(crate) fn new(count: usize, kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Self {
         Self {
-            count,
+            cols: GridColumnMode::Fixed(count),
             kinds: collect_kinds(kinds),
             gap: 0.0,
         }
+    }
+
+    /// Use responsive `repeat(auto-fill, minmax(min_width, 1fr))` columns.
+    pub fn auto_fill(mut self, min_width: f32) -> Self {
+        self.cols = GridColumnMode::AutoFill { min_width };
+        self
+    }
+
+    /// Use responsive `repeat(auto-fit, minmax(min_width, 1fr))` columns.
+    pub fn auto_fit(mut self, min_width: f32) -> Self {
+        self.cols = GridColumnMode::AutoFit { min_width };
+        self
     }
 
     /// Set the gap between panels.
@@ -29,48 +42,42 @@ impl Columns {
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
-        match self.count {
-            0 => {
-                return Err(PaneError::InvalidTree(
-                    crate::error::TreeError::ColumnsCountZero,
-                ));
-            }
-            _ => {}
-        }
+        validate_grid_columns(self.cols)?;
         validate_kinds(&self.kinds)?;
 
-        let buckets = distribute_round_robin(&self.kinds, self.count);
         let mut b = LayoutBuilder::new();
-        let gap_px = self.gap;
+        let style = super::simple_grid_style(self.cols, self.gap);
 
-        b.row_gap(gap_px, |outer| {
-            for bucket in &buckets {
-                outer.taffy_node(col_style(1.0, gap_px), |c| {
-                    super::add_grow_panels(c, bucket);
-                });
-            }
+        b.row(|r| {
+            r.taffy_node(style, |grid| {
+                super::add_grow_panels(grid, &self.kinds);
+            });
         })?;
 
         b.build()
     }
 }
 
-/// Distribute items round-robin into `n` buckets.
-fn distribute_round_robin(items: &[Arc<str>], n: usize) -> Vec<Vec<Arc<str>>> {
-    let per_bucket = items.len().div_ceil(n);
-    let mut buckets: Vec<Vec<Arc<str>>> = (0..n).map(|_| Vec::with_capacity(per_bucket)).collect();
-    for (i, kind) in items.iter().enumerate() {
-        buckets[i % n].push(Arc::clone(kind));
-    }
-    buckets
-}
-
 impl Columns {
     /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
     pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::Sequence {
-            direction: crate::strategy::Direction::Horizontal,
-            gap: self.gap,
+        let strategy = match self.cols {
+            GridColumnMode::Fixed(columns) => crate::strategy::StrategyKind::Columns {
+                columns,
+                gap: self.gap,
+            },
+            GridColumnMode::AutoFill { min_width } => {
+                crate::strategy::StrategyKind::ColumnsAutoFill {
+                    min_width,
+                    gap: self.gap,
+                }
+            }
+            GridColumnMode::AutoFit { min_width } => {
+                crate::strategy::StrategyKind::ColumnsAutoFit {
+                    min_width,
+                    gap: self.gap,
+                }
+            }
         };
         crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
     }

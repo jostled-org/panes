@@ -488,6 +488,7 @@ fn strategy_adjacent_with_delegates() {
     let strategy = panes::StrategyKind::Sequence {
         direction: Direction::Horizontal,
         gap: 0.0,
+        ratio: None,
     };
     let mut rt = LayoutRuntime::from_strategy(strategy, &kinds).unwrap();
 
@@ -515,6 +516,7 @@ fn swap_after_add_panel_is_consistent() {
     let strategy = panes::StrategyKind::Sequence {
         direction: Direction::Horizontal,
         gap: 0.0,
+        ratio: None,
     };
     let mut rt = LayoutRuntime::from_strategy(strategy, &kinds).unwrap();
 

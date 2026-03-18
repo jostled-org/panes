@@ -9,7 +9,7 @@ You keep solving the same panel layout problem — splits, stacks, grids, resize
 
 **panes** is a spatial layout engine that computes rectangles without rendering them.
 
-Describe panels in rows, columns, and presets. panes solves the geometry via Taffy's flexbox engine and hands back a map of `PanelId → Rect`. No framework. No widget system. No opinions about pixels.
+Describe panels in rows, columns, and presets. panes solves the geometry via Taffy (flexbox and CSS Grid) and hands back a map of `PanelId → Rect`. No framework. No widget system. No opinions about pixels.
 
 ## Proof
 

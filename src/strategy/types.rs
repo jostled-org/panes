@@ -33,8 +33,27 @@ pub struct SlotDef {
     pub constraints: Constraints,
 }
 
+/// Column mode for CSS Grid-based presets.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) enum GridColumnMode {
+    /// Fixed number of equal-width columns.
+    Fixed(usize),
+    /// Responsive columns via `repeat(auto-fill, minmax(min_width, 1fr))`.
+    AutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+    },
+    /// Responsive columns via `repeat(auto-fit, minmax(min_width, 1fr))`.
+    AutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
+    },
+}
+
 /// Behavioral strategy for a layout, determining how add/remove/move/focus
 /// mutations are applied to the tree.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum StrategyKind {
     /// Linear sequence of equal panels (split, columns).
@@ -43,6 +62,9 @@ pub enum StrategyKind {
         direction: Direction,
         /// Gap between panels.
         gap: f32,
+        /// When `Some(r)` and exactly 2 panels, applies `grow(r)` / `grow(1-r)`
+        /// instead of equal sizing. Used by the split preset/strategy.
+        ratio: Option<f32>,
     },
 
     /// One master panel with a vertical stack (master-stack).
@@ -79,7 +101,7 @@ pub enum StrategyKind {
         gap: f32,
     },
 
-    /// Uniform grid of panels (grid).
+    /// Uniform grid of panels (grid) with fixed columns.
     ColumnGrid {
         /// Number of columns.
         columns: usize,
@@ -87,10 +109,70 @@ pub enum StrategyKind {
         gap: f32,
     },
 
-    /// CSS-grid dashboard with per-card column spans (dashboard).
-    Dashboard {
+    /// Grid with responsive auto-fill columns.
+    ColumnGridAutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+
+    /// Grid with responsive auto-fit columns.
+    ColumnGridAutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+
+    /// Equal columns of panels (columns) with fixed column count.
+    Columns {
         /// Number of columns.
         columns: usize,
+        /// Gap between panels.
+        gap: f32,
+    },
+
+    /// Columns with responsive auto-fill.
+    ColumnsAutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+
+    /// Columns with responsive auto-fit.
+    ColumnsAutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+
+    /// CSS-grid dashboard with per-card column spans (dashboard).
+    Dashboard {
+        /// Fixed number of columns.
+        columns: usize,
+        /// Gap between panels.
+        gap: f32,
+        /// Column span per card, in order.
+        spans: Arc<[usize]>,
+    },
+
+    /// Dashboard with responsive auto-fill columns.
+    DashboardAutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+        /// Column span per card, in order.
+        spans: Arc<[usize]>,
+    },
+
+    /// Dashboard with responsive auto-fit columns.
+    DashboardAutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
         /// Gap between panels.
         gap: f32,
         /// Column span per card, in order.
@@ -135,7 +217,14 @@ impl StrategyKind {
             | Self::CenteredMaster { gap, .. }
             | Self::BinarySplit { gap, .. }
             | Self::ColumnGrid { gap, .. }
+            | Self::ColumnGridAutoFill { gap, .. }
+            | Self::ColumnGridAutoFit { gap, .. }
+            | Self::Columns { gap, .. }
+            | Self::ColumnsAutoFill { gap, .. }
+            | Self::ColumnsAutoFit { gap, .. }
             | Self::Dashboard { gap, .. }
+            | Self::DashboardAutoFill { gap, .. }
+            | Self::DashboardAutoFit { gap, .. }
             | Self::Window { gap, .. }
             | Self::Slotted { gap, .. } => *gap,
             Self::ActivePanel { .. } => 0.0,

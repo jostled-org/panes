@@ -288,7 +288,7 @@ fn grid_3x2() {
 
 #[test]
 fn grid_uneven() {
-    // 5 panels in 3 columns: row 1 has 3, row 2 has 2
+    // 5 panels in 3 columns: CSS Grid auto-placement, row 1 has 3, row 2 has 2
     let resolved = Layout::grid(3, ["a", "b", "c", "d", "e"])
         .resolve(90.0, 100.0)
         .unwrap();
@@ -299,10 +299,9 @@ fn grid_uneven() {
     // Second row panels still exist and are in the second row
     assert_eq!(resolved.get(d).unwrap().y, 50.0);
     assert_eq!(resolved.get(e).unwrap().y, 50.0);
-    // Each takes 1/3 width in second row since they're grow(1.0) in a 2-panel row
-    // Actually in a row with 2 panels each grow(1.0), they split the width
-    assert_eq!(resolved.get(d).unwrap().w, 45.0);
-    assert_eq!(resolved.get(e).unwrap().w, 45.0);
+    // CSS Grid: each cell is 1/3 of the grid width regardless of how many panels in the row
+    assert_eq!(resolved.get(d).unwrap().w, 30.0);
+    assert_eq!(resolved.get(e).unwrap().w, 30.0);
 }
 
 #[test]
@@ -328,7 +327,7 @@ fn grid_with_gap() {
 
 #[test]
 fn columns_3() {
-    // 6 panels into 3 columns, round-robin: col0=[a,d], col1=[b,e], col2=[c,f]
+    // 6 panels into 3 columns, CSS Grid row-major: row0=[a,b,c], row1=[d,e,f]
     let resolved = Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
         .resolve(90.0, 100.0)
         .unwrap();
@@ -337,28 +336,32 @@ fn columns_3() {
     let b = resolved.by_kind("b")[0];
     let d = resolved.by_kind("d")[0];
 
-    // a and d in same column (x=0)
+    // a in first column, first row
     assert_eq!(resolved.get(a).unwrap().x, 0.0);
+    assert_eq!(resolved.get(a).unwrap().y, 0.0);
+    // d in first column, second row
     assert_eq!(resolved.get(d).unwrap().x, 0.0);
+    assert_eq!(resolved.get(d).unwrap().y, 50.0);
     // b in second column
     assert_eq!(resolved.get(b).unwrap().x, 30.0);
-    // a and d split the height
+    // Each row is half the height
     assert_eq!(resolved.get(a).unwrap().h, 50.0);
     assert_eq!(resolved.get(d).unwrap().h, 50.0);
 }
 
 #[test]
 fn columns_uneven() {
-    // 5 panels into 3 columns: col0=[a,d], col1=[b,e], col2=[c]
+    // 5 panels into 3 columns, CSS Grid row-major: row0=[a,b,c], row1=[d,e]
     let resolved = Layout::columns(3, ["a", "b", "c", "d", "e"])
         .resolve(90.0, 100.0)
         .unwrap();
 
     let c = resolved.by_kind("c")[0];
 
-    // c is alone in col 2, takes full height
-    assert_eq!(resolved.get(c).unwrap().h, 100.0);
+    // c is in the third column, first row
     assert_eq!(resolved.get(c).unwrap().x, 60.0);
+    assert_eq!(resolved.get(c).unwrap().y, 0.0);
+    assert_eq!(resolved.get(c).unwrap().h, 50.0);
 }
 
 #[test]
@@ -387,6 +390,72 @@ fn dashboard_mixed_spans() {
 
     assert_eq!(resolved.get(wide).unwrap().w, 50.0);
     assert_eq!(resolved.get(n1).unwrap().w, 25.0);
+}
+
+// -- Dashboard auto-fill / auto-fit --
+
+#[test]
+fn dashboard_auto_fill_resolves() {
+    // 800px wide viewport, 200px min → expect 4 columns
+    let resolved = Layout::dashboard([("a", 1), ("b", 1), ("c", 1), ("d", 1)])
+        .auto_fill(200.0)
+        .resolve(800.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let b = resolved.by_kind("b")[0];
+    assert_eq!(resolved.get(a).unwrap().w, 200.0);
+    assert_eq!(resolved.get(b).unwrap().w, 200.0);
+}
+
+#[test]
+fn dashboard_auto_fill_narrow_viewport() {
+    // 300px wide viewport, 200px min → fewer columns than cards
+    let resolved = Layout::dashboard([("a", 1), ("b", 1), ("c", 1), ("d", 1)])
+        .auto_fill(200.0)
+        .resolve(300.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    // With 300px and 200px min, only 1 column fits
+    assert_eq!(resolved.get(a).unwrap().w, 300.0);
+}
+
+#[test]
+fn dashboard_auto_fill_with_spans() {
+    // span-2 card still works with auto-fill
+    let resolved = Layout::dashboard([("wide", 2), ("narrow", 1)])
+        .auto_fill(100.0)
+        .resolve(400.0, 400.0)
+        .unwrap();
+
+    let wide = resolved.by_kind("wide")[0];
+    let narrow = resolved.by_kind("narrow")[0];
+    assert!(resolved.get(wide).unwrap().w > resolved.get(narrow).unwrap().w);
+}
+
+#[test]
+fn dashboard_auto_fill_rejects_zero() {
+    let err = Layout::dashboard([("a", 1)])
+        .auto_fill(0.0)
+        .build()
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("min_column_width"),
+        "expected min_column_width error, got: {err}"
+    );
+}
+
+#[test]
+fn dashboard_auto_fit_resolves() {
+    let resolved = Layout::dashboard([("a", 1), ("b", 1)])
+        .auto_fit(200.0)
+        .resolve(800.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    // auto-fit with 2 cards in 800px: cards expand to fill
+    assert!(resolved.get(a).unwrap().w >= 200.0);
 }
 
 // -- Step 3: Recursive presets --
@@ -850,4 +919,87 @@ fn presets_fixed_slots_are_sidebar_holy_grail_split() {
         .collect();
     fixed.sort_unstable();
     assert_eq!(fixed, vec!["holy-grail", "sidebar", "split"]);
+}
+
+// -- Grid auto-fill / auto-fit --
+
+#[test]
+fn grid_auto_fill_resolves() {
+    let resolved = Layout::grid(2, ["a", "b", "c", "d"])
+        .auto_fill(200.0)
+        .resolve(800.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let b = resolved.by_kind("b")[0];
+    assert_eq!(resolved.get(a).unwrap().w, 200.0);
+    assert_eq!(resolved.get(b).unwrap().w, 200.0);
+}
+
+#[test]
+fn grid_auto_fill_narrow_viewport() {
+    let resolved = Layout::grid(2, ["a", "b", "c", "d"])
+        .auto_fill(200.0)
+        .resolve(300.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    assert_eq!(resolved.get(a).unwrap().w, 300.0);
+}
+
+#[test]
+fn grid_auto_fill_rejects_zero() {
+    let err = Layout::grid(2, ["a"]).auto_fill(0.0).build().unwrap_err();
+    assert!(
+        err.to_string().contains("min_column_width"),
+        "expected min_column_width error, got: {err}"
+    );
+}
+
+#[test]
+fn grid_auto_fit_resolves() {
+    let resolved = Layout::grid(2, ["a", "b"])
+        .auto_fit(200.0)
+        .resolve(800.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    assert!(resolved.get(a).unwrap().w >= 200.0);
+}
+
+// -- Columns auto-fill / auto-fit --
+
+#[test]
+fn columns_auto_fill_resolves() {
+    let resolved = Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
+        .auto_fill(200.0)
+        .resolve(900.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    assert!(resolved.get(a).unwrap().w > 0.0);
+    assert_eq!(resolved.by_kind("f").len(), 1);
+}
+
+#[test]
+fn columns_auto_fit_resolves() {
+    let resolved = Layout::columns(3, ["a", "b", "c"])
+        .auto_fit(200.0)
+        .resolve(800.0, 600.0)
+        .unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    assert!(resolved.get(a).unwrap().w >= 200.0);
+}
+
+#[test]
+fn columns_auto_fill_rejects_zero() {
+    let err = Layout::columns(3, ["a"])
+        .auto_fill(0.0)
+        .build()
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("min_column_width"),
+        "expected min_column_width error, got: {err}"
+    );
 }

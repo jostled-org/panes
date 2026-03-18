@@ -134,10 +134,9 @@ fn apply_window_constraints_best_effort(
 }
 
 fn window_start_for_index(index: usize, current_start: usize, size: usize) -> usize {
-    debug_assert!(size > 0, "window size must be at least 1");
     match index < current_start {
         true => index,
-        false => index.saturating_sub(size - 1),
+        false => index.saturating_sub(size.saturating_sub(1)),
     }
 }
 

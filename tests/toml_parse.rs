@@ -52,6 +52,24 @@ panels = []
     assert!(matches!(err, TomlError::InvalidValue { .. }));
 }
 
+#[test]
+fn grow_and_fixed_conflict_returns_error() {
+    let toml = r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "row"
+
+[[layout.root.children]]
+kind = "editor"
+grow = 1.0
+fixed = 30.0
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(matches!(err, TomlError::InvalidValue { .. }));
+}
+
 // -- master-stack --
 
 #[test]
@@ -375,6 +393,135 @@ panels = ["a", "b"]
     assert!(matches!(err, TomlError::MissingField(ref f) if f.as_ref() == "columns"));
 }
 
+// -- grid auto-fill / auto-fit --
+
+#[test]
+fn grid_auto_fill_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "grid"
+min_column_width = 250.0
+panels = ["a", "b", "c", "d"]
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(1000.0, 600.0).unwrap();
+    assert_eq!(resolved.panel_ids().count(), 4);
+}
+
+#[test]
+fn grid_auto_fit_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "grid"
+min_column_width = 250.0
+column_mode = "auto-fit"
+panels = ["a", "b", "c"]
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(1000.0, 600.0).unwrap();
+    assert_eq!(resolved.panel_ids().count(), 3);
+}
+
+#[test]
+fn grid_columns_and_min_column_width_conflict() {
+    let toml = r#"
+[layout]
+strategy = "grid"
+columns = 3
+min_column_width = 250.0
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(matches!(err, TomlError::InvalidValue { .. }));
+}
+
+#[test]
+fn grid_column_mode_without_min_width_errors() {
+    let toml = r#"
+[layout]
+strategy = "grid"
+columns = 3
+column_mode = "auto-fit"
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(
+        matches!(err, TomlError::InvalidValue { ref field, .. } if field.as_ref() == "column_mode")
+    );
+}
+
+#[test]
+fn grid_invalid_column_mode_errors() {
+    let toml = r#"
+[layout]
+strategy = "grid"
+min_column_width = 200.0
+column_mode = "stretch"
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(
+        matches!(err, TomlError::InvalidValue { ref field, .. } if field.as_ref() == "column_mode")
+    );
+}
+
+// -- columns auto-fill / auto-fit --
+
+#[test]
+fn columns_auto_fill_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "columns"
+min_column_width = 250.0
+panels = ["a", "b", "c", "d", "e", "f"]
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(1000.0, 600.0).unwrap();
+    assert_eq!(resolved.panel_ids().count(), 6);
+}
+
+#[test]
+fn columns_auto_fit_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "columns"
+min_column_width = 200.0
+column_mode = "auto-fit"
+panels = ["a", "b", "c"]
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(800.0, 600.0).unwrap();
+    assert_eq!(resolved.panel_ids().count(), 3);
+}
+
+#[test]
+fn columns_columns_and_min_column_width_conflict() {
+    let toml = r#"
+[layout]
+strategy = "columns"
+columns = 3
+min_column_width = 250.0
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(matches!(err, TomlError::InvalidValue { .. }));
+}
+
+#[test]
+fn columns_column_mode_without_min_width_errors() {
+    let toml = r#"
+[layout]
+strategy = "columns"
+columns = 3
+column_mode = "auto-fit"
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(
+        matches!(err, TomlError::InvalidValue { ref field, .. } if field.as_ref() == "column_mode")
+    );
+}
+
 // -- sidebar --
 
 #[test]
@@ -594,6 +741,76 @@ columns = 3
 "#;
     let err = Layout::from_toml(toml).unwrap_err();
     assert!(matches!(err, TomlError::MissingField(ref f) if f.as_ref() == "panels"));
+}
+
+// -- dashboard auto-fill --
+
+#[test]
+fn dashboard_auto_fill_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+min_column_width = 250.0
+panels = ["a", "b", "c"]
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    assert_eq!(layout.tree().panel_count(), 3);
+}
+
+#[test]
+fn dashboard_columns_and_min_column_width_conflict() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+columns = 3
+min_column_width = 250.0
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(matches!(err, TomlError::InvalidValue { .. }));
+}
+
+#[test]
+fn dashboard_auto_fit_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+min_column_width = 250.0
+column_mode = "auto-fit"
+panels = ["a", "b", "c"]
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    assert_eq!(layout.tree().panel_count(), 3);
+}
+
+#[test]
+fn dashboard_column_mode_without_min_width_errors() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+columns = 3
+column_mode = "auto-fit"
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(
+        matches!(err, TomlError::InvalidValue { ref field, .. } if field.as_ref() == "column_mode")
+    );
+}
+
+#[test]
+fn dashboard_invalid_column_mode_errors() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+min_column_width = 200.0
+column_mode = "stretch"
+panels = ["a", "b"]
+"#;
+    let err = Layout::from_toml(toml).unwrap_err();
+    assert!(
+        matches!(err, TomlError::InvalidValue { ref field, .. } if field.as_ref() == "column_mode")
+    );
 }
 
 // -- custom tree --

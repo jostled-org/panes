@@ -25,6 +25,7 @@ fn sequence_runtime(n: usize) -> LayoutRuntime {
         StrategyKind::Sequence {
             direction: Direction::Horizontal,
             gap: 0.0,
+            ratio: None,
         },
         &kinds(n),
     )
@@ -222,6 +223,7 @@ fn swap_next_after_add_on_all_strategies() {
         StrategyKind::Sequence {
             direction: Direction::Horizontal,
             gap: 0.0,
+            ratio: None,
         },
         StrategyKind::MasterStack {
             master_ratio: 0.5,

@@ -77,6 +77,7 @@ impl Split {
         let strategy = crate::strategy::StrategyKind::Sequence {
             direction,
             gap: self.gap,
+            ratio: Some(self.ratio),
         };
         let kinds = [Arc::clone(&self.first), Arc::clone(&self.second)];
         crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)

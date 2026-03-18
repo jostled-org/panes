@@ -5,6 +5,7 @@ use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::fixed;
 use crate::preset::{row_style, validate_f32_param};
+use crate::strategy::builder::Strategy;
 
 /// Builder for the holy-grail preset layout.
 pub struct HolyGrail {
@@ -108,47 +109,13 @@ fn build_middle(
 impl HolyGrail {
     /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
     pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let slots: Arc<[crate::strategy::SlotDef]> = vec![
-            crate::strategy::SlotDef {
-                kind: Arc::clone(&self.header),
-                constraints: crate::panel::fixed(self.header_height),
-            },
-            crate::strategy::SlotDef {
-                kind: Arc::clone(&self.left),
-                constraints: crate::panel::fixed(self.sidebar_width),
-            },
-            crate::strategy::SlotDef {
-                kind: Arc::clone(&self.main),
-                constraints: crate::panel::grow(1.0),
-            },
-            crate::strategy::SlotDef {
-                kind: Arc::clone(&self.right),
-                constraints: crate::panel::fixed(self.sidebar_width),
-            },
-            crate::strategy::SlotDef {
-                kind: Arc::clone(&self.footer),
-                constraints: crate::panel::fixed(self.footer_height),
-            },
-        ]
-        .into();
-        let strategy = crate::strategy::StrategyKind::Slotted {
-            slots,
-            gap: self.gap,
-            direction: crate::strategy::Direction::Vertical,
-        };
-        let kinds = [
-            Arc::clone(&self.header),
-            Arc::clone(&self.left),
-            Arc::clone(&self.main),
-            Arc::clone(&self.right),
-            Arc::clone(&self.footer),
-        ];
-        // Build the real nested tree (header, [left|main|right] row, footer)
-        // instead of the flat slotted builder which can't represent nesting.
-        let tree = crate::tree::LayoutTree::from(self.build()?);
-        Ok(crate::runtime::LayoutRuntime::from_tree_and_strategy(
-            tree, strategy, &kinds,
-        ))
+        Strategy::holy_grail()
+            .header_height(self.header_height)
+            .footer_height(self.footer_height)
+            .sidebar_width(self.sidebar_width)
+            .gap(self.gap)
+            .with_panels(self.header, self.footer, self.left, self.main, self.right)?
+            .into_runtime()
     }
 }
 

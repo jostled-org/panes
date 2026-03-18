@@ -81,15 +81,10 @@ fn add_tab_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>]) {
     }
 }
 
-impl Tabbed {
-    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
-    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::ActivePanel {
-            variant: crate::strategy::ActivePanelVariant::Tabbed,
-            bar_height: self.tab_height,
-        };
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
-    }
-}
-
-super::impl_preset!(Tabbed);
+super::impl_preset!(
+    Tabbed,
+    runtime(kinds, |this| crate::strategy::StrategyKind::ActivePanel {
+        variant: crate::strategy::ActivePanelVariant::Tabbed,
+        bar_height: this.tab_height,
+    })
+);

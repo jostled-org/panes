@@ -220,6 +220,14 @@ impl Layout {
         crate::preset::Split::new(first, second)
     }
 
+    /// Create an adaptive layout that switches strategies at width breakpoints.
+    pub fn adaptive(
+        panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
+    ) -> crate::breakpoint::AdaptiveBuilder {
+        let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
+        crate::breakpoint::AdaptiveBuilder::new(panels)
+    }
+
     /// Create a [`Grid`](crate::preset::Grid) builder.
     pub fn grid(
         cols: usize,
@@ -234,6 +242,17 @@ impl Layout {
     #[cfg(feature = "toml")]
     pub fn from_toml(input: &str) -> Result<Self, crate::toml_parse::TomlError> {
         crate::toml_parse::parse(input)
+    }
+
+    /// Parse a TOML configuration string into a `LayoutRuntime`.
+    ///
+    /// Handles both single-strategy configs and adaptive configs with
+    /// `[[layout.breakpoints]]`.
+    #[cfg(feature = "toml")]
+    pub fn from_toml_runtime(
+        input: &str,
+    ) -> Result<crate::runtime::LayoutRuntime, crate::toml_parse::TomlError> {
+        crate::toml_parse::parse_runtime(input)
     }
 
     /// Read a TOML file from disk and parse it into a `Layout`.

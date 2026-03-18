@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
+use crate::breakpoint::{self, BreakpointEntry};
 use crate::compiler::{CompileResult, compile, compute_layout};
 use crate::diff::{self, LayoutDiff, OverlayDiff, OverlayDiffScratch};
-use crate::error::{MutationError, PaneError, ViewportError};
+use crate::error::{MutationError, PaneError, TreeError, ViewportError};
 use crate::focus::{self, FocusDirection};
 use crate::layout::Layout;
 use crate::node::{Node, NodeId, PanelId};
@@ -71,6 +72,8 @@ pub struct LayoutRuntime {
     overlay_index: FxHashMap<Arc<str>, usize>,
     prev_overlay_rects: Vec<(OverlayId, Rect)>,
     overlay_rects_buf: Vec<(OverlayId, Arc<str>, Rect)>,
+    breakpoints: Option<Box<[BreakpointEntry]>>,
+    active_bp_idx: usize,
 }
 
 /// Shared default fields for all constructors.
@@ -97,11 +100,21 @@ fn base(
         overlay_index: FxHashMap::default(),
         prev_overlay_rects: Vec::new(),
         overlay_rects_buf: Vec::new(),
+        breakpoints: None,
+        active_bp_idx: 0,
     }
 }
 
 impl LayoutRuntime {
-    /// Create a runtime from an existing tree (legacy path, no strategy).
+    /// Create a runtime with direct tree control (no strategy).
+    ///
+    /// Panels are added via hyprland-style splits: `add_panel` auto-picks
+    /// the split direction from the focused panel's aspect ratio.
+    /// Use `add_panel_adjacent_with` for explicit direction and constraints,
+    /// or `tree_mut()` for direct tree surgery.
+    ///
+    /// For strategy-managed layouts (presets), use
+    /// [`from_strategy`](Self::from_strategy) or a preset's `into_runtime()`.
     pub fn new(tree: LayoutTree) -> Self {
         base(
             tree,
@@ -119,8 +132,11 @@ impl LayoutRuntime {
         Ok(base(tree, viewport, Some(strategy), sequence))
     }
 
-    /// Create a runtime from a pre-built tree with a pre-populated sequence.
-    /// No strategy — for direct tree-topology control with sequence tracking.
+    /// Create a runtime with direct tree control and a pre-populated sequence.
+    ///
+    /// Same as [`new`](Self::new) but with an explicit panel sequence for
+    /// `focus_next`/`focus_prev` ordering. Use this when you build the tree
+    /// yourself and want sequence-aware focus navigation.
     pub fn from_tree_and_sequence(tree: LayoutTree, sequence: PanelSequence) -> Self {
         let focus = sequence.get(0);
         base(
@@ -159,13 +175,40 @@ impl LayoutRuntime {
         )
     }
 
+    /// Create a runtime from an adaptive layout with breakpoints.
+    pub(crate) fn from_adaptive(
+        strategy: StrategyKind,
+        kinds: &[Arc<str>],
+        breakpoints: Box<[BreakpointEntry]>,
+        active_idx: usize,
+    ) -> Result<Self, PaneError> {
+        let mut rt = Self::from_strategy(strategy, kinds)?;
+        rt.breakpoints = Some(breakpoints);
+        rt.active_bp_idx = active_idx;
+        Ok(rt)
+    }
+
+    /// The breakpoint entries, if this is an adaptive layout.
+    pub fn breakpoints(&self) -> Option<&[BreakpointEntry]> {
+        self.breakpoints.as_deref()
+    }
+
+    /// The index of the currently active breakpoint.
+    pub fn active_breakpoint_index(&self) -> usize {
+        self.active_bp_idx
+    }
+
     /// Immutable access to the underlying tree.
     pub fn tree(&self) -> &LayoutTree {
         &self.tree
     }
 
     /// Mutable access to the underlying tree for structural mutations.
+    ///
+    /// Clears cached compile and kind data to prevent stale reads.
     pub fn tree_mut(&mut self) -> &mut LayoutTree {
+        self.cached_compile = None;
+        self.cached_kinds = None;
         &mut self.tree
     }
 
@@ -244,6 +287,12 @@ impl LayoutRuntime {
         self.tree.panel_kind(pid).ok()
     }
 
+    /// The kind of the currently focused panel as an owned `Arc<str>`.
+    pub fn focused_kind_arc(&self) -> Option<Arc<str>> {
+        let pid = self.viewport.focus?;
+        self.tree.panel_kind_arc(pid).ok()
+    }
+
     /// Capture a serializable snapshot of the current runtime state.
     ///
     /// Strategy runtimes snapshot the recipe (strategy config + panel kinds).
@@ -252,12 +301,17 @@ impl LayoutRuntime {
     /// `TaffyPassthrough` nodes are not serializable and are omitted from tree
     /// snapshots. Returns `SnapshotNoRoot` if the root itself is a passthrough.
     pub fn snapshot(&self) -> Result<LayoutSnapshot, PaneError> {
+        let bp_info = self
+            .breakpoints
+            .as_deref()
+            .map(|bps| (bps, self.active_bp_idx));
         snapshot::capture(
             &self.tree,
             self.strategy.as_ref(),
             &self.sequence,
             &self.viewport,
             &self.overlays,
+            bp_info,
         )
     }
 
@@ -278,9 +332,32 @@ impl LayoutRuntime {
                 collect_panels_depth_first(&tree, &mut seq);
                 Self::from_tree_and_sequence(tree, seq)
             }
+            SnapshotSource::Adaptive { breakpoints, .. } if breakpoints.is_empty() => {
+                return Err(PaneError::InvalidTree(TreeError::NoBreakpoints));
+            }
+            SnapshotSource::Adaptive {
+                breakpoints,
+                panels,
+                active_index,
+            } => {
+                let kinds: Vec<Arc<str>> = panels.iter().map(|s| Arc::from(&**s)).collect();
+                let bp_entries: Box<[BreakpointEntry]> = breakpoints
+                    .iter()
+                    .map(|sb| BreakpointEntry {
+                        min_width: sb.min_width,
+                        strategy: StrategyKind::from(&sb.strategy),
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
+                let active = (*active_index).min(bp_entries.len().saturating_sub(1));
+                let strategy = bp_entries[active].strategy.clone();
+                Self::from_adaptive(strategy, &kinds, bp_entries, active)?
+            }
         };
 
-        // Restore focus by kind
+        // Restore focus by kind — best-effort: the panel is verified to exist in
+        // the tree via panels_by_kind, so focus() should always succeed. The bool
+        // return is discarded intentionally (same rationale as swap_by).
         if let Some(&pid) = snap
             .focused()
             .and_then(|kind| rt.tree.panels_by_kind(kind).first())
@@ -703,6 +780,7 @@ impl LayoutRuntime {
 
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.
     pub fn resolve(&mut self, width: f32, height: f32) -> Result<Frame, PaneError> {
+        self.maybe_switch_breakpoint(width)?;
         let tree_dirty = self.tree.is_dirty();
         let (mut result, cached_kinds) = self.compile_tree(tree_dirty)?;
         compute_layout(&mut result, width, height)?;
@@ -721,10 +799,60 @@ impl LayoutRuntime {
         // Reclaim the previous frame's buffers if no other consumers hold a reference.
         if let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) {
             self.rects_buf = Some(prev_layout.take_rects());
-            self.overlay_rects_buf = prev_layout.take_overlay_rects();
         }
 
         Ok(Frame { layout })
+    }
+
+    fn maybe_switch_breakpoint(&mut self, width: f32) -> Result<(), PaneError> {
+        let breakpoints = match self.breakpoints.as_ref() {
+            Some(bp) => bp,
+            None => return Ok(()),
+        };
+        let new_idx = breakpoint::select_breakpoint(breakpoints, width);
+        match new_idx == self.active_bp_idx {
+            true => Ok(()),
+            false => self.apply_breakpoint_switch(new_idx),
+        }
+    }
+
+    fn apply_breakpoint_switch(&mut self, new_idx: usize) -> Result<(), PaneError> {
+        let Some(breakpoints) = self.breakpoints.as_ref() else {
+            return Ok(());
+        };
+
+        let focused_kind = self.focused_kind_arc();
+        let collapsed_kinds: Vec<Arc<str>> = self
+            .viewport
+            .collapsed
+            .iter()
+            .filter_map(|&pid| self.tree.panel_kind_arc(pid).ok())
+            .collect();
+
+        breakpoint::rebuild_for_breakpoint(
+            breakpoints,
+            new_idx,
+            &mut self.tree,
+            &mut self.sequence,
+            &mut self.strategy,
+            &mut self.cached_compile,
+            &mut self.cached_kinds,
+        )?;
+
+        self.viewport.collapsed.clear();
+        self.viewport.saved_constraints.clear();
+
+        breakpoint::restore_breakpoint_viewport(
+            &mut self.tree,
+            &mut self.sequence,
+            &mut self.viewport,
+            self.strategy.as_ref(),
+            focused_kind,
+            &collapsed_kinds,
+        )?;
+
+        self.active_bp_idx = new_idx;
+        Ok(())
     }
 
     fn compile_tree(

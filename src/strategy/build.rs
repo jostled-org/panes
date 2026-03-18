@@ -33,7 +33,7 @@ pub fn build_initial(
 /// of tree topology (e.g. spiral/dwindle nest panels at varying depths).
 /// Decorative panels (tabs, titles) that the preset builder generates but
 /// which aren't in the input kinds are excluded.
-pub(super) fn populate_sequence_by_kinds(
+pub(crate) fn populate_sequence_by_kinds(
     tree: &LayoutTree,
     kinds: &[Arc<str>],
     sequence: &mut PanelSequence,
@@ -53,11 +53,18 @@ fn build_sequence_tree(
     kinds: &[Arc<str>],
     direction: Direction,
     gap_px: f32,
+    ratio: Option<f32>,
 ) -> Result<LayoutTree, PaneError> {
     let mut b = LayoutBuilder::new();
-    let add = |ctx: &mut crate::ContainerCtx| {
-        for kind in kinds {
-            ctx.panel(Arc::clone(kind));
+    let add = |ctx: &mut crate::ContainerCtx| match (ratio, kinds.len()) {
+        (Some(r), 2) => {
+            ctx.panel_with(Arc::clone(&kinds[0]), crate::panel::grow(r));
+            ctx.panel_with(Arc::clone(&kinds[1]), crate::panel::grow(1.0 - r));
+        }
+        _ => {
+            for kind in kinds {
+                ctx.panel(Arc::clone(kind));
+            }
         }
     };
     match direction {
@@ -73,7 +80,7 @@ fn build_master_stack_tree(
     gap_px: f32,
 ) -> Result<LayoutTree, PaneError> {
     match kinds.len() {
-        1 => build_sequence_tree(kinds, Direction::Horizontal, 0.0),
+        1 => build_sequence_tree(kinds, Direction::Horizontal, 0.0, None),
         _ => {
             let layout = crate::preset::MasterStack::new(kinds.iter().map(Arc::clone))
                 .master_ratio(master_ratio)
@@ -140,6 +147,51 @@ pub(super) fn build_column_grid_tree(
     Ok(LayoutTree::from(layout))
 }
 
+pub(super) fn build_responsive_grid_tree(
+    kinds: &[Arc<str>],
+    min_width: f32,
+    auto_fit: bool,
+    gap_px: f32,
+) -> Result<LayoutTree, PaneError> {
+    let preset = crate::preset::Grid::new(1, kinds.iter().map(Arc::clone));
+    let preset = match auto_fit {
+        true => preset.auto_fit(min_width),
+        false => preset.auto_fill(min_width),
+    };
+    let layout = preset.gap(gap_px).build()?;
+    Ok(LayoutTree::from(layout))
+}
+
+pub(super) fn build_columns_tree(
+    kinds: &[Arc<str>],
+    columns: usize,
+    gap_px: f32,
+) -> Result<LayoutTree, PaneError> {
+    let cols = match columns {
+        0 => kinds.len(),
+        n => n,
+    };
+    let layout = crate::preset::Columns::new(cols, kinds.iter().map(Arc::clone))
+        .gap(gap_px)
+        .build()?;
+    Ok(LayoutTree::from(layout))
+}
+
+pub(super) fn build_responsive_columns_tree(
+    kinds: &[Arc<str>],
+    min_width: f32,
+    auto_fit: bool,
+    gap_px: f32,
+) -> Result<LayoutTree, PaneError> {
+    let preset = crate::preset::Columns::new(1, kinds.iter().map(Arc::clone));
+    let preset = match auto_fit {
+        true => preset.auto_fit(min_width),
+        false => preset.auto_fill(min_width),
+    };
+    let layout = preset.gap(gap_px).build()?;
+    Ok(LayoutTree::from(layout))
+}
+
 pub(super) fn build_dashboard_tree(
     kinds: &[Arc<str>],
     columns: usize,
@@ -155,6 +207,26 @@ pub(super) fn build_dashboard_tree(
         .columns(columns)
         .gap(gap_px)
         .build()?;
+    Ok(LayoutTree::from(layout))
+}
+
+pub(super) fn build_responsive_dashboard_tree(
+    kinds: &[Arc<str>],
+    min_width: f32,
+    auto_fit: bool,
+    gap_px: f32,
+    spans: &[usize],
+) -> Result<LayoutTree, PaneError> {
+    let cards: Vec<(Arc<str>, usize)> = kinds
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (Arc::clone(k), spans.get(i).copied().unwrap_or(1)))
+        .collect();
+    let preset = match auto_fit {
+        true => crate::preset::Dashboard::new(cards).auto_fit(min_width),
+        false => crate::preset::Dashboard::new(cards).auto_fill(min_width),
+    };
+    let layout = preset.gap(gap_px).build()?;
     Ok(LayoutTree::from(layout))
 }
 
@@ -212,12 +284,16 @@ fn build_slotted_tree(
 }
 
 /// Build a tree from a strategy and kinds list.
-pub(super) fn build_tree_for_strategy(
+pub(crate) fn build_tree_for_strategy(
     strategy: &StrategyKind,
     kinds: &[Arc<str>],
 ) -> Result<LayoutTree, PaneError> {
     match strategy {
-        StrategyKind::Sequence { direction, gap } => build_sequence_tree(kinds, *direction, *gap),
+        StrategyKind::Sequence {
+            direction,
+            gap,
+            ratio,
+        } => build_sequence_tree(kinds, *direction, *gap, *ratio),
         StrategyKind::MasterStack { master_ratio, gap } => {
             build_master_stack_tree(kinds, *master_ratio, *gap)
         }
@@ -229,11 +305,34 @@ pub(super) fn build_tree_for_strategy(
             build_binary_split_tree(kinds, *spiral, *ratio, *gap)
         }
         StrategyKind::ColumnGrid { columns, gap } => build_column_grid_tree(kinds, *columns, *gap),
+        StrategyKind::ColumnGridAutoFill { min_width, gap } => {
+            build_responsive_grid_tree(kinds, *min_width, false, *gap)
+        }
+        StrategyKind::ColumnGridAutoFit { min_width, gap } => {
+            build_responsive_grid_tree(kinds, *min_width, true, *gap)
+        }
+        StrategyKind::Columns { columns, gap } => build_columns_tree(kinds, *columns, *gap),
+        StrategyKind::ColumnsAutoFill { min_width, gap } => {
+            build_responsive_columns_tree(kinds, *min_width, false, *gap)
+        }
+        StrategyKind::ColumnsAutoFit { min_width, gap } => {
+            build_responsive_columns_tree(kinds, *min_width, true, *gap)
+        }
         StrategyKind::Dashboard {
             columns,
             gap,
             spans,
         } => build_dashboard_tree(kinds, *columns, *gap, spans),
+        StrategyKind::DashboardAutoFill {
+            min_width,
+            gap,
+            spans,
+        } => build_responsive_dashboard_tree(kinds, *min_width, false, *gap, spans),
+        StrategyKind::DashboardAutoFit {
+            min_width,
+            gap,
+            spans,
+        } => build_responsive_dashboard_tree(kinds, *min_width, true, *gap, spans),
         StrategyKind::ActivePanel {
             variant,
             bar_height,

@@ -2,4 +2,4 @@
 
 mod emit;
 
-pub use emit::emit;
+pub use emit::{emit, emit_adaptive};

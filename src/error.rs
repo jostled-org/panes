@@ -96,6 +96,12 @@ pub enum TreeError {
     /// Dashboard columns must be at least 1.
     #[error("dashboard columns must be at least 1")]
     DashboardNoColumns,
+    /// Dashboard min_column_width must be positive and finite.
+    #[error("dashboard min_column_width must be positive and finite")]
+    DashboardMinWidthInvalid,
+    /// Grid min_column_width must be positive and finite.
+    #[error("min_column_width must be positive and finite")]
+    GridMinWidthInvalid,
     /// Window size must be at least 1.
     #[error("window size must be at least 1")]
     WindowSizeZero,
@@ -111,6 +117,12 @@ pub enum TreeError {
     /// Tree has no serializable root for snapshot.
     #[error("no serializable root for snapshot")]
     SnapshotNoRoot,
+    /// Adaptive layout requires at least one breakpoint.
+    #[error("adaptive layout requires at least one breakpoint")]
+    NoBreakpoints,
+    /// Snapshot node tree exceeds maximum recursion depth.
+    #[error("snapshot tree exceeds maximum depth of {0}")]
+    SnapshotTooDeep(usize),
     /// Insert index exceeds container length.
     #[error("insert index {index} exceeds container length {len}")]
     InsertOutOfBounds {

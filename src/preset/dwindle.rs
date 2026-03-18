@@ -128,16 +128,11 @@ fn add_nested(
     }
 }
 
-impl Dwindle {
-    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
-    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::BinarySplit {
-            spiral: false,
-            ratio: self.ratio,
-            gap: self.gap,
-        };
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
-    }
-}
-
-super::impl_preset!(Dwindle);
+super::impl_preset!(
+    Dwindle,
+    runtime(kinds, |this| crate::strategy::StrategyKind::BinarySplit {
+        spiral: false,
+        ratio: this.ratio,
+        gap: this.gap,
+    })
+);

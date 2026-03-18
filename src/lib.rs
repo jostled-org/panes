@@ -3,6 +3,7 @@
 //! Describe panels in rows, columns, and presets. panes solves the geometry
 //! via Taffy's flexbox engine and hands back a map of `PanelId → Rect`.
 
+mod breakpoint;
 mod builder;
 /// Compiles a [`LayoutTree`] into a Taffy tree for layout computation.
 pub mod compiler;
@@ -36,6 +37,7 @@ mod tree;
 mod validate;
 mod viewport;
 
+pub use breakpoint::{AdaptiveBuilder, BreakpointEntry};
 pub use builder::{ContainerCtx, LayoutBuilder};
 pub use diff::{DiffScratch, LayoutDiff, OverlayDiff, OverlayRectChange, RectChange};
 pub use error::{ConstraintError, MutationError, PaneError, TreeError, ViewportError};
@@ -55,8 +57,16 @@ pub use rect::Rect;
 pub use resolver::{PanelEntry, ResolvedLayout};
 pub use runtime::Placement;
 pub use sequence::PanelSequence;
-pub use snapshot::{LayoutSnapshot, SnapshotNode, SnapshotSlotDef, SnapshotSource, StrategyConfig};
-pub use strategy::{ActivePanelVariant, Direction, SlotDef, StrategyKind};
+pub use snapshot::{
+    LayoutSnapshot, SnapshotBreakpoint, SnapshotNode, SnapshotSlotDef, SnapshotSource,
+    StrategyConfig,
+};
+pub use strategy::{
+    ActivePanelStrategy, ActivePanelVariant, BinarySplitStrategy, BoundStrategy,
+    CenteredMasterStrategy, ColumnGridStrategy, ColumnsStrategy, DashboardStrategy, DeckStrategy,
+    Direction, HolyGrailStrategy, MasterStackStrategy, SequenceStrategy, SidebarStrategy, SlotDef,
+    SlottedStrategy, SplitStrategy, Strategy, StrategyKind, WindowStrategy,
+};
 #[cfg(feature = "toml")]
 pub use toml_parse::TomlError;
 pub use tree::{LayoutTree, Position};

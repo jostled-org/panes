@@ -52,16 +52,11 @@ impl Spiral {
     }
 }
 
-impl Spiral {
-    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
-    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::BinarySplit {
-            spiral: true,
-            ratio: self.ratio,
-            gap: self.gap,
-        };
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
-    }
-}
-
-super::impl_preset!(Spiral);
+super::impl_preset!(
+    Spiral,
+    runtime(kinds, |this| crate::strategy::StrategyKind::BinarySplit {
+        spiral: true,
+        ratio: this.ratio,
+        gap: this.gap,
+    })
+);

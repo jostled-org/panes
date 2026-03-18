@@ -15,6 +15,7 @@ fn row_runtime(n: usize) -> LayoutRuntime {
         StrategyKind::Sequence {
             direction: Direction::Horizontal,
             gap: 0.0,
+            ratio: None,
         },
         &k,
     )
@@ -27,6 +28,7 @@ fn col_runtime(n: usize) -> LayoutRuntime {
         StrategyKind::Sequence {
             direction: Direction::Vertical,
             gap: 0.0,
+            ratio: None,
         },
         &k,
     )
@@ -127,6 +129,7 @@ fn grid_navigation() {
         StrategyKind::Sequence {
             direction: Direction::Horizontal,
             gap: 0.0,
+            ratio: None,
         },
         &k,
     );
@@ -304,6 +307,7 @@ fn diagonal_tiebreak() {
         StrategyKind::Sequence {
             direction: Direction::Horizontal,
             gap: 0.0,
+            ratio: None,
         },
         &k,
     );

@@ -97,6 +97,9 @@ fn ranges_overlap(a_start: f32, a_end: f32, b_start: f32, b_end: f32) -> bool {
     a_start < b_end && b_start < a_end
 }
 
+/// NaN-safe score comparison. `unwrap_or(Greater)` biases NaN panels to sort
+/// last, making them unreachable by focus navigation — correct behavior since
+/// NaN coordinates mean degenerate Taffy output.
 fn cmp_score(a: (bool, f32, f32), b: (bool, f32, f32)) -> Ordering {
     a.0.cmp(&b.0)
         .then(a.1.partial_cmp(&b.1).unwrap_or(Ordering::Greater))

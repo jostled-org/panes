@@ -41,15 +41,10 @@ impl Monocle {
     }
 }
 
-impl Monocle {
-    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
-    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::ActivePanel {
-            variant: crate::strategy::ActivePanelVariant::Monocle,
-            bar_height: 0.0,
-        };
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
-    }
-}
-
-super::impl_preset!(Monocle);
+super::impl_preset!(
+    Monocle,
+    runtime(kinds, |_this| crate::strategy::StrategyKind::ActivePanel {
+        variant: crate::strategy::ActivePanelVariant::Monocle,
+        bar_height: 0.0,
+    })
+);

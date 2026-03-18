@@ -13,6 +13,7 @@ fn sequence_runtime(n: usize) -> LayoutRuntime {
         StrategyKind::Sequence {
             direction: Direction::Horizontal,
             gap: 0.0,
+            ratio: None,
         },
         &k,
     )

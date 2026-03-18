@@ -147,11 +147,6 @@ impl ResolvedLayout {
         std::mem::take(&mut self.rects)
     }
 
-    /// Take ownership of the overlay rects buffer for reuse.
-    pub(crate) fn take_overlay_rects(&mut self) -> Vec<(OverlayId, Arc<str>, Rect)> {
-        std::mem::take(&mut self.overlay_rects)
-    }
-
     /// Linearly interpolate between two resolved layouts.
     ///
     /// Panels in `self` but not `other` interpolate against themselves (no-op).

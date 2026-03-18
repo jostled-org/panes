@@ -110,8 +110,79 @@ pub(crate) fn add_panels(
     }
 }
 
+// ---------------------------------------------------------------------------
+// CSS Grid helpers (shared by dashboard, grid, columns presets)
+// ---------------------------------------------------------------------------
+
+use taffy::prelude::{fr, minmax, repeat};
+use taffy::style::{GridTemplateComponent, MaxTrackSizingFunction, MinTrackSizingFunction};
+
+use crate::strategy::GridColumnMode;
+
+/// Convert a [`GridColumnMode`] to taffy grid template columns.
+pub(crate) fn columns_to_taffy(columns: GridColumnMode) -> Vec<GridTemplateComponent<String>> {
+    match columns {
+        GridColumnMode::Fixed(n) => vec![fr(1.0); n],
+        GridColumnMode::AutoFill { min_width } => vec![auto_repeat_track("auto-fill", min_width)],
+        GridColumnMode::AutoFit { min_width } => vec![auto_repeat_track("auto-fit", min_width)],
+    }
+}
+
+/// Build a `repeat(auto-fill|auto-fit, minmax(min_width, 1fr))` track.
+pub(crate) fn auto_repeat_track(kind: &str, min_width: f32) -> GridTemplateComponent<String> {
+    let track = minmax(
+        MinTrackSizingFunction::length(min_width),
+        MaxTrackSizingFunction::fr(1.0),
+    );
+    repeat(kind, vec![track])
+}
+
+/// Validate a [`GridColumnMode`] for CSS Grid presets.
+pub(crate) fn validate_grid_columns(mode: GridColumnMode) -> Result<(), PaneError> {
+    match mode {
+        GridColumnMode::Fixed(0) => Err(PaneError::InvalidTree(TreeError::ColumnsCountZero)),
+        GridColumnMode::AutoFill { min_width } | GridColumnMode::AutoFit { min_width }
+            if !(min_width > 0.0 && min_width.is_finite()) =>
+        {
+            Err(PaneError::InvalidTree(TreeError::GridMinWidthInvalid))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Build a `Display::Grid` root style for flat grid presets (grid, columns).
+pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32) -> taffy::Style {
+    let gap_len = taffy::LengthPercentage::length(gap);
+    taffy::Style {
+        display: taffy::Display::Grid,
+        size: taffy::Size {
+            width: taffy::Dimension::percent(1.0),
+            height: taffy::Dimension::percent(1.0),
+        },
+        grid_template_columns: columns_to_taffy(mode),
+        grid_auto_rows: vec![fr(1.0)],
+        gap: taffy::Size {
+            width: gap_len,
+            height: gap_len,
+        },
+        ..Default::default()
+    }
+}
+
 // Macro lives here because it references preset-specific builder methods.
 macro_rules! impl_preset {
+    ($Type:ty, runtime($kinds_field:ident, |$this:ident| $($strategy_tokens:tt)+)) => {
+        impl $Type {
+            /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
+            pub fn into_runtime(self) -> Result<$crate::runtime::LayoutRuntime, $crate::PaneError> {
+                let $this = self;
+                let strategy = $($strategy_tokens)+;
+                $crate::runtime::LayoutRuntime::from_strategy(strategy, &$this.$kinds_field)
+            }
+        }
+
+        super::impl_preset!($Type);
+    };
     ($Type:ty) => {
         impl $Type {
             /// Build and resolve the preset at the given viewport size.

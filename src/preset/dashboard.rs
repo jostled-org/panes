@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use taffy::prelude::fr;
-
 use crate::builder::LayoutBuilder;
 use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::layout::Layout;
+use crate::strategy::GridColumnMode;
 
 /// Builder for the grid-based dashboard preset layout.
 pub struct Dashboard {
     cards: Arc<[(Arc<str>, usize)]>,
-    columns: usize,
+    columns: GridColumnMode,
     gap: f32,
 }
 
@@ -20,14 +19,26 @@ impl Dashboard {
                 .into_iter()
                 .map(|(k, span)| (k.into(), span))
                 .collect(),
-            columns: 4,
+            columns: GridColumnMode::Fixed(4),
             gap: 0.0,
         }
     }
 
-    /// Set the number of columns.
+    /// Set a fixed number of columns.
     pub fn columns(mut self, columns: usize) -> Self {
-        self.columns = columns;
+        self.columns = GridColumnMode::Fixed(columns);
+        self
+    }
+
+    /// Use responsive `repeat(auto-fill, minmax(min_width, 1fr))` columns.
+    pub fn auto_fill(mut self, min_width: f32) -> Self {
+        self.columns = GridColumnMode::AutoFill { min_width };
+        self
+    }
+
+    /// Use responsive `repeat(auto-fit, minmax(min_width, 1fr))` columns.
+    pub fn auto_fit(mut self, min_width: f32) -> Self {
+        self.columns = GridColumnMode::AutoFit { min_width };
         self
     }
 
@@ -40,20 +51,13 @@ impl Dashboard {
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         match self.cards.is_empty() {
-            true => {
-                return Err(PaneError::InvalidTree(TreeError::DashboardNoCards));
-            }
-            _ => {}
+            true => return Err(PaneError::InvalidTree(TreeError::DashboardNoCards)),
+            false => {}
         }
-        match self.columns {
-            0 => {
-                return Err(PaneError::InvalidTree(TreeError::DashboardNoColumns));
-            }
-            _ => {}
-        }
+        validate_dashboard_columns(self.columns)?;
 
         let mut b = LayoutBuilder::new();
-        let grid_style = self.grid_root_style();
+        let grid_style = super::simple_grid_style(self.columns, self.gap);
 
         b.row(|r| {
             r.taffy_node(grid_style, |grid| add_cards(grid, &self.cards));
@@ -61,23 +65,18 @@ impl Dashboard {
 
         b.build()
     }
+}
 
-    fn grid_root_style(&self) -> taffy::Style {
-        let gap_len = taffy::LengthPercentage::length(self.gap);
-        taffy::Style {
-            display: taffy::Display::Grid,
-            size: taffy::Size {
-                width: taffy::Dimension::percent(1.0),
-                height: taffy::Dimension::percent(1.0),
-            },
-            grid_template_columns: vec![fr(1.0); self.columns],
-            grid_auto_rows: vec![fr(1.0)],
-            gap: taffy::Size {
-                width: gap_len,
-                height: gap_len,
-            },
-            ..Default::default()
+/// Dashboard-specific column validation (uses DashboardNoColumns error).
+fn validate_dashboard_columns(columns: GridColumnMode) -> Result<(), PaneError> {
+    match columns {
+        GridColumnMode::Fixed(0) => Err(PaneError::InvalidTree(TreeError::DashboardNoColumns)),
+        GridColumnMode::AutoFill { min_width } | GridColumnMode::AutoFit { min_width }
+            if !(min_width > 0.0 && min_width.is_finite()) =>
+        {
+            Err(PaneError::InvalidTree(TreeError::GridMinWidthInvalid))
         }
+        _ => Ok(()),
     }
 }
 
@@ -114,10 +113,26 @@ impl Dashboard {
     pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
         let spans: Arc<[usize]> = self.cards.iter().map(|(_, s)| *s).collect();
         let kinds: Vec<Arc<str>> = self.cards.iter().map(|(k, _)| Arc::clone(k)).collect();
-        let strategy = crate::strategy::StrategyKind::Dashboard {
-            columns: self.columns,
-            gap: self.gap,
-            spans,
+        let strategy = match self.columns {
+            GridColumnMode::Fixed(columns) => crate::strategy::StrategyKind::Dashboard {
+                columns,
+                gap: self.gap,
+                spans,
+            },
+            GridColumnMode::AutoFill { min_width } => {
+                crate::strategy::StrategyKind::DashboardAutoFill {
+                    min_width,
+                    gap: self.gap,
+                    spans,
+                }
+            }
+            GridColumnMode::AutoFit { min_width } => {
+                crate::strategy::StrategyKind::DashboardAutoFit {
+                    min_width,
+                    gap: self.gap,
+                    spans,
+                }
+            }
         };
         crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
     }

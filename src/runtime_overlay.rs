@@ -55,6 +55,5 @@ pub(crate) fn resolve_overlays_impl(
             overlay_rects_buf.push((def.id, Arc::clone(&def.kind), rect));
         }
     }
-    let rects = std::mem::take(overlay_rects_buf);
-    layout.set_overlay_rects(rects);
+    layout.set_overlay_rects(overlay_rects_buf.clone());
 }

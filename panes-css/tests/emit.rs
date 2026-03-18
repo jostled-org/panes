@@ -167,3 +167,180 @@ fn dashboard_emits_css_grid() {
         "missing stats panel"
     );
 }
+
+#[test]
+fn dashboard_auto_fill_css() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1)])
+        .auto_fill(300.0)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(auto-fill, minmax(300px, 1fr))"),
+        "missing auto-fill grid-template-columns, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_auto_fit_css() {
+    let layout = Layout::dashboard([("a", 1)])
+        .auto_fit(250.0)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(auto-fit, minmax(250px, 1fr))"),
+        "missing auto-fit grid-template-columns, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_fixed_css_unchanged() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1)])
+        .columns(3)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(3, 1fr)"),
+        "fixed columns should still use repeat(N, 1fr), got: {css}"
+    );
+}
+
+#[test]
+fn adaptive_media_queries() {
+    let narrow = Layout::stacked(["a", "b"]).build().unwrap();
+    let wide = Layout::master_stack(["a", "b"]).build().unwrap();
+
+    let css = panes_css::emit_adaptive(&[(0, &narrow), (600, &wide)]);
+
+    assert!(
+        css.contains("@media (max-width: 599px)"),
+        "missing narrow query, got: {css}"
+    );
+    assert!(
+        css.contains("@media (min-width: 600px)"),
+        "missing wide query, got: {css}"
+    );
+    assert!(css.contains("[data-pane=\"a\"]"), "missing panel a");
+}
+
+#[test]
+fn adaptive_three_breakpoints() {
+    let small = Layout::stacked(["a", "b"]).build().unwrap();
+    let medium = Layout::row(["a", "b"]).unwrap();
+    let large = Layout::master_stack(["a", "b"]).build().unwrap();
+
+    let css = panes_css::emit_adaptive(&[(0, &small), (600, &medium), (1200, &large)]);
+
+    assert!(
+        css.contains("@media (max-width: 599px)"),
+        "missing small query"
+    );
+    assert!(
+        css.contains("@media (min-width: 600px) and (max-width: 1199px)"),
+        "missing medium query, got: {css}"
+    );
+    assert!(
+        css.contains("@media (min-width: 1200px)"),
+        "missing large query"
+    );
+}
+
+#[test]
+fn adaptive_single_breakpoint_no_media_query() {
+    let layout = Layout::row(["a", "b"]).unwrap();
+    let css = panes_css::emit_adaptive(&[(0, &layout)]);
+
+    assert!(
+        !css.contains("@media"),
+        "single breakpoint should not wrap in @media, got: {css}"
+    );
+    assert!(css.contains("[data-pane=\"a\"]"), "missing panel a");
+}
+
+#[test]
+fn grid_auto_fill_css() {
+    let layout = Layout::grid(2, ["a", "b", "c", "d"])
+        .auto_fill(250.0)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(auto-fill, minmax(250px, 1fr))"),
+        "missing auto-fill grid-template-columns, got: {css}"
+    );
+}
+
+#[test]
+fn grid_auto_fit_css() {
+    let layout = Layout::grid(2, ["a", "b"]).auto_fit(300.0).build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(auto-fit, minmax(300px, 1fr))"),
+        "missing auto-fit grid-template-columns, got: {css}"
+    );
+}
+
+#[test]
+fn grid_fixed_css_emits_grid() {
+    let layout = Layout::grid(3, ["a", "b", "c"]).build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("display: grid"),
+        "grid preset should use CSS Grid, got: {css}"
+    );
+    assert!(
+        css.contains("repeat(3, 1fr)"),
+        "fixed grid should use repeat(N, 1fr), got: {css}"
+    );
+}
+
+#[test]
+fn columns_auto_fill_css() {
+    let layout = Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
+        .auto_fill(200.0)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(auto-fill, minmax(200px, 1fr))"),
+        "missing auto-fill grid-template-columns for columns, got: {css}"
+    );
+}
+
+#[test]
+fn columns_auto_fit_css() {
+    let layout = Layout::columns(3, ["a", "b", "c"])
+        .auto_fit(250.0)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("repeat(auto-fit, minmax(250px, 1fr))"),
+        "missing auto-fit grid-template-columns for columns, got: {css}"
+    );
+}
+
+#[test]
+fn columns_fixed_css_emits_grid() {
+    let layout = Layout::columns(4, ["a", "b", "c", "d"]).build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("display: grid"),
+        "columns preset should use CSS Grid, got: {css}"
+    );
+    assert!(
+        css.contains("repeat(4, 1fr)"),
+        "fixed columns should use repeat(N, 1fr), got: {css}"
+    );
+}

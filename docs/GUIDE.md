@@ -367,23 +367,35 @@ Layout::spiral(["a", "b", "c", "d", "e"])
 
 #### columns
 
-Equal-width vertical columns. Panels are distributed round-robin across columns.
+CSS Grid with equal columns. Panels fill left-to-right, top-to-bottom (row-major). Supports responsive reflow.
 
 ```rust
-// 6 panels into 3 columns: col0=[a,d], col1=[b,e], col2=[c,f]
+// Fixed 3 columns
 Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
     .gap(1.0)
     .resolve(90.0, 100.0)?;
+
+// Responsive: columns reflow based on min width
+Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
+    .auto_fill(200.0)  // repeat(auto-fill, minmax(200px, 1fr))
+    .gap(1.0)
+    .resolve(900.0, 600.0)?;
 ```
 
 #### grid
 
-Equal-sized cells in an N-column arrangement. Panels fill left-to-right, top-to-bottom.
+CSS Grid with equal cells in an N-column arrangement. Panels fill left-to-right, top-to-bottom. Supports responsive reflow.
 
 ```rust
 Layout::grid(3, ["a", "b", "c", "d", "e", "f"])
     .gap(1.0)
     .resolve(90.0, 100.0)?;
+
+// Responsive grid
+Layout::grid(3, ["a", "b", "c", "d"])
+    .auto_fill(200.0)
+    .gap(8.0)
+    .resolve(800.0, 600.0)?;
 ```
 
 ### Stateful Presets
@@ -502,6 +514,34 @@ Layout::scrollable(["project-a", "project-b", "project-c"])
     .resolve(100.0, 24.0)?;
 ```
 
+### Grid-Based vs Flexbox-Based Presets
+
+Presets fall into two families based on their CSS layout model.
+
+**Grid-based** (`dashboard`, `grid`, `columns`) use CSS Grid under the hood. They support responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`. Panels are placed in a flat grid and wrap to new rows as viewport width changes.
+
+```rust
+// Fixed 3-column grid
+Layout::grid(3, ["a", "b", "c", "d", "e", "f"]).build()?;
+
+// Responsive: columns reflow based on min width
+Layout::grid(3, ["a", "b", "c", "d"])
+    .auto_fill(200.0)  // repeat(auto-fill, minmax(200px, 1fr))
+    .gap(8.0)
+    .build()?;
+
+// auto-fit expands items to fill remaining space
+Layout::columns(3, ["a", "b", "c"])
+    .auto_fit(200.0)   // repeat(auto-fit, minmax(200px, 1fr))
+    .build()?;
+```
+
+**Flexbox-based** (`master_stack`, `centered_master`, `deck`, `dwindle`, `spiral`, `split`, `monocle`, `tabbed`, `stacked`, `scrollable`, `sidebar`, `holy_grail`) use nested flexbox containers. Their topology is structural — panels have specific spatial relationships (master/stack, recursive splits, fixed slots) that can't be expressed as a flat grid. These don't support column reflow.
+
+**Direct tree mode** (via `LayoutBuilder` or `layout!` macro) builds topology with per-split flexbox nesting. Auto-fill/auto-fit doesn't apply.
+
+For responsive layout across preset families, use `Layout::adaptive()` to switch between strategies at width breakpoints.
+
 ---
 
 ## TOML Configuration
@@ -565,6 +605,28 @@ footer_height = 2.0
 sidebar_width = 15.0
 ```
 
+### Responsive columns (grid, columns, dashboard)
+
+Grid-based strategies accept `min_column_width` for responsive reflow. When set, panels wrap into fewer columns as the viewport narrows. Use `column_mode` to choose between `auto-fill` (default) and `auto-fit`.
+
+`columns` and `min_column_width` are mutually exclusive.
+
+```toml
+# Grid with responsive auto-fill
+[layout]
+strategy = "grid"
+min_column_width = 200.0
+gap = 8.0
+panels = ["a", "b", "c", "d"]
+
+# Columns with auto-fit (items expand to fill remaining space)
+[layout]
+strategy = "columns"
+min_column_width = 200.0
+column_mode = "auto-fit"
+panels = ["a", "b", "c"]
+```
+
 ### Dashboard
 
 ```toml
@@ -584,6 +646,16 @@ span = 2
 [[layout.panels]]
 kind = "log"
 span = 1
+```
+
+Dashboard also supports `min_column_width` and `column_mode`:
+
+```toml
+[layout]
+strategy = "dashboard"
+min_column_width = 250.0
+column_mode = "auto-fill"
+panels = ["chart", "stats", "logs"]
 ```
 
 ### Custom tree
@@ -619,7 +691,14 @@ fixed = 3.0
 
 ## Runtime
 
-`LayoutRuntime` wraps a layout tree with viewport state, compile caching, and frame diffing.
+`LayoutRuntime` wraps a layout tree with viewport state, compile caching, and frame diffing. Two modes:
+
+| Mode | Entry point | Panel mutations | Tree control |
+|------|-------------|-----------------|--------------|
+| **Strategy** | `preset.into_runtime()` | Strategy rebuilds the tree (add/remove/move) | Managed |
+| **Direct** | `LayoutRuntime::new(tree)` | Hyprland-style splits by aspect ratio | Full (`tree_mut()`, `resize_boundary()`) |
+
+Pick strategy mode when a preset fits your layout. Pick direct mode when you need custom tree topology or manual split control.
 
 ### Strategy-based runtime
 
@@ -685,21 +764,7 @@ let kind: Option<&str> = rt.focused_kind();
 
 #### Without a strategy
 
-`add_panel` also works on non-strategy runtimes. Without a strategy it performs a hydrland-style split: auto-picks the split direction from the focused panel's aspect ratio (wider → horizontal, taller → vertical) and uses `grow(1.0)` constraints.
-
-For full tree-topology control, use `add_panel_adjacent_with`:
-
-```rust
-use panes::{Placement, Direction, fixed};
-let new = rt.add_panel_adjacent_with(
-    "sidebar".into(),
-    Direction::Horizontal,
-    fixed(30.0),
-    Placement::Before,  // insert left of / above focused
-)?;
-```
-
-On a strategy runtime, `add_panel_adjacent_with` delegates to the strategy (direction and constraints are ignored). On a non-strategy runtime, it operates directly on tree topology.
+`add_panel` and `add_panel_adjacent_with` also work on direct tree runtimes — see [Direct tree runtime](#direct-tree-runtime) for details. On a strategy runtime, `add_panel_adjacent_with` delegates to the strategy (direction and constraints are ignored).
 
 ### Viewport operations
 
@@ -710,33 +775,58 @@ rt.toggle_collapsed(panel_id)?;
 // Scroll (for scrollable layouts)
 rt.scroll_by(10.0);
 rt.scroll_to(0.0);
-
-// Resize a panel's share of its container (fraction of container space)
-// Positive delta = more space, negative = less
-rt.resize_boundary(pid, 0.1)?;   // give 10% more
-rt.resize_boundary(pid, -0.05)?; // give 5% less
 ```
 
-### Non-strategy runtime
+### Direct tree runtime
 
-For layouts built with the builder API or macro, wrap them in a runtime without a strategy. `add_panel` works (hydrland-style splits), or mutate the tree directly via `tree_mut()`.
+For layouts that don't fit a preset — tiling window managers, custom editor layouts, or anything that needs manual split control.
 
 ```rust
-let layout = Layout::master_stack(["editor", "chat"]).build()?;
+use panes::{Layout, grow, fixed, Direction, Placement};
+use panes::runtime::LayoutRuntime;
+
+// Start from any tree
+let layout = Layout::build_row(|r| {
+    r.panel("editor");
+    r.panel("terminal");
+})?;
 let mut rt = LayoutRuntime::from(layout);
+```
 
-// add_panel auto-splits the focused panel
+**Hyprland-style splits:** `add_panel` auto-picks the split direction from the focused panel's aspect ratio (wider panels split horizontally, taller panels split vertically).
+
+```rust
 rt.set_focus_unchecked(some_pid);
-rt.add_panel("terminal".into())?;
+rt.add_panel("chat".into())?;
+```
 
-// Or use tree_mut() for direct tree surgery
+**Explicit splits:** Control direction, constraints, and placement.
+
+```rust
+rt.add_panel_adjacent_with(
+    "sidebar".into(),
+    Direction::Horizontal,
+    fixed(30.0),
+    Placement::Before,
+)?;
+```
+
+**Direct tree surgery:** `tree_mut()` gives full access to the tree for operations that don't map to add/remove.
+
+```rust
 let tree = rt.tree_mut();
 let (pid, _) = tree.add_panel("terminal", grow(1.0))?;
 tree.set_constraints(pid, fixed(30.0))?;
-tree.remove_panel(pid)?;
 ```
 
-Use `from_tree_and_sequence` to create a non-strategy runtime with sequence tracking (needed for `add_panel`, `focus_next`, etc.):
+**Resize boundaries:** Only available in direct mode. Adjusts a panel's share of its container.
+
+```rust
+rt.resize_boundary(pid, 0.1)?;   // give 10% more space
+rt.resize_boundary(pid, -0.05)?; // give 5% less
+```
+
+Use `from_tree_and_sequence` when you need focus navigation ordering:
 
 ```rust
 let mut rt = LayoutRuntime::from_tree_and_sequence(tree, sequence);
@@ -991,6 +1081,8 @@ let css: String = panes_css::emit(&layout);
 ```
 
 Transpiles the layout tree into CSS flexbox/grid declarations. The browser acts as the solver — Taffy is not invoked. Panels use `[data-pane="kind"]` selectors, containers use `[data-pane-node="N"]`, and the root uses `[data-pane-root]`.
+
+Grid-based presets (`dashboard`, `grid`, `columns`) emit `display: grid` with `grid-template-columns`. When using `auto_fill` or `auto_fit`, the output uses `repeat(auto-fill, minmax(...))` or `repeat(auto-fit, minmax(...))` for responsive reflow. Flexbox-based presets emit `display: flex` with `flex-direction`.
 
 ### panes-wasm
 

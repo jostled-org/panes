@@ -39,4 +39,5 @@ pub(crate) use common::impl_preset;
 pub(super) use common::{
     add_active_hidden_panels, add_grow_panels, add_panels, build_single, col_style, row_style,
 };
+pub(super) use common::{simple_grid_style, validate_grid_columns};
 pub(crate) use common::{validate_active, validate_f32_param, validate_kinds};

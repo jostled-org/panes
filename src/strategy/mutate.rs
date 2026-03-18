@@ -219,7 +219,10 @@ fn rebuild_tree_and_sequence(
 
 /// Collect panel kinds from the sequence, preserving order.
 /// Skips panels missing from the tree (only possible via `tree_mut()` corruption).
-fn collect_kinds_from_sequence(tree: &LayoutTree, sequence: &PanelSequence) -> Vec<Arc<str>> {
+pub(crate) fn collect_kinds_from_sequence(
+    tree: &LayoutTree,
+    sequence: &PanelSequence,
+) -> Vec<Arc<str>> {
     sequence
         .iter()
         .filter_map(|pid| tree.panel_kind_arc(pid).ok())

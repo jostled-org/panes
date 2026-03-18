@@ -67,7 +67,9 @@ impl LayoutSnapshot {
     }
 }
 
-/// What a snapshot restores from: a strategy recipe or a tree topology.
+/// What a snapshot restores from: a strategy recipe, a tree topology,
+/// or an adaptive breakpoint set.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SnapshotSource {
@@ -83,10 +85,30 @@ pub enum SnapshotSource {
         /// The root node of the tree.
         root: SnapshotNode,
     },
+    /// Adaptive runtime — rebuild from breakpoints.
+    Adaptive {
+        /// Breakpoint definitions sorted by min_width ascending.
+        breakpoints: Box<[SnapshotBreakpoint]>,
+        /// Panel kinds in sequence order.
+        panels: Box<[Box<str>]>,
+        /// The active breakpoint index at snapshot time.
+        active_index: usize,
+    },
+}
+
+/// Serializable breakpoint entry for adaptive layouts.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SnapshotBreakpoint {
+    /// Minimum viewport width that activates this breakpoint.
+    pub min_width: u32,
+    /// The strategy used at this breakpoint.
+    pub strategy: StrategyConfig,
 }
 
 /// Serializable strategy configuration — mirrors [`StrategyKind`] with
 /// owned collections instead of `Arc<[T]>`.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StrategyConfig {
@@ -96,6 +118,12 @@ pub enum StrategyConfig {
         direction: Direction,
         /// Gap between panels.
         gap: f32,
+        /// Split ratio for 2-panel sequences (split preset).
+        #[cfg_attr(
+            feature = "serde",
+            serde(default, skip_serializing_if = "Option::is_none")
+        )]
+        ratio: Option<f32>,
     },
     /// One master panel with a stack of secondaries.
     MasterStack {
@@ -134,10 +162,63 @@ pub enum StrategyConfig {
         /// Gap between panels.
         gap: f32,
     },
-    /// Grid with per-panel column spans.
-    Dashboard {
+    /// Grid with responsive auto-fill columns.
+    ColumnGridAutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+    /// Grid with responsive auto-fit columns.
+    ColumnGridAutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+    /// Equal columns of panels.
+    Columns {
         /// Number of columns.
         columns: usize,
+        /// Gap between panels.
+        gap: f32,
+    },
+    /// Columns with responsive auto-fill.
+    ColumnsAutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+    /// Columns with responsive auto-fit.
+    ColumnsAutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+    },
+    /// Grid with per-panel column spans.
+    Dashboard {
+        /// Fixed number of columns.
+        columns: usize,
+        /// Gap between panels.
+        gap: f32,
+        /// Column span for each panel.
+        spans: Box<[usize]>,
+    },
+    /// Dashboard with responsive auto-fill columns.
+    DashboardAutoFill {
+        /// Minimum column width in pixels.
+        min_width: f32,
+        /// Gap between panels.
+        gap: f32,
+        /// Column span for each panel.
+        spans: Box<[usize]>,
+    },
+    /// Dashboard with responsive auto-fit columns.
+    DashboardAutoFit {
+        /// Minimum column width in pixels.
+        min_width: f32,
         /// Gap between panels.
         gap: f32,
         /// Column span for each panel.
@@ -249,18 +330,29 @@ macro_rules! strategy_convert {
 
 strategy_convert! {
     copy: [
-        Sequence { direction, gap },
+        Sequence { direction, gap, ratio },
         MasterStack { master_ratio, gap },
         Deck { master_ratio, gap },
         CenteredMaster { master_ratio, gap },
         BinarySplit { spiral, ratio, gap },
         ColumnGrid { columns, gap },
+        ColumnGridAutoFill { min_width, gap },
+        ColumnGridAutoFit { min_width, gap },
+        Columns { columns, gap },
+        ColumnsAutoFill { min_width, gap },
+        ColumnsAutoFit { min_width, gap },
         ActivePanel { variant, bar_height },
         Window { size, gap },
     ],
     custom_to_config: [
         StrategyKind::Dashboard { columns, gap, spans } => StrategyConfig::Dashboard {
             columns: *columns, gap: *gap, spans: spans.to_vec().into_boxed_slice(),
+        },
+        StrategyKind::DashboardAutoFill { min_width, gap, spans } => StrategyConfig::DashboardAutoFill {
+            min_width: *min_width, gap: *gap, spans: spans.to_vec().into_boxed_slice(),
+        },
+        StrategyKind::DashboardAutoFit { min_width, gap, spans } => StrategyConfig::DashboardAutoFit {
+            min_width: *min_width, gap: *gap, spans: spans.to_vec().into_boxed_slice(),
         },
         StrategyKind::Slotted { slots, gap, direction } => StrategyConfig::Slotted {
             slots: slots.iter().map(|s| SnapshotSlotDef {
@@ -272,6 +364,12 @@ strategy_convert! {
     custom_to_kind: [
         StrategyConfig::Dashboard { columns, gap, spans } => StrategyKind::Dashboard {
             columns: *columns, gap: *gap, spans: Arc::from(&**spans),
+        },
+        StrategyConfig::DashboardAutoFill { min_width, gap, spans } => StrategyKind::DashboardAutoFill {
+            min_width: *min_width, gap: *gap, spans: Arc::from(&**spans),
+        },
+        StrategyConfig::DashboardAutoFit { min_width, gap, spans } => StrategyKind::DashboardAutoFit {
+            min_width: *min_width, gap: *gap, spans: Arc::from(&**spans),
         },
         StrategyConfig::Slotted { slots, gap, direction } => StrategyKind::Slotted {
             slots: slots.iter().map(|s| SlotDef {
@@ -286,26 +384,33 @@ strategy_convert! {
 // Tree → SnapshotNode (walk the arena)
 // ---------------------------------------------------------------------------
 
+/// Maximum recursion depth for snapshot tree operations.
+const MAX_SNAPSHOT_DEPTH: usize = 64;
+
 /// Walk the tree from `root` and build a recursive `SnapshotNode`.
 /// Returns `None` if root is missing or contains unsupported node types.
 pub(crate) fn tree_to_snapshot(tree: &LayoutTree) -> Option<SnapshotNode> {
     let root = tree.root()?;
-    node_to_snapshot(tree, root)
+    node_to_snapshot(tree, root, 0)
 }
 
-fn node_to_snapshot(tree: &LayoutTree, nid: NodeId) -> Option<SnapshotNode> {
+fn node_to_snapshot(tree: &LayoutTree, nid: NodeId, depth: usize) -> Option<SnapshotNode> {
     let node = tree.node(nid)?;
-    match node {
-        Node::Panel {
-            kind, constraints, ..
-        } => Some(SnapshotNode::Panel {
+    match (depth > MAX_SNAPSHOT_DEPTH, node) {
+        (true, _) | (_, Node::TaffyPassthrough { .. }) => None,
+        (
+            _,
+            Node::Panel {
+                kind, constraints, ..
+            },
+        ) => Some(SnapshotNode::Panel {
             kind: Box::from(&**kind),
             constraints: *constraints,
         }),
-        Node::Row { gap, children } => {
+        (_, Node::Row { gap, children }) => {
             let kids: Box<[SnapshotNode]> = children
                 .iter()
-                .filter_map(|&c| node_to_snapshot(tree, c))
+                .filter_map(|&c| node_to_snapshot(tree, c, depth + 1))
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
             Some(SnapshotNode::Row {
@@ -313,10 +418,10 @@ fn node_to_snapshot(tree: &LayoutTree, nid: NodeId) -> Option<SnapshotNode> {
                 children: kids,
             })
         }
-        Node::Col { gap, children } => {
+        (_, Node::Col { gap, children }) => {
             let kids: Box<[SnapshotNode]> = children
                 .iter()
-                .filter_map(|&c| node_to_snapshot(tree, c))
+                .filter_map(|&c| node_to_snapshot(tree, c, depth + 1))
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
             Some(SnapshotNode::Col {
@@ -324,7 +429,6 @@ fn node_to_snapshot(tree: &LayoutTree, nid: NodeId) -> Option<SnapshotNode> {
                 children: kids,
             })
         }
-        Node::TaffyPassthrough { .. } => None,
     }
 }
 
@@ -339,14 +443,14 @@ pub(crate) fn snapshot_to_tree(root: &SnapshotNode) -> Result<LayoutTree, PaneEr
         SnapshotNode::Row { gap, children } => {
             builder.row_gap(*gap, |ctx| {
                 for child in children {
-                    add_snapshot_node(ctx, child);
+                    add_snapshot_node(ctx, child, 1);
                 }
             })?;
         }
         SnapshotNode::Col { gap, children } => {
             builder.col_gap(*gap, |ctx| {
                 for child in children {
-                    add_snapshot_node(ctx, child);
+                    add_snapshot_node(ctx, child, 1);
                 }
             })?;
         }
@@ -359,25 +463,29 @@ pub(crate) fn snapshot_to_tree(root: &SnapshotNode) -> Result<LayoutTree, PaneEr
     Ok(LayoutTree::from(builder.build()?))
 }
 
-fn add_snapshot_node(ctx: &mut crate::ContainerCtx, node: &SnapshotNode) {
+fn add_snapshot_node(ctx: &mut crate::ContainerCtx, node: &SnapshotNode, depth: usize) {
+    if depth > MAX_SNAPSHOT_DEPTH {
+        ctx.set_error(PaneError::InvalidTree(TreeError::SnapshotTooDeep(
+            MAX_SNAPSHOT_DEPTH,
+        )));
+        return;
+    }
     match node {
         SnapshotNode::Panel { kind, constraints } => {
             ctx.panel_with(&**kind, *constraints);
         }
         SnapshotNode::Row { gap, children } => {
-            ctx.row_gap(*gap, |inner| {
-                for child in children {
-                    add_snapshot_node(inner, child);
-                }
-            });
+            ctx.row_gap(*gap, |inner| add_snapshot_children(inner, children, depth));
         }
         SnapshotNode::Col { gap, children } => {
-            ctx.col_gap(*gap, |inner| {
-                for child in children {
-                    add_snapshot_node(inner, child);
-                }
-            });
+            ctx.col_gap(*gap, |inner| add_snapshot_children(inner, children, depth));
         }
+    }
+}
+
+fn add_snapshot_children(ctx: &mut crate::ContainerCtx, children: &[SnapshotNode], depth: usize) {
+    for child in children {
+        add_snapshot_node(ctx, child, depth + 1);
     }
 }
 
@@ -392,6 +500,7 @@ pub(crate) fn capture(
     sequence: &crate::sequence::PanelSequence,
     viewport: &crate::viewport::ViewportState,
     overlay_defs: &[OverlayDef],
+    breakpoints: Option<(&[crate::breakpoint::BreakpointEntry], usize)>,
 ) -> Result<LayoutSnapshot, PaneError> {
     let focused = viewport
         .focus
@@ -405,19 +514,35 @@ pub(crate) fn capture(
         .collect::<Vec<_>>()
         .into_boxed_slice();
 
-    let source = match strategy {
-        Some(sk) => {
-            let panels: Box<[Box<str>]> = sequence
+    let panels_box = || -> Box<[Box<str>]> {
+        sequence
+            .iter()
+            .filter_map(|pid| tree.panel_kind(pid).ok().map(Box::from))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    };
+
+    let source = match (breakpoints, strategy) {
+        (Some((bps, active_index)), _) => {
+            let snap_bps: Box<[SnapshotBreakpoint]> = bps
                 .iter()
-                .filter_map(|pid| tree.panel_kind(pid).ok().map(Box::from))
+                .map(|bp| SnapshotBreakpoint {
+                    min_width: bp.min_width,
+                    strategy: StrategyConfig::from(&bp.strategy),
+                })
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
-            SnapshotSource::Strategy {
-                strategy: StrategyConfig::from(sk),
-                panels,
+            SnapshotSource::Adaptive {
+                breakpoints: snap_bps,
+                panels: panels_box(),
+                active_index,
             }
         }
-        None => {
+        (None, Some(sk)) => SnapshotSource::Strategy {
+            strategy: StrategyConfig::from(sk),
+            panels: panels_box(),
+        },
+        (None, None) => {
             let root =
                 tree_to_snapshot(tree).ok_or(PaneError::InvalidTree(TreeError::SnapshotNoRoot))?;
             SnapshotSource::Tree { root }

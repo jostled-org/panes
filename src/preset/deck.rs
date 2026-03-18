@@ -70,15 +70,10 @@ impl Deck {
     }
 }
 
-impl Deck {
-    /// Consume the builder and produce a [`crate::runtime::LayoutRuntime`].
-    pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
-        let strategy = crate::strategy::StrategyKind::Deck {
-            master_ratio: self.master_ratio,
-            gap: self.gap,
-        };
-        crate::runtime::LayoutRuntime::from_strategy(strategy, &self.kinds)
-    }
-}
-
-super::impl_preset!(Deck);
+super::impl_preset!(
+    Deck,
+    runtime(kinds, |this| crate::strategy::StrategyKind::Deck {
+        master_ratio: this.master_ratio,
+        gap: this.gap,
+    })
+);

@@ -100,12 +100,47 @@ fn write_panel_rule(kind: &str, constraints: &Constraints, parent_axis: Axis, cs
     css.push_str(" }\n");
 }
 
+enum GridMode {
+    Fixed(usize),
+    AutoRepeat { kind: &'static str, min_px: f32 },
+}
+
+fn auto_repeat_kind(count: taffy::style::RepetitionCount) -> Option<&'static str> {
+    match count {
+        taffy::style::RepetitionCount::AutoFill => Some("auto-fill"),
+        taffy::style::RepetitionCount::AutoFit => Some("auto-fit"),
+        taffy::style::RepetitionCount::Count(_) => None,
+    }
+}
+
+fn detect_grid_mode(columns: &[taffy::style::GridTemplateComponent<String>]) -> GridMode {
+    let Some(taffy::style::GridTemplateComponent::Repeat(rep)) = columns.first() else {
+        return GridMode::Fixed(columns.len());
+    };
+    let Some(kind) = auto_repeat_kind(rep.count) else {
+        return GridMode::Fixed(columns.len());
+    };
+    let min_px = rep
+        .tracks
+        .first()
+        .map(|t| t.min_sizing_function().into_raw().value())
+        .unwrap_or(0.0);
+    GridMode::AutoRepeat { kind, min_px }
+}
+
 fn write_grid_rule(selector: &str, style: &taffy::Style, is_root: bool, css: &mut String) {
-    let cols = style.grid_template_columns.len();
-    let _ = write!(
-        css,
-        "{selector} {{ display: grid; grid-template-columns: repeat({cols}, 1fr);"
-    );
+    let _ = write!(css, "{selector} {{ display: grid;");
+    match detect_grid_mode(&style.grid_template_columns) {
+        GridMode::Fixed(cols) => {
+            let _ = write!(css, " grid-template-columns: repeat({cols}, 1fr);");
+        }
+        GridMode::AutoRepeat { kind, min_px } => {
+            let _ = write!(
+                css,
+                " grid-template-columns: repeat({kind}, minmax({min_px}px, 1fr));"
+            );
+        }
+    }
     if !style.grid_auto_rows.is_empty() {
         css.push_str(" grid-auto-rows: 1fr;");
     }
@@ -121,12 +156,19 @@ fn write_grid_rule(selector: &str, style: &taffy::Style, is_root: bool, css: &mu
 
 fn emit_grid_children(tree: &LayoutTree, children: &[NodeId], counter: &mut u32, css: &mut String) {
     for &child_id in children {
-        let Some(Node::TaffyPassthrough { style, .. }) = tree.node(child_id) else {
-            continue;
-        };
-        let sel = container_selector(false, counter);
-        write_grid_card_rule(&sel, style, css);
-        emit_grid_card_panels(tree, child_id, css);
+        match tree.node(child_id) {
+            Some(Node::TaffyPassthrough { style, .. }) => {
+                let sel = container_selector(false, counter);
+                write_grid_card_rule(&sel, style, css);
+                emit_grid_card_panels(tree, child_id, css);
+            }
+            Some(Node::Panel {
+                kind, constraints, ..
+            }) => {
+                write_panel_rule(kind, constraints, Axis::Horizontal, css);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -181,6 +223,40 @@ fn write_flex_sizing(constraints: &Constraints, css: &mut String) {
             css.push_str("flex-grow: 1; flex-basis: 0px; flex-shrink: 1;");
         }
     }
+}
+
+/// Emit CSS with `@media` wrappers for adaptive breakpoints.
+///
+/// Each entry is `(min_width_px, layout)`. Breakpoints must be sorted ascending
+/// by min_width. The first breakpoint gets only a max-width query, the last gets
+/// only a min-width query, and middle breakpoints get both.
+pub fn emit_adaptive(breakpoints: &[(u32, &Layout)]) -> String {
+    let mut css = String::new();
+    let len = breakpoints.len();
+    for (i, (min_width, layout)) in breakpoints.iter().enumerate() {
+        let inner = emit(layout);
+        let query = match (i, i + 1 < len) {
+            (0, true) => {
+                let next_min = breakpoints[i + 1].0;
+                format!("@media (max-width: {}px)", next_min.saturating_sub(1))
+            }
+            (0, false) => {
+                // Single breakpoint — no media query needed
+                css.push_str(&inner);
+                continue;
+            }
+            (_, true) => {
+                let next_min = breakpoints[i + 1].0;
+                format!(
+                    "@media (min-width: {min_width}px) and (max-width: {}px)",
+                    next_min.saturating_sub(1)
+                )
+            }
+            (_, false) => format!("@media (min-width: {min_width}px)"),
+        };
+        let _ = write!(css, "{query} {{\n{inner}}}\n");
+    }
+    css
 }
 
 fn write_min_max(constraints: &Constraints, axis: Axis, css: &mut String) {
