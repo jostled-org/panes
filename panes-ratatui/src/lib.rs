@@ -1,7 +1,9 @@
 //! Convert panes layouts into `ratatui::layout::Rect` with pixel-perfect edge rounding.
 
 use panes::{OverlayEntry, PanelEntry, PanelId, ResolvedLayout};
+use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::widgets::Clear;
 use rustc_hash::FxHashMap;
 
 /// Convert a resolved panes layout into ratatui rects.
@@ -120,6 +122,54 @@ pub fn focused_panels_at<'a>(
 /// Iterate all resolved overlays, yielding identity and quantized ratatui rect.
 pub fn overlays(resolved: &ResolvedLayout) -> impl Iterator<Item = OverlayEntry<'_, Rect>> {
     resolved.overlays().map(|e| e.map_rect(quantize))
+}
+
+/// Iterate all resolved overlays with quantized rects offset by a parent rect's origin.
+///
+/// Suitable for rendering overlays inside a nested panes layout.
+pub fn overlays_at(
+    resolved: &ResolvedLayout,
+    origin: Rect,
+) -> impl Iterator<Item = OverlayEntry<'_, Rect>> {
+    resolved.overlays().map(move |e| {
+        e.map_rect(|r| {
+            let mut rect = quantize(r);
+            rect.x += origin.x;
+            rect.y += origin.y;
+            rect
+        })
+    })
+}
+
+/// Clear underlying cells and render each overlay via the callback.
+///
+/// Overlays sit above panels. Without clearing, panel borders and content
+/// bleed through. This function handles the clear automatically — call it
+/// after rendering panels.
+pub fn render_overlays(
+    frame: &mut Frame,
+    resolved: &ResolvedLayout,
+    mut render: impl FnMut(&mut Frame, OverlayEntry<'_, Rect>),
+) {
+    for entry in overlays(resolved) {
+        frame.render_widget(Clear, entry.rect);
+        render(frame, entry);
+    }
+}
+
+/// Clear underlying cells and render each overlay, offset by a parent origin.
+///
+/// Combines [`overlays_at`] origin translation with automatic cell clearing.
+pub fn render_overlays_at(
+    frame: &mut Frame,
+    resolved: &ResolvedLayout,
+    origin: Rect,
+    mut render: impl FnMut(&mut Frame, OverlayEntry<'_, Rect>),
+) {
+    for entry in overlays_at(resolved, origin) {
+        frame.render_widget(Clear, entry.rect);
+        render(frame, entry);
+    }
 }
 
 /// Round edges, not positions+sizes, to produce pixel-perfect u16 rects.

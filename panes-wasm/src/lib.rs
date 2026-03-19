@@ -49,12 +49,46 @@ pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, 
     })
 }
 
+/// Iterate all panels with f64 rects offset by an origin position.
+///
+/// Suitable for rendering a panes layout inside a container at an offset.
+pub fn panels_at(
+    resolved: &ResolvedLayout,
+    origin: WasmRect,
+) -> impl Iterator<Item = PanelEntry<'_, WasmRect>> {
+    resolved.panels().map(move |e| {
+        e.map_rect(|r| WasmRect {
+            x: f64::from(r.x) + origin.x,
+            y: f64::from(r.y) + origin.y,
+            w: f64::from(r.w),
+            h: f64::from(r.h),
+        })
+    })
+}
+
 /// Iterate all resolved overlays, yielding identity and f64 rect.
 pub fn overlays(resolved: &ResolvedLayout) -> impl Iterator<Item = OverlayEntry<'_, WasmRect>> {
     resolved.overlays().map(|e| {
         e.map_rect(|r| WasmRect {
             x: f64::from(r.x),
             y: f64::from(r.y),
+            w: f64::from(r.w),
+            h: f64::from(r.h),
+        })
+    })
+}
+
+/// Iterate all resolved overlays with f64 rects offset by an origin position.
+///
+/// Suitable for rendering overlays inside a container at an offset.
+pub fn overlays_at(
+    resolved: &ResolvedLayout,
+    origin: WasmRect,
+) -> impl Iterator<Item = OverlayEntry<'_, WasmRect>> {
+    resolved.overlays().map(move |e| {
+        e.map_rect(|r| WasmRect {
+            x: f64::from(r.x) + origin.x,
+            y: f64::from(r.y) + origin.y,
             w: f64::from(r.w),
             h: f64::from(r.h),
         })
