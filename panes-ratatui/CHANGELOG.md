@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.4.3...panes-ratatui-v0.4.4) - 2026-03-19
+
+### Added
+
+- add overlay and panel _at variants and render_overlays helpers
+
 ## [0.4.3](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.4.2...panes-ratatui-v0.4.3) - 2026-03-18
 
 ### Other
