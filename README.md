@@ -51,7 +51,7 @@ Optional features:
 
 ## Usage
 
-Build custom layouts or pick from 15 presets. Pass any coordinate system — pixels, logical points, terminal cells.
+Build custom layouts or pick from 13 presets. Pass any coordinate system — pixels, logical points, terminal cells.
 
 ```rust
 // Custom — full control with the layout macro
@@ -120,7 +120,7 @@ See [`benches/`](benches/) for methodology.
 
 ## Documentation
 
-See the [User Guide](docs/GUIDE.md) for the full API: all 15 presets, the layout macro, TOML configuration, runtime mutations, frame diffing, animation, and render adapters.
+See the [User Guide](docs/GUIDE.md) for the full API: all 13 presets, the layout macro, TOML configuration, runtime mutations, frame diffing, animation, and render adapters.
 
 ## License
 

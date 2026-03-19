@@ -285,7 +285,7 @@ Every preset follows the same pattern: construct via `Layout::preset_name(...)`,
 
 ### Preset Catalog
 
-`Layout::presets()` returns metadata for all 15 built-in presets — name, input style, and description. Use it to build preset browsers, populate selection menus, or generate documentation without hard-coding the list.
+`Layout::presets()` returns metadata for all 13 built-in presets — name, input style, and description. Use it to build preset browsers, populate selection menus, or generate documentation without hard-coding the list.
 
 ```rust
 use panes::{Layout, PanelInputKind};
@@ -365,38 +365,13 @@ Layout::spiral(["a", "b", "c", "d", "e"])
     .resolve(100.0, 100.0)?;
 ```
 
-#### columns
+#### columns (deprecated)
 
-CSS Grid with equal columns. Panels fill left-to-right, top-to-bottom (row-major). Supports responsive reflow.
+Use [`dashboard`](#dashboard) with span-1 cards instead. `Layout::columns` now delegates to `Dashboard` internally.
 
-```rust
-// Fixed 3 columns
-Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
-    .gap(1.0)
-    .resolve(90.0, 100.0)?;
+#### grid (deprecated)
 
-// Responsive: columns reflow based on min width
-Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
-    .auto_fill(200.0)  // repeat(auto-fill, minmax(200px, 1fr))
-    .gap(1.0)
-    .resolve(900.0, 600.0)?;
-```
-
-#### grid
-
-CSS Grid with equal cells in an N-column arrangement. Panels fill left-to-right, top-to-bottom. Supports responsive reflow.
-
-```rust
-Layout::grid(3, ["a", "b", "c", "d", "e", "f"])
-    .gap(1.0)
-    .resolve(90.0, 100.0)?;
-
-// Responsive grid
-Layout::grid(3, ["a", "b", "c", "d"])
-    .auto_fill(200.0)
-    .gap(8.0)
-    .resolve(800.0, 600.0)?;
-```
+Use [`dashboard`](#dashboard) with span-1 cards instead. `Layout::grid` now delegates to `Dashboard` internally.
 
 ### Stateful Presets
 
@@ -494,13 +469,24 @@ Layout::holy_grail("header", "footer", "left", "main", "right")
 
 #### dashboard
 
-Mixed-size cards in a CSS Grid. Each card has a column span.
+CSS Grid with per-card column spans, responsive reflow, and full-width cards.
 
 ```rust
+use panes::CardSpan;
+
+// Fixed columns with explicit spans
 Layout::dashboard([("metrics", 2), ("chart", 2), ("log", 1), ("alerts", 1)])
     .columns(4)  // default: 4
     .gap(2.0)
     .resolve(100.0, 100.0)?;
+
+// Full-width card spanning all columns (grid-column: 1 / -1)
+Layout::dashboard([
+    ("sidebar", CardSpan::Columns(1)),
+    ("content", CardSpan::FullWidth),
+])
+    .auto_fill(200.0)
+    .resolve(800.0, 600.0)?;
 ```
 
 #### scrollable
@@ -518,21 +504,23 @@ Layout::scrollable(["project-a", "project-b", "project-c"])
 
 Presets fall into two families based on their CSS layout model.
 
-**Grid-based** (`dashboard`, `grid`, `columns`) use CSS Grid under the hood. They support responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`. Panels are placed in a flat grid and wrap to new rows as viewport width changes.
+**Grid-based** (`dashboard`) uses CSS Grid under the hood. It supports responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`, per-card column spans, and full-width cards. Panels are placed in a flat grid and wrap to new rows as viewport width changes. The legacy `grid` and `columns` presets are deprecated and delegate to `Dashboard`.
 
 ```rust
-// Fixed 3-column grid
-Layout::grid(3, ["a", "b", "c", "d", "e", "f"]).build()?;
+use panes::CardSpan;
+
+// Fixed 4-column dashboard with mixed spans
+Layout::dashboard([("wide", 2), ("narrow", 1), ("narrow2", 1)]).build()?;
 
 // Responsive: columns reflow based on min width
-Layout::grid(3, ["a", "b", "c", "d"])
+Layout::dashboard([("a", 1), ("b", 1), ("c", 1)])
     .auto_fill(200.0)  // repeat(auto-fill, minmax(200px, 1fr))
     .gap(8.0)
     .build()?;
 
-// auto-fit expands items to fill remaining space
-Layout::columns(3, ["a", "b", "c"])
-    .auto_fit(200.0)   // repeat(auto-fit, minmax(200px, 1fr))
+// Full-width card spanning all columns
+Layout::dashboard([("header", CardSpan::FullWidth), ("main", CardSpan::Columns(1))])
+    .auto_fit(200.0)
     .build()?;
 ```
 
@@ -570,7 +558,7 @@ master_ratio = 0.6
 gap = 1.0
 ```
 
-Every preset is available as a strategy name: `master-stack`, `centered-master`, `monocle`, `scrollable`, `dwindle`, `spiral`, `columns`, `grid`, `deck`, `tabbed`, `stacked`, `sidebar`, `split`, `holy-grail`, `dashboard`.
+Every preset is available as a strategy name: `master-stack`, `centered-master`, `monocle`, `scrollable`, `dwindle`, `spiral`, `deck`, `tabbed`, `stacked`, `sidebar`, `split`, `holy-grail`, `dashboard`. The names `columns` and `grid` are still accepted for backward compatibility but resolve to `dashboard` internally.
 
 ### Named-parameter strategies
 
@@ -646,6 +634,10 @@ span = 2
 [[layout.panels]]
 kind = "log"
 span = 1
+
+[[layout.panels]]
+kind = "banner"
+span = "full-width"   # spans all columns (grid-column: 1 / -1)
 ```
 
 Dashboard also supports `min_column_width` and `column_mode`:
@@ -1049,6 +1041,17 @@ for (entry, is_focused) in panes_ratatui::focused_panels(&resolved, rt.focused()
 
 `focused_panels_at()` combines focus logic with origin offset.
 
+`render_overlays()` clears underlying cells and calls your render function for each overlay. Without clearing, panel borders bleed through. Use this after rendering panels:
+
+```rust
+panes_ratatui::render_overlays(frame, &resolved, |frame, entry| {
+    let block = Block::default().borders(Borders::ALL);
+    frame.render_widget(block, entry.rect);
+});
+```
+
+`render_overlays_at()` combines clearing with origin offset. `overlays()` and `overlays_at()` are also available for manual control.
+
 ### panes-egui
 
 ```toml
@@ -1082,7 +1085,7 @@ let css: String = panes_css::emit(&layout);
 
 Transpiles the layout tree into CSS flexbox/grid declarations. The browser acts as the solver — Taffy is not invoked. Panels use `[data-pane="kind"]` selectors, containers use `[data-pane-node="N"]`, and the root uses `[data-pane-root]`.
 
-Grid-based presets (`dashboard`, `grid`, `columns`) emit `display: grid` with `grid-template-columns`. When using `auto_fill` or `auto_fit`, the output uses `repeat(auto-fill, minmax(...))` or `repeat(auto-fit, minmax(...))` for responsive reflow. Flexbox-based presets emit `display: flex` with `flex-direction`.
+Grid-based presets (`dashboard`) emit `display: grid` with `grid-template-columns`. `CardSpan::FullWidth` emits `grid-column: 1 / -1`. When using `auto_fill` or `auto_fit`, the output uses `repeat(auto-fill, minmax(...))` or `repeat(auto-fit, minmax(...))` for responsive reflow. Flexbox-based presets emit `display: flex` with `flex-direction`.
 
 ### panes-wasm
 
