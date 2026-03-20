@@ -11,7 +11,7 @@ use crate::preset::{
 pub struct Tabbed {
     kinds: Arc<[Arc<str>]>,
     active: usize,
-    tab_height: f32,
+    bar_height: f32,
     gap: f32,
 }
 
@@ -20,7 +20,7 @@ impl Tabbed {
         Self {
             kinds: collect_kinds(kinds),
             active: 0,
-            tab_height: 1.0,
+            bar_height: 1.0,
             gap: 0.0,
         }
     }
@@ -32,8 +32,8 @@ impl Tabbed {
     }
 
     /// Set the tab bar height.
-    pub fn tab_height(mut self, height: f32) -> Self {
-        self.tab_height = height;
+    pub fn bar_height(mut self, height: f32) -> Self {
+        self.bar_height = height;
         self
     }
 
@@ -47,11 +47,11 @@ impl Tabbed {
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_active(self.active, self.kinds.len())?;
-        validate_f32_param("tab_height", self.tab_height)?;
+        validate_f32_param("bar_height", self.bar_height)?;
 
         let mut b = LayoutBuilder::new();
         let gap_px = self.gap;
-        let tab_bar_style = tab_bar_fixed_style(self.tab_height);
+        let tab_bar_style = tab_bar_fixed_style(self.bar_height);
         let active = self.active;
 
         b.col_gap(gap_px, |outer| {
@@ -85,6 +85,6 @@ super::impl_preset!(
     Tabbed,
     runtime(kinds, |this| crate::strategy::StrategyKind::ActivePanel {
         variant: crate::strategy::ActivePanelVariant::Tabbed,
-        bar_height: this.tab_height,
+        bar_height: this.bar_height,
     })
 );

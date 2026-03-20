@@ -66,9 +66,11 @@ impl CenteredMaster {
     }
 }
 
+type KindSlice = Box<[Arc<str>]>;
+
 /// Split items into left and right lists by alternation.
 /// Even indices (0, 2, 4...) go left, odd indices (1, 3, 5...) go right.
-fn split_alternating(items: &[Arc<str>]) -> (Vec<Arc<str>>, Vec<Arc<str>>) {
+fn split_alternating(items: &[Arc<str>]) -> (KindSlice, KindSlice) {
     let cap = items.len().div_ceil(2);
     let mut left = Vec::with_capacity(cap);
     let mut right = Vec::with_capacity(cap);
@@ -78,7 +80,7 @@ fn split_alternating(items: &[Arc<str>]) -> (Vec<Arc<str>>, Vec<Arc<str>>) {
             _ => right.push(Arc::clone(item)),
         }
     }
-    (left, right)
+    (left.into_boxed_slice(), right.into_boxed_slice())
 }
 
 super::impl_preset!(

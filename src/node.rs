@@ -44,8 +44,8 @@ pub enum Node {
     TaffyPassthrough {
         /// Custom Taffy style applied directly.
         style: Box<taffy::Style>,
-        /// Ordered child node ids.
-        children: Vec<NodeId>,
+        /// Ordered child node ids (immutable after construction).
+        children: Box<[NodeId]>,
     },
 }
 
@@ -53,9 +53,8 @@ impl Node {
     /// Child node ids for containers, empty slice for leaf nodes.
     pub fn children(&self) -> &[NodeId] {
         match self {
-            Self::Row { children, .. }
-            | Self::Col { children, .. }
-            | Self::TaffyPassthrough { children, .. } => children,
+            Self::Row { children, .. } | Self::Col { children, .. } => children,
+            Self::TaffyPassthrough { children, .. } => children,
             Self::Panel { .. } => &[],
         }
     }
@@ -63,10 +62,8 @@ impl Node {
     /// Mutable access to a container's children list.
     pub(crate) fn children_mut(&mut self) -> Option<&mut Vec<NodeId>> {
         match self {
-            Self::Row { children, .. }
-            | Self::Col { children, .. }
-            | Self::TaffyPassthrough { children, .. } => Some(children),
-            Self::Panel { .. } => None,
+            Self::Row { children, .. } | Self::Col { children, .. } => Some(children),
+            Self::TaffyPassthrough { .. } | Self::Panel { .. } => None,
         }
     }
 }

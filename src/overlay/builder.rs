@@ -14,112 +14,61 @@ pub struct Overlay {
     height: OverlayExtent,
 }
 
+/// Declares viewport-anchored and panel-anchored static constructors on `Overlay`.
+///
+/// Viewport arm: `(viewport $name:ident ($($params),*) => $doc, $h, $v, $mx, $my)`
+/// Panel arm:    `(panel $name:ident => $doc, $h, $v)`
+macro_rules! overlay_ctors {
+    // Viewport-anchored: no margin parameters (defaults to 0.0, 0.0).
+    (viewport $name:ident () => $doc:expr, $h:expr, $v:expr, $mx:expr, $my:expr) => {
+        #[doc = $doc]
+        pub fn $name() -> Self {
+            Self::viewport($h, $v, $mx, $my)
+        }
+    };
+    // Viewport-anchored: single margin parameter applied to margin_y.
+    (viewport $name:ident (margin) => $doc:expr, $h:expr, $v:expr, $mx:expr) => {
+        #[doc = $doc]
+        pub fn $name(margin: f32) -> Self {
+            Self::viewport($h, $v, $mx, margin)
+        }
+    };
+    // Viewport-anchored: separate mx/my parameters.
+    (viewport $name:ident (mx, my) => $doc:expr, $h:expr, $v:expr) => {
+        #[doc = $doc]
+        pub fn $name(mx: f32, my: f32) -> Self {
+            Self::viewport($h, $v, mx, my)
+        }
+    };
+    // Panel-anchored: takes a panel kind.
+    (panel $name:ident => $doc:expr, $h:expr, $v:expr) => {
+        #[doc = $doc]
+        pub fn $name(kind: impl Into<Arc<str>>) -> Self {
+            Self::panel(kind.into(), $h, $v)
+        }
+    };
+}
+
 impl Overlay {
-    /// Centered in the viewport.
-    pub fn center() -> Self {
+    fn viewport(h: HAlign, v: VAlign, margin_x: f32, margin_y: f32) -> Self {
         Self {
             anchor: OverlayAnchor::Viewport {
-                h: HAlign::Center,
-                v: VAlign::Center,
-                margin_x: 0.0,
-                margin_y: 0.0,
+                h,
+                v,
+                margin_x,
+                margin_y,
             },
             width: OverlayExtent::default(),
             height: OverlayExtent::default(),
         }
     }
 
-    /// Top-center with vertical margin.
-    pub fn top(margin: f32) -> Self {
-        Self {
-            anchor: OverlayAnchor::Viewport {
-                h: HAlign::Center,
-                v: VAlign::Top,
-                margin_x: 0.0,
-                margin_y: margin,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Bottom-center with vertical margin.
-    pub fn bottom(margin: f32) -> Self {
-        Self {
-            anchor: OverlayAnchor::Viewport {
-                h: HAlign::Center,
-                v: VAlign::Bottom,
-                margin_x: 0.0,
-                margin_y: margin,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Top-left corner with margins.
-    pub fn top_left(mx: f32, my: f32) -> Self {
-        Self {
-            anchor: OverlayAnchor::Viewport {
-                h: HAlign::Left,
-                v: VAlign::Top,
-                margin_x: mx,
-                margin_y: my,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Top-right corner with margins.
-    pub fn top_right(mx: f32, my: f32) -> Self {
-        Self {
-            anchor: OverlayAnchor::Viewport {
-                h: HAlign::Right,
-                v: VAlign::Top,
-                margin_x: mx,
-                margin_y: my,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Bottom-left corner with margins.
-    pub fn bottom_left(mx: f32, my: f32) -> Self {
-        Self {
-            anchor: OverlayAnchor::Viewport {
-                h: HAlign::Left,
-                v: VAlign::Bottom,
-                margin_x: mx,
-                margin_y: my,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Bottom-right corner with margins.
-    pub fn bottom_right(mx: f32, my: f32) -> Self {
-        Self {
-            anchor: OverlayAnchor::Viewport {
-                h: HAlign::Right,
-                v: VAlign::Bottom,
-                margin_x: mx,
-                margin_y: my,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Anchored above a panel (by kind).
-    pub fn above(kind: impl Into<Arc<str>>) -> Self {
+    fn panel(kind: Arc<str>, h: HAlign, v: VAlign) -> Self {
         Self {
             anchor: OverlayAnchor::Panel {
-                kind: kind.into(),
-                h: HAlign::Center,
-                v: VAlign::Top,
+                kind,
+                h,
+                v,
                 offset_x: 0.0,
                 offset_y: 0.0,
             },
@@ -128,50 +77,18 @@ impl Overlay {
         }
     }
 
-    /// Anchored below a panel (by kind).
-    pub fn below(kind: impl Into<Arc<str>>) -> Self {
-        Self {
-            anchor: OverlayAnchor::Panel {
-                kind: kind.into(),
-                h: HAlign::Center,
-                v: VAlign::Bottom,
-                offset_x: 0.0,
-                offset_y: 0.0,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
+    overlay_ctors!(viewport center ()       => "Centered in the viewport.", HAlign::Center, VAlign::Center, 0.0, 0.0);
+    overlay_ctors!(viewport top (margin)    => "Top-center with vertical margin.", HAlign::Center, VAlign::Top, 0.0);
+    overlay_ctors!(viewport bottom (margin) => "Bottom-center with vertical margin.", HAlign::Center, VAlign::Bottom, 0.0);
+    overlay_ctors!(viewport top_left (mx, my)     => "Top-left corner with margins.", HAlign::Left, VAlign::Top);
+    overlay_ctors!(viewport top_right (mx, my)    => "Top-right corner with margins.", HAlign::Right, VAlign::Top);
+    overlay_ctors!(viewport bottom_left (mx, my)  => "Bottom-left corner with margins.", HAlign::Left, VAlign::Bottom);
+    overlay_ctors!(viewport bottom_right (mx, my) => "Bottom-right corner with margins.", HAlign::Right, VAlign::Bottom);
 
-    /// Anchored to the left of a panel (by kind).
-    pub fn left_of(kind: impl Into<Arc<str>>) -> Self {
-        Self {
-            anchor: OverlayAnchor::Panel {
-                kind: kind.into(),
-                h: HAlign::Left,
-                v: VAlign::Center,
-                offset_x: 0.0,
-                offset_y: 0.0,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
-
-    /// Anchored to the right of a panel (by kind).
-    pub fn right_of(kind: impl Into<Arc<str>>) -> Self {
-        Self {
-            anchor: OverlayAnchor::Panel {
-                kind: kind.into(),
-                h: HAlign::Right,
-                v: VAlign::Center,
-                offset_x: 0.0,
-                offset_y: 0.0,
-            },
-            width: OverlayExtent::default(),
-            height: OverlayExtent::default(),
-        }
-    }
+    overlay_ctors!(panel above    => "Anchored above a panel (by kind).", HAlign::Center, VAlign::Top);
+    overlay_ctors!(panel below    => "Anchored below a panel (by kind).", HAlign::Center, VAlign::Bottom);
+    overlay_ctors!(panel left_of  => "Anchored to the left of a panel (by kind).", HAlign::Left, VAlign::Center);
+    overlay_ctors!(panel right_of => "Anchored to the right of a panel (by kind).", HAlign::Right, VAlign::Center);
 
     /// Set an offset (for panel-anchored overlays).
     pub fn offset(mut self, x: f32, y: f32) -> Self {

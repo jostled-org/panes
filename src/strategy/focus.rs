@@ -36,6 +36,8 @@ pub fn try_apply_focus(
 
 /// Set constraints on a panel if it exists in the tree.
 /// Only call with known-valid constraints (fixed(0.0), grow(1.0)).
+/// Returns `true` on success, `false` if the panel is missing or
+/// constraints could not be applied.
 fn set_constraints_if_present(
     tree: &mut LayoutTree,
     pid: PanelId,

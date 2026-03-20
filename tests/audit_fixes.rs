@@ -130,18 +130,18 @@ fn scrollable_active_out_of_bounds() {
 }
 
 #[test]
-fn tabbed_infinite_tab_height() {
+fn tabbed_infinite_bar_height() {
     let err = Layout::tabbed(["a", "b"])
-        .tab_height(f32::INFINITY)
+        .bar_height(f32::INFINITY)
         .build()
         .unwrap_err();
     assert!(matches!(err, PaneError::InvalidConstraint(_)));
 }
 
 #[test]
-fn stacked_nan_title_height() {
+fn stacked_nan_bar_height() {
     let err = Layout::stacked(["a", "b"])
-        .title_height(f32::NAN)
+        .bar_height(f32::NAN)
         .build()
         .unwrap_err();
     assert!(matches!(err, PaneError::InvalidConstraint(_)));

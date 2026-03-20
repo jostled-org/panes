@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::collect_kinds;
-use crate::strategy::{CardSpan, GridColumnMode};
+use crate::strategy::GridColumnMode;
 
 /// Builder for the equal-columns preset layout.
 ///
@@ -55,18 +55,7 @@ impl Columns {
     }
 
     fn as_dashboard(&self) -> super::Dashboard {
-        let cards: Vec<(Arc<str>, CardSpan)> = self
-            .kinds
-            .iter()
-            .map(|k| (Arc::clone(k), CardSpan::Columns(1)))
-            .collect();
-        let mut d = super::Dashboard::new(cards);
-        d = match self.cols {
-            GridColumnMode::Fixed(n) => d.columns(n),
-            GridColumnMode::AutoFill { min_width } => d.auto_fill(min_width),
-            GridColumnMode::AutoFit { min_width } => d.auto_fit(min_width),
-        };
-        d.gap(self.gap)
+        super::common::kinds_to_dashboard(self.cols, &self.kinds, self.gap)
     }
 }
 

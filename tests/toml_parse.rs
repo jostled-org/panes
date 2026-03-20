@@ -67,7 +67,7 @@ grow = 1.0
 fixed = 30.0
 "#;
     let err = Layout::from_toml(toml).unwrap_err();
-    assert!(matches!(err, TomlError::InvalidValue { .. }));
+    assert!(matches!(err, TomlError::LayoutError(_)));
 }
 
 // -- master-stack --
@@ -288,7 +288,7 @@ fn tabbed_with_options() {
 strategy = "tabbed"
 panels = ["a", "b"]
 active = 1
-tab_height = 2.0
+bar_height = 2.0
 gap = 1.0
 "#;
     let layout = Layout::from_toml(toml).unwrap();
@@ -318,7 +318,7 @@ fn stacked_with_options() {
 strategy = "stacked"
 panels = ["a", "b"]
 active = 1
-title_height = 2.0
+bar_height = 2.0
 gap = 1.0
 "#;
     let layout = Layout::from_toml(toml).unwrap();
@@ -957,7 +957,7 @@ kind = "editor"
 type = "col"
 "#;
     let err = Layout::from_toml(toml).unwrap_err();
-    assert!(matches!(err, TomlError::InvalidValue { .. }));
+    assert!(matches!(err, TomlError::LayoutError(_)));
 }
 
 #[test]
@@ -973,7 +973,7 @@ type = "row"
 grow = 1.0
 "#;
     let err = Layout::from_toml(toml).unwrap_err();
-    assert!(matches!(err, TomlError::InvalidValue { .. }));
+    assert!(matches!(err, TomlError::LayoutError(_)));
 }
 
 #[test]

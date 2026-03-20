@@ -32,14 +32,14 @@ impl BreakpointEntry {
 
 /// Builder for adaptive layouts that switch strategies at width breakpoints.
 pub struct AdaptiveBuilder {
-    panels: Vec<Arc<str>>,
+    panels: Box<[Arc<str>]>,
     breakpoints: Vec<BreakpointEntry>,
 }
 
 impl AdaptiveBuilder {
     pub(crate) fn new(panels: Vec<Arc<str>>) -> Self {
         Self {
-            panels,
+            panels: panels.into_boxed_slice(),
             breakpoints: Vec::new(),
         }
     }
@@ -62,9 +62,8 @@ impl AdaptiveBuilder {
         }
         self.breakpoints.sort_by_key(|bp| bp.min_width);
         let active_idx = 0;
-        let strategy = self.breakpoints[active_idx].strategy.clone();
         let breakpoints: Box<[BreakpointEntry]> = self.breakpoints.into();
-        LayoutRuntime::from_adaptive(strategy, &self.panels, breakpoints, active_idx)
+        LayoutRuntime::from_adaptive(&self.panels, breakpoints, active_idx)
     }
 }
 
@@ -83,26 +82,26 @@ pub(crate) fn select_breakpoint(breakpoints: &[BreakpointEntry], width: f32) -> 
 
 /// Rebuild tree + sequence for a new breakpoint. Returns collected kinds
 /// for focus restoration.
+///
+/// The strategy is borrowed from `breakpoints[new_idx]` — no clone needed.
 pub(crate) fn rebuild_for_breakpoint(
     breakpoints: &[BreakpointEntry],
     new_idx: usize,
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
-    strategy: &mut Option<StrategyKind>,
     cached_compile: &mut Option<CompileResult>,
     cached_kinds: &mut Option<resolver::KindIndex>,
-) -> Result<Vec<Arc<str>>, PaneError> {
+) -> Result<Box<[Arc<str>]>, PaneError> {
     let kinds = crate::strategy::collect_kinds_from_sequence(tree, sequence);
 
-    let new_strategy = breakpoints[new_idx].strategy.clone();
-    let new_tree = crate::strategy::build_tree_for_strategy(&new_strategy, &kinds)?;
+    let strategy = &breakpoints[new_idx].strategy;
+    let new_tree = crate::strategy::build_tree_for_strategy(strategy, &kinds)?;
 
     let mut new_seq = PanelSequence::default();
     crate::strategy::populate_sequence_by_kinds(&new_tree, &kinds, &mut new_seq);
 
     *tree = new_tree;
     *sequence = new_seq;
-    *strategy = Some(new_strategy);
     *cached_compile = None;
     *cached_kinds = None;
 

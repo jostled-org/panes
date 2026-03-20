@@ -73,10 +73,10 @@ impl Layout {
 
     /// Equal-grow panels in a row, zero gap.
     pub fn row(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Result<Self, PaneError> {
-        let kinds: Vec<Arc<str>> = kinds.into_iter().map(Into::into).collect();
+        let kinds: Box<[Arc<str>]> = kinds.into_iter().map(Into::into).collect();
         let mut b = LayoutBuilder::new();
         b.row(|r| {
-            for kind in &kinds {
+            for kind in &*kinds {
                 r.panel(Arc::clone(kind));
             }
         })?;
@@ -85,10 +85,10 @@ impl Layout {
 
     /// Equal-grow panels in a column, zero gap.
     pub fn col(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Result<Self, PaneError> {
-        let kinds: Vec<Arc<str>> = kinds.into_iter().map(Into::into).collect();
+        let kinds: Box<[Arc<str>]> = kinds.into_iter().map(Into::into).collect();
         let mut b = LayoutBuilder::new();
         b.col(|r| {
-            for kind in &kinds {
+            for kind in &*kinds {
                 r.panel(Arc::clone(kind));
             }
         })?;
@@ -99,10 +99,10 @@ impl Layout {
     pub fn row_with(
         panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
     ) -> Result<Self, PaneError> {
-        let panels: Vec<_> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        let panels: Box<[_]> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
         let mut b = LayoutBuilder::new();
         b.row(|r| {
-            for (kind, constraints) in &panels {
+            for (kind, constraints) in &*panels {
                 r.panel_with(Arc::clone(kind), *constraints);
             }
         })?;
@@ -113,10 +113,10 @@ impl Layout {
     pub fn col_with(
         panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
     ) -> Result<Self, PaneError> {
-        let panels: Vec<_> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        let panels: Box<[_]> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
         let mut b = LayoutBuilder::new();
         b.col(|c| {
-            for (kind, constraints) in &panels {
+            for (kind, constraints) in &*panels {
                 c.panel_with(Arc::clone(kind), *constraints);
             }
         })?;

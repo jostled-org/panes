@@ -65,6 +65,11 @@ impl LayoutSnapshot {
     pub fn overlays(&self) -> &[SnapshotOverlay] {
         &self.overlays
     }
+
+    /// Consume and return the overlay definitions.
+    pub fn into_overlays(self) -> Vec<SnapshotOverlay> {
+        self.overlays.into_vec()
+    }
 }
 
 /// What a snapshot restores from: a strategy recipe, a tree topology,
@@ -286,6 +291,10 @@ macro_rules! strategy_convert {
     };
 }
 
+fn spans_to_boxed(spans: &[CardSpan]) -> Box<[CardSpan]> {
+    Box::from(spans)
+}
+
 strategy_convert! {
     copy: [
         Sequence { direction, gap, ratio },
@@ -298,13 +307,13 @@ strategy_convert! {
     ],
     custom_to_config: [
         StrategyKind::Dashboard { columns, gap, spans } => StrategyConfig::Dashboard {
-            columns: *columns, gap: *gap, spans: spans.to_vec().into_boxed_slice(),
+            columns: *columns, gap: *gap, spans: spans_to_boxed(spans),
         },
         StrategyKind::DashboardAutoFill { min_width, gap, spans } => StrategyConfig::DashboardAutoFill {
-            min_width: *min_width, gap: *gap, spans: spans.to_vec().into_boxed_slice(),
+            min_width: *min_width, gap: *gap, spans: spans_to_boxed(spans),
         },
         StrategyKind::DashboardAutoFit { min_width, gap, spans } => StrategyConfig::DashboardAutoFit {
-            min_width: *min_width, gap: *gap, spans: spans.to_vec().into_boxed_slice(),
+            min_width: *min_width, gap: *gap, spans: spans_to_boxed(spans),
         },
         StrategyKind::Slotted { slots, gap, direction } => StrategyConfig::Slotted {
             slots: slots.iter().map(|s| SnapshotSlotDef {
@@ -346,6 +355,13 @@ pub(crate) fn tree_to_snapshot(tree: &LayoutTree) -> Option<SnapshotNode> {
     node_to_snapshot(tree, root, 0)
 }
 
+fn container_snapshot(is_row: bool, gap: f32, children: Box<[SnapshotNode]>) -> SnapshotNode {
+    match is_row {
+        true => SnapshotNode::Row { gap, children },
+        false => SnapshotNode::Col { gap, children },
+    }
+}
+
 fn node_to_snapshot(tree: &LayoutTree, nid: NodeId, depth: usize) -> Option<SnapshotNode> {
     let node = tree.node(nid)?;
     match (depth > MAX_SNAPSHOT_DEPTH, node) {
@@ -359,27 +375,13 @@ fn node_to_snapshot(tree: &LayoutTree, nid: NodeId, depth: usize) -> Option<Snap
             kind: Box::from(&**kind),
             constraints: *constraints,
         }),
-        (_, Node::Row { gap, children }) => {
+        (_, Node::Row { gap, children } | Node::Col { gap, children }) => {
+            let is_row = matches!(node, Node::Row { .. });
             let kids: Box<[SnapshotNode]> = children
                 .iter()
                 .filter_map(|&c| node_to_snapshot(tree, c, depth + 1))
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
-            Some(SnapshotNode::Row {
-                gap: *gap,
-                children: kids,
-            })
-        }
-        (_, Node::Col { gap, children }) => {
-            let kids: Box<[SnapshotNode]> = children
-                .iter()
-                .filter_map(|&c| node_to_snapshot(tree, c, depth + 1))
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
-            Some(SnapshotNode::Col {
-                gap: *gap,
-                children: kids,
-            })
+                .collect();
+            Some(container_snapshot(is_row, *gap, kids))
         }
     }
 }
@@ -463,15 +465,13 @@ pub(crate) fn capture(
         .collapsed
         .iter()
         .filter_map(|&pid| tree.panel_kind(pid).ok().map(Box::from))
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
+        .collect();
 
     let panels_box = || -> Box<[Box<str>]> {
         sequence
             .iter()
             .filter_map(|pid| tree.panel_kind(pid).ok().map(Box::from))
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
+            .collect()
     };
 
     let source = match (breakpoints, strategy) {
@@ -482,8 +482,7 @@ pub(crate) fn capture(
                     min_width: bp.min_width,
                     strategy: StrategyConfig::from(&bp.strategy),
                 })
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
+                .collect();
             SnapshotSource::Adaptive {
                 breakpoints: snap_bps,
                 panels: panels_box(),
@@ -510,8 +509,7 @@ pub(crate) fn capture(
             height: def.height,
             visible: def.visible,
         })
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
+        .collect();
 
     Ok(LayoutSnapshot {
         source,

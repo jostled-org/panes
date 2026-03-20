@@ -1,0 +1,110 @@
+# pedant project config — inherits nothing from global, must be complete
+
+max_depth = 2
+check_nested_if = true
+check_if_in_match = true
+check_nested_match = true
+check_match_in_if = true
+forbid_else = true
+forbid_unsafe = true
+check_dyn_return = true
+check_dyn_param = true
+check_vec_box_dyn = true
+check_dyn_field = true
+check_clone_in_loop = true
+check_default_hasher = true
+check_mixed_concerns = true
+check_inline_tests = true
+
+[check_naming]
+enabled = true
+
+[forbid_attributes]
+enabled = true
+patterns = [
+    "allow(dead_code)",
+    "allow(unused*)",
+    "allow(clippy::*)",
+]
+
+[forbid_types]
+enabled = true
+patterns = [
+    "Arc<String>",
+    "Arc<Vec<*>>",
+    "Box<dyn*Error*>",
+]
+
+[forbid_calls]
+enabled = true
+patterns = [
+    ".unwrap()",
+    ".expect(*)",
+]
+
+[forbid_macros]
+enabled = true
+patterns = [
+    "panic!",
+    "todo!",
+    "unimplemented!",
+    "dbg!",
+    "println!",
+    "eprintln!",
+]
+
+# Relax rules for tests
+[overrides."tests/**"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."tests/**".forbid_calls]
+enabled = false
+
+[overrides."tests/**".forbid_macros]
+enabled = false
+
+# Project-specific overrides
+
+# PanelIdGenerator generates PanelId; Constraints configures panels.
+# Both are panel concerns — structural connection is through PanelId,
+# which pedant can't trace through newtypes.
+[overrides."**/panel.rs"]
+check_mixed_concerns = false
+
+# PanelEntry is a resolver output type — same domain as ResolvedLayout.
+# x, y are spatial coordinates in layout resolution.
+[overrides."**/resolver.rs"]
+check_mixed_concerns = false
+[overrides."**/resolver.rs".check_naming]
+enabled = false
+
+# x, y are spatial coordinates in overlay positioning.
+[overrides."**/overlay/builder.rs"]
+check_mixed_concerns = false
+[overrides."**/overlay/builder.rs".check_naming]
+enabled = false
+
+[overrides."**/overlay/resolve.rs".check_naming]
+enabled = false
+
+# OverlayEntry is an overlay output type — same domain as OverlayDef/OverlayAnchor.
+[overrides."**/overlay/types.rs"]
+check_mixed_concerns = false
+
+# GridColumnMode configures StrategyKind dashboard variants — same domain.
+[overrides."**/strategy/types.rs"]
+check_mixed_concerns = false
+
+# LayoutDiff and OverlayDiff are both frame-to-frame diff types — same concern.
+[overrides."**/diff.rs"]
+check_mixed_concerns = false
+
+# ContainerCtx is the builder's internal cursor — same concern as LayoutBuilder.
+# This pattern must not match overlay/builder.rs (handled above).
+[overrides."src/builder.rs"]
+check_mixed_concerns = false
+
+# EmitCtx, GridMode, GridColumnPlacement are all CSS emission internals.
+[overrides."**/emit.rs"]
+check_mixed_concerns = false

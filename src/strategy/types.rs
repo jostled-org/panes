@@ -68,6 +68,29 @@ pub(crate) enum GridColumnMode {
     },
 }
 
+impl GridColumnMode {
+    /// Build the appropriate `StrategyKind` dashboard variant from this column mode.
+    pub(crate) fn to_dashboard_strategy(self, gap: f32, spans: Arc<[CardSpan]>) -> StrategyKind {
+        match self {
+            Self::Fixed(columns) => StrategyKind::Dashboard {
+                columns,
+                gap,
+                spans,
+            },
+            Self::AutoFill { min_width } => StrategyKind::DashboardAutoFill {
+                min_width,
+                gap,
+                spans,
+            },
+            Self::AutoFit { min_width } => StrategyKind::DashboardAutoFit {
+                min_width,
+                gap,
+                spans,
+            },
+        }
+    }
+}
+
 /// Behavioral strategy for a layout, determining how add/remove/move/focus
 /// mutations are applied to the tree.
 

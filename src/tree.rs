@@ -137,7 +137,7 @@ impl LayoutTree {
     ) -> Result<NodeId, PaneError> {
         let id = self.alloc(Node::TaffyPassthrough {
             style: Box::new(style),
-            children,
+            children: children.into_boxed_slice(),
         })?;
         Self::record_children_from(&mut self.parent_map, &self.nodes, id);
         self.dirty = true;
@@ -245,6 +245,22 @@ impl LayoutTree {
                 Ok(())
             }
             _ => Err(PaneError::PanelNotFound(pid)),
+        }
+    }
+
+    /// Update the `flex_grow` on a `TaffyPassthrough` node.
+    pub(crate) fn set_node_flex_grow(&mut self, nid: NodeId, value: f32) -> Result<(), PaneError> {
+        match self
+            .nodes
+            .get_mut(nid.raw() as usize)
+            .and_then(|s| s.as_mut())
+        {
+            Some(Node::TaffyPassthrough { style, .. }) => {
+                style.flex_grow = value;
+                self.dirty = true;
+                Ok(())
+            }
+            _ => Err(PaneError::NodeNotFound(nid)),
         }
     }
 

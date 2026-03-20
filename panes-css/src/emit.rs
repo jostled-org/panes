@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 // `fmt::Write` for `String` is infallible. `let _ =` discards the unused `Result`.
 
-use panes::compiler::Axis;
+use panes::Direction;
 use panes::{Constraints, Layout, LayoutTree, Node, NodeId};
 
 /// Mutable state threaded through recursive CSS emission.
@@ -25,11 +25,17 @@ pub fn emit(layout: &Layout) -> String {
         css: String::new(),
         counter: 0,
     };
-    emit_node(tree, root_id, Axis::Horizontal, true, &mut ctx);
+    emit_node(tree, root_id, Direction::Horizontal, true, &mut ctx);
     ctx.css
 }
 
-fn emit_node(tree: &LayoutTree, nid: NodeId, parent_axis: Axis, is_root: bool, ctx: &mut EmitCtx) {
+fn emit_node(
+    tree: &LayoutTree,
+    nid: NodeId,
+    parent_axis: Direction,
+    is_root: bool,
+    ctx: &mut EmitCtx,
+) {
     let Some(node) = tree.node(nid) else { return };
     match node {
         Node::Panel {
@@ -40,12 +46,12 @@ fn emit_node(tree: &LayoutTree, nid: NodeId, parent_axis: Axis, is_root: bool, c
         Node::Row { gap, children } => {
             let sel = container_selector(is_root, &mut ctx.counter);
             write_container_rule(&sel, "row", *gap, is_root, &mut ctx.css);
-            emit_children(tree, children, Axis::Horizontal, ctx);
+            emit_children(tree, children, Direction::Horizontal, ctx);
         }
         Node::Col { gap, children } => {
             let sel = container_selector(is_root, &mut ctx.counter);
             write_container_rule(&sel, "column", *gap, is_root, &mut ctx.css);
-            emit_children(tree, children, Axis::Vertical, ctx);
+            emit_children(tree, children, Direction::Vertical, ctx);
         }
         Node::TaffyPassthrough { style, children } if style.display == taffy::Display::Grid => {
             let sel = container_selector(is_root, &mut ctx.counter);
@@ -60,7 +66,7 @@ fn emit_node(tree: &LayoutTree, nid: NodeId, parent_axis: Axis, is_root: bool, c
     }
 }
 
-fn emit_children(tree: &LayoutTree, children: &[NodeId], axis: Axis, ctx: &mut EmitCtx) {
+fn emit_children(tree: &LayoutTree, children: &[NodeId], axis: Direction, ctx: &mut EmitCtx) {
     for &child_id in children {
         emit_node(tree, child_id, axis, false, ctx);
     }
@@ -93,7 +99,12 @@ fn write_container_rule(
     css.push_str(" }\n");
 }
 
-fn write_panel_rule(kind: &str, constraints: &Constraints, parent_axis: Axis, css: &mut String) {
+fn write_panel_rule(
+    kind: &str,
+    constraints: &Constraints,
+    parent_axis: Direction,
+    css: &mut String,
+) {
     let _ = write!(css, "[data-pane=\"{kind}\"] {{ ");
     write_flex_sizing(constraints, css);
     write_min_max(constraints, parent_axis, css);
@@ -165,7 +176,7 @@ fn emit_grid_children(tree: &LayoutTree, children: &[NodeId], counter: &mut u32,
             Some(Node::Panel {
                 kind, constraints, ..
             }) => {
-                write_panel_rule(kind, constraints, Axis::Horizontal, css);
+                write_panel_rule(kind, constraints, Direction::Horizontal, css);
             }
             _ => {}
         }
@@ -197,7 +208,7 @@ fn emit_grid_card_panels(tree: &LayoutTree, card_id: NodeId, css: &mut String) {
         else {
             continue;
         };
-        write_panel_rule(kind, constraints, Axis::Horizontal, css);
+        write_panel_rule(kind, constraints, Direction::Horizontal, css);
     }
 }
 
@@ -274,10 +285,10 @@ pub fn emit_adaptive(breakpoints: &[(u32, &Layout)]) -> String {
     css
 }
 
-fn write_min_max(constraints: &Constraints, axis: Axis, css: &mut String) {
+fn write_min_max(constraints: &Constraints, axis: Direction, css: &mut String) {
     let (min_prop, max_prop) = match axis {
-        Axis::Horizontal => ("min-width", "max-width"),
-        Axis::Vertical => ("min-height", "max-height"),
+        Direction::Horizontal => ("min-width", "max-width"),
+        Direction::Vertical => ("min-height", "max-height"),
     };
     if let Some(min) = constraints.min {
         let _ = write!(css, " {min_prop}: {min}px;");

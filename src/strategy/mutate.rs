@@ -4,6 +4,7 @@ use crate::error::{MutationError, PaneError, TreeError};
 use crate::node::PanelId;
 use crate::panel::fixed;
 use crate::sequence::PanelSequence;
+use crate::strategy::CardSpan;
 use crate::tree::LayoutTree;
 use crate::viewport::ViewportState;
 
@@ -42,7 +43,10 @@ fn add_via_rebuild(
     kind: Arc<str>,
     index: usize,
 ) -> Result<PanelId, PaneError> {
-    let mut kinds = collect_kinds_from_sequence(tree, sequence);
+    let mut kinds: Vec<Arc<str>> = sequence
+        .iter()
+        .filter_map(|pid| tree.panel_kind_arc(pid).ok())
+        .collect();
     let clamped = index.min(kinds.len());
     kinds.insert(clamped, kind);
     rebuild_tree_and_sequence(tree, sequence, &kinds, |kinds| {
@@ -226,9 +230,92 @@ fn rebuild_tree_and_sequence(
 pub(crate) fn collect_kinds_from_sequence(
     tree: &LayoutTree,
     sequence: &PanelSequence,
-) -> Vec<Arc<str>> {
+) -> Box<[Arc<str>]> {
     sequence
         .iter()
         .filter_map(|pid| tree.panel_kind_arc(pid).ok())
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// apply_set_card_span
+// ---------------------------------------------------------------------------
+
+/// Change a dashboard card's column span and rebuild the grid tree.
+///
+/// Returns the updated `StrategyKind` so the caller can replace `self.strategy`.
+pub fn apply_set_card_span(
+    strategy: &StrategyKind,
+    tree: &mut LayoutTree,
+    sequence: &mut PanelSequence,
+    viewport: &mut ViewportState,
+    pid: PanelId,
+    span: CardSpan,
+) -> Result<StrategyKind, PaneError> {
+    let seq_idx = sequence
+        .index_of(pid)
+        .ok_or(PaneError::PanelNotFound(pid))?;
+
+    let new_strategy = build_updated_strategy(strategy, seq_idx, span)?;
+
+    let kinds = collect_kinds_from_sequence(tree, sequence);
+    rebuild_tree_and_sequence(tree, sequence, &kinds, |kinds| {
+        build_tree_for_strategy(&new_strategy, kinds)
+    })?;
+
+    viewport.focus = sequence.get(0);
+    try_apply_focus(&new_strategy, tree, sequence, viewport, pid);
+
+    Ok(new_strategy)
+}
+
+fn build_updated_strategy(
+    strategy: &StrategyKind,
+    index: usize,
+    span: CardSpan,
+) -> Result<StrategyKind, PaneError> {
+    let update_spans = |old: &Arc<[CardSpan]>| -> Arc<[CardSpan]> {
+        let mut spans: Vec<CardSpan> = old.to_vec();
+        if index >= spans.len() {
+            spans.resize(index + 1, CardSpan::Columns(1));
+        }
+        spans[index] = span;
+        spans.into()
+    };
+
+    macro_rules! with_updated_spans {
+        ($variant:ident, $first_field:ident = $first_val:expr, $gap_val:expr, $spans_val:expr) => {{
+            let new_spans = update_spans($spans_val);
+            Ok(StrategyKind::$variant {
+                $first_field: *$first_val,
+                gap: *$gap_val,
+                spans: new_spans,
+            })
+        }};
+    }
+
+    match strategy {
+        StrategyKind::Dashboard {
+            columns,
+            gap,
+            spans,
+        } => {
+            with_updated_spans!(Dashboard, columns = columns, gap, spans)
+        }
+        StrategyKind::DashboardAutoFill {
+            min_width,
+            gap,
+            spans,
+        } => {
+            with_updated_spans!(DashboardAutoFill, min_width = min_width, gap, spans)
+        }
+        StrategyKind::DashboardAutoFit {
+            min_width,
+            gap,
+            spans,
+        } => {
+            with_updated_spans!(DashboardAutoFit, min_width = min_width, gap, spans)
+        }
+        _ => Err(PaneError::InvalidMutation(MutationError::SpanNotSupported)),
+    }
 }

@@ -12,7 +12,7 @@ use crate::preset::{
 pub struct Stacked {
     kinds: Arc<[Arc<str>]>,
     active: usize,
-    title_height: f32,
+    bar_height: f32,
     gap: f32,
 }
 
@@ -21,7 +21,7 @@ impl Stacked {
         Self {
             kinds: collect_kinds(kinds),
             active: 0,
-            title_height: 1.0,
+            bar_height: 1.0,
             gap: 0.0,
         }
     }
@@ -33,8 +33,8 @@ impl Stacked {
     }
 
     /// Set the title bar height.
-    pub fn title_height(mut self, height: f32) -> Self {
-        self.title_height = height;
+    pub fn bar_height(mut self, height: f32) -> Self {
+        self.bar_height = height;
         self
     }
 
@@ -48,11 +48,11 @@ impl Stacked {
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_active(self.active, self.kinds.len())?;
-        validate_f32_param("title_height", self.title_height)?;
+        validate_f32_param("bar_height", self.bar_height)?;
 
         let mut b = LayoutBuilder::new();
         let gap_px = self.gap;
-        let title_h = self.title_height;
+        let title_h = self.bar_height;
         let active = self.active;
 
         b.col_gap(gap_px, |c| {
@@ -80,6 +80,6 @@ super::impl_preset!(
     Stacked,
     runtime(kinds, |this| crate::strategy::StrategyKind::ActivePanel {
         variant: crate::strategy::ActivePanelVariant::Stacked,
-        bar_height: this.title_height,
+        bar_height: this.bar_height,
     })
 );

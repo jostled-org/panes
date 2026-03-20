@@ -62,34 +62,36 @@ pub(crate) fn add_active_hidden_panels(
     }
 }
 
-/// A column-direction taffy style with a specific grow factor and gap.
-pub(crate) fn col_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
-    taffy::Style {
-        flex_direction: taffy::FlexDirection::Column,
-        flex_grow,
-        flex_basis: taffy::Dimension::length(0.0),
-        flex_shrink: 1.0,
-        gap: taffy::Size {
+/// Build a flex style with the given direction, grow factor, and gap.
+fn flex_style(direction: taffy::FlexDirection, flex_grow: f32, gap_px: f32) -> taffy::Style {
+    let gap = match direction {
+        taffy::FlexDirection::Row | taffy::FlexDirection::RowReverse => taffy::Size {
+            width: taffy::LengthPercentage::length(gap_px),
+            height: taffy::LengthPercentage::length(0.0),
+        },
+        _ => taffy::Size {
             width: taffy::LengthPercentage::length(0.0),
             height: taffy::LengthPercentage::length(gap_px),
         },
+    };
+    taffy::Style {
+        flex_direction: direction,
+        flex_grow,
+        flex_basis: taffy::Dimension::length(0.0),
+        flex_shrink: 1.0,
+        gap,
         ..Default::default()
     }
 }
 
+/// A column-direction taffy style with a specific grow factor and gap.
+pub(crate) fn col_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
+    flex_style(taffy::FlexDirection::Column, flex_grow, gap_px)
+}
+
 /// A row-direction taffy style with a specific grow factor and gap.
 pub(crate) fn row_style(flex_grow: f32, gap_px: f32) -> taffy::Style {
-    taffy::Style {
-        flex_direction: taffy::FlexDirection::Row,
-        flex_grow,
-        flex_basis: taffy::Dimension::length(0.0),
-        flex_shrink: 1.0,
-        gap: taffy::Size {
-            width: taffy::LengthPercentage::length(gap_px),
-            height: taffy::LengthPercentage::length(0.0),
-        },
-        ..Default::default()
-    }
+    flex_style(taffy::FlexDirection::Row, flex_grow, gap_px)
 }
 
 /// Add one panel per kind with the given constraints.
@@ -185,6 +187,26 @@ macro_rules! impl_preset {
             }
         }
     };
+}
+
+/// Convert a `GridColumnMode` + kinds into a `Dashboard` preset.
+/// Shared by the deprecated `Columns` and `Grid` presets.
+pub(crate) fn kinds_to_dashboard(
+    cols: GridColumnMode,
+    kinds: &[Arc<str>],
+    gap: f32,
+) -> super::Dashboard {
+    let cards: Vec<(Arc<str>, crate::strategy::CardSpan)> = kinds
+        .iter()
+        .map(|k| (Arc::clone(k), crate::strategy::CardSpan::Columns(1)))
+        .collect();
+    let mut d = super::Dashboard::new(cards);
+    d = match cols {
+        GridColumnMode::Fixed(n) => d.columns(n),
+        GridColumnMode::AutoFill { min_width } => d.auto_fill(min_width),
+        GridColumnMode::AutoFit { min_width } => d.auto_fit(min_width),
+    };
+    d.gap(gap)
 }
 
 pub(crate) use impl_preset;

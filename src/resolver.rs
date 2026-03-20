@@ -170,8 +170,8 @@ impl ResolvedLayout {
         t: f32,
         buf: &mut Vec<Option<Rect>>,
     ) -> ResolvedLayout {
-        buf.iter_mut().for_each(|slot| *slot = None);
-        buf.resize(self.rects.len(), None);
+        let taken = std::mem::take(buf);
+        let mut rects = prepare_rects_buf(Some(taken), self.rects.len());
 
         for (i, from_rect) in self.rects.iter().enumerate() {
             let Some(from_rect) = from_rect else { continue };
@@ -180,10 +180,9 @@ impl ResolvedLayout {
             };
             let pid = PanelId::from_raw(raw);
             let to_rect = other.get(pid).unwrap_or(from_rect);
-            buf[i] = Some(from_rect.lerp(*to_rect, t));
+            rects[i] = Some(from_rect.lerp(*to_rect, t));
         }
 
-        let rects = std::mem::take(buf);
         let kinds = Arc::clone(&self.kinds);
         ResolvedLayout {
             rects,
@@ -211,7 +210,7 @@ fn resolve_dfs(
     let layout = result
         .taffy_tree
         .layout(*taffy_id)
-        .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))?;
+        .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?;
     let abs_x = parent_x + layout.location.x;
     let abs_y = parent_y + layout.location.y;
 
@@ -228,11 +227,10 @@ fn resolve_dfs(
                 .ok_or(PaneError::PanelNotFound(*id))? = Some(rect);
             kinds.entry(Arc::clone(kind)).or_default().push(*id);
         }
-        Some(
-            Node::Row { children, .. }
-            | Node::Col { children, .. }
-            | Node::TaffyPassthrough { children, .. },
-        ) => {
+        Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
+            resolve_children(tree, result, children, abs_x, abs_y, rects, kinds)?;
+        }
+        Some(Node::TaffyPassthrough { children, .. }) => {
             resolve_children(tree, result, children, abs_x, abs_y, rects, kinds)?;
         }
         None => {}
@@ -282,7 +280,7 @@ fn resolve_iterative(
         let layout = result
             .taffy_tree
             .layout(*taffy_id)
-            .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))?;
+            .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?;
         let abs_x = parent_x + layout.location.x;
         let abs_y = parent_y + layout.location.y;
 
@@ -297,11 +295,12 @@ fn resolve_iterative(
                     h: layout.size.height,
                 });
             }
-            Some(
-                Node::Row { children, .. }
-                | Node::Col { children, .. }
-                | Node::TaffyPassthrough { children, .. },
-            ) => {
+            Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
+                for &child_id in children.iter().rev() {
+                    scratch.stack.push((child_id, abs_x, abs_y));
+                }
+            }
+            Some(Node::TaffyPassthrough { children, .. }) => {
                 for &child_id in children.iter().rev() {
                     scratch.stack.push((child_id, abs_x, abs_y));
                 }
@@ -310,6 +309,19 @@ fn resolve_iterative(
         }
     }
     Ok(())
+}
+
+/// Prepare a rects buffer: clear existing slots and resize to `capacity`,
+/// or allocate a fresh one if no buffer is provided.
+fn prepare_rects_buf(buf: Option<Vec<Option<Rect>>>, capacity: usize) -> Vec<Option<Rect>> {
+    match buf {
+        Some(mut buf) => {
+            buf.iter_mut().for_each(|slot| *slot = None);
+            buf.resize(capacity, None);
+            buf
+        }
+        None => vec![None; capacity],
+    }
 }
 
 /// Resolve rects using a previously cached kinds index. Skips kinds population.
@@ -326,14 +338,7 @@ pub(crate) fn resolve_with_cached_kinds(
         .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
     let capacity = tree.panel_id_high_water() as usize;
-    let mut rects = match rects_buf {
-        Some(mut buf) => {
-            buf.iter_mut().for_each(|slot| *slot = None);
-            buf.resize(capacity, None);
-            buf
-        }
-        None => vec![None; capacity],
-    };
+    let mut rects = prepare_rects_buf(rects_buf, capacity);
     resolve_iterative(tree, result, root_id, &mut rects, scratch)?;
 
     Ok(ResolvedLayout {
@@ -345,7 +350,7 @@ pub(crate) fn resolve_with_cached_kinds(
 
 /// Walk the compiled Taffy tree and produce a `ResolvedLayout` mapping each panel to its rect.
 pub fn resolve(result: &CompileResult, tree: &LayoutTree) -> Result<ResolvedLayout, PaneError> {
-    resolve_dirty(result, tree, &mut ResolveScratch::default())
+    resolve_dirty(result, tree, &mut ResolveScratch::default(), None)
 }
 
 /// Like [`resolve`] but reuses scratch buffers across frames.
@@ -353,12 +358,14 @@ pub(crate) fn resolve_dirty(
     result: &CompileResult,
     tree: &LayoutTree,
     scratch: &mut ResolveScratch,
+    rects_buf: Option<Vec<Option<Rect>>>,
 ) -> Result<ResolvedLayout, PaneError> {
     let root_id = tree
         .root()
         .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
-    let mut rects = vec![None; tree.panel_id_high_water() as usize];
+    let capacity = tree.panel_id_high_water() as usize;
+    let mut rects = prepare_rects_buf(rects_buf, capacity);
 
     // Reuse kinds buffer: clear values but retain map capacity.
     let kinds_buf = &mut scratch.kinds_buf;

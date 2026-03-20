@@ -126,27 +126,7 @@ impl Dashboard {
     pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
         let spans: Arc<[CardSpan]> = self.cards.iter().map(|(_, s)| *s).collect();
         let kinds: Vec<Arc<str>> = self.cards.iter().map(|(k, _)| Arc::clone(k)).collect();
-        let strategy = match self.columns {
-            GridColumnMode::Fixed(columns) => crate::strategy::StrategyKind::Dashboard {
-                columns,
-                gap: self.gap,
-                spans,
-            },
-            GridColumnMode::AutoFill { min_width } => {
-                crate::strategy::StrategyKind::DashboardAutoFill {
-                    min_width,
-                    gap: self.gap,
-                    spans,
-                }
-            }
-            GridColumnMode::AutoFit { min_width } => {
-                crate::strategy::StrategyKind::DashboardAutoFit {
-                    min_width,
-                    gap: self.gap,
-                    spans,
-                }
-            }
-        };
+        let strategy = self.columns.to_dashboard_strategy(self.gap, spans);
         crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
     }
 }

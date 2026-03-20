@@ -5,9 +5,6 @@ use crate::strategy::Direction;
 use crate::tree::LayoutTree;
 use crate::validate::{FloatInvalid, check_f32_non_negative};
 
-/// Type alias for backward compatibility — `Axis` is now [`Direction`].
-pub type Axis = Direction;
-
 /// Result of compiling a `LayoutTree` into a Taffy tree.
 pub struct CompileResult {
     /// The Taffy tree backing layout computation.
@@ -91,34 +88,31 @@ fn container_style(node: &Node, is_root: bool) -> taffy::Style {
         false => (taffy::Size::auto(), 1.0, taffy::Dimension::length(0.0), 1.0),
     };
 
-    match node {
-        Node::Row { gap, .. } => taffy::Style {
-            flex_direction: taffy::FlexDirection::Row,
-            size,
-            flex_grow,
-            flex_basis,
-            flex_shrink,
-            gap: taffy::Size {
-                width: taffy::LengthPercentage::length(*gap),
-                height: taffy::LengthPercentage::length(0.0),
-            },
-            ..Default::default()
-        },
-        Node::Col { gap, .. } => taffy::Style {
-            flex_direction: taffy::FlexDirection::Column,
-            size,
-            flex_grow,
-            flex_basis,
-            flex_shrink,
-            gap: taffy::Size {
-                width: taffy::LengthPercentage::length(0.0),
-                height: taffy::LengthPercentage::length(*gap),
-            },
-            ..Default::default()
-        },
+    let (direction, gap_value) = match node {
+        Node::Row { gap, .. } => (taffy::FlexDirection::Row, *gap),
+        Node::Col { gap, .. } => (taffy::FlexDirection::Column, *gap),
         // Deep-clones the taffy::Style; known cost accepted for correctness.
-        Node::TaffyPassthrough { style, .. } => style.as_ref().clone(),
-        Node::Panel { .. } => taffy::Style::default(),
+        Node::TaffyPassthrough { style, .. } => return style.as_ref().clone(),
+        Node::Panel { .. } => return taffy::Style::default(),
+    };
+    let gap_size = match direction {
+        taffy::FlexDirection::Row | taffy::FlexDirection::RowReverse => taffy::Size {
+            width: taffy::LengthPercentage::length(gap_value),
+            height: taffy::LengthPercentage::length(0.0),
+        },
+        _ => taffy::Size {
+            width: taffy::LengthPercentage::length(0.0),
+            height: taffy::LengthPercentage::length(gap_value),
+        },
+    };
+    taffy::Style {
+        flex_direction: direction,
+        size,
+        flex_grow,
+        flex_basis,
+        flex_shrink,
+        gap: gap_size,
+        ..Default::default()
     }
 }
 
@@ -146,10 +140,10 @@ pub fn compile(tree: &LayoutTree) -> Result<CompileResult, PaneError> {
     compile_with(tree, None)
 }
 
-/// Compile a `LayoutTree`, optionally reusing a `TaffyTree` from a previous compile.
+/// Compile a `LayoutTree`, optionally reusing buffers from a previous compile.
 pub fn compile_with(
     tree: &LayoutTree,
-    reuse: Option<taffy::TaffyTree>,
+    reuse: Option<CompileResult>,
 ) -> Result<CompileResult, PaneError> {
     #[cfg(debug_assertions)]
     tree.validate()?;
@@ -158,17 +152,22 @@ pub fn compile_with(
         .root()
         .ok_or(PaneError::InvalidTree(TreeError::RootNotSet))?;
 
-    let taffy_tree = match reuse {
-        Some(mut t) => {
+    let arena_len = tree.arena_len();
+    let (taffy_tree, node_map) = match reuse {
+        Some(prev) => {
+            let mut t = prev.taffy_tree;
             t.clear();
-            t
+            let mut nm = prev.node_map;
+            nm.iter_mut().for_each(|slot| *slot = None);
+            nm.resize(arena_len, None);
+            (t, nm)
         }
-        None => taffy::TaffyTree::new(),
+        None => (taffy::TaffyTree::new(), vec![None; arena_len]),
     };
 
     let mut ctx = CompileCtx {
         taffy_tree,
-        node_map: vec![None; tree.arena_len()],
+        node_map,
     };
 
     let root_node = tree.node(root_id).ok_or(PaneError::NodeNotFound(root_id))?;
@@ -197,14 +196,14 @@ fn compile_node(
             let style = constraints_to_style(constraints, parent_axis);
             ctx.taffy_tree
                 .new_leaf(style)
-                .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))?
+                .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?
         }
         Node::Row { .. } | Node::Col { .. } | Node::TaffyPassthrough { .. } => {
             let taffy_children = compile_children(tree, node, ctx)?;
             let style = container_style(node, is_root);
             ctx.taffy_tree
                 .new_with_children(style, &taffy_children)
-                .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))?
+                .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?
         }
     };
 
@@ -257,7 +256,7 @@ pub fn compute_layout(
     result
         .taffy_tree
         .compute_layout(result.root, available)
-        .map_err(|e| PaneError::InvalidTree(TreeError::Dynamic(e.to_string().into())))
+        .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))
 }
 
 /// Look up the computed layout for a panel by its `PanelId`.

@@ -38,6 +38,10 @@ pub enum TomlError {
         reason: Box<str>,
     },
 
+    /// Layout construction failed.
+    #[error("layout error: {0}")]
+    LayoutError(#[from] crate::error::PaneError),
+
     /// File I/O error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -71,8 +75,7 @@ struct LayoutDef {
     master_ratio: Option<f32>,
     ratio: Option<f32>,
     active: Option<usize>,
-    tab_height: Option<f32>,
-    title_height: Option<f32>,
+    bar_height: Option<f32>,
     sidebar_width: Option<f32>,
     header_height: Option<f32>,
     footer_height: Option<f32>,
@@ -157,10 +160,7 @@ pub(crate) fn parse(input: &str) -> Result<Layout, TomlError> {
 }
 
 fn into_toml_error(err: crate::error::PaneError) -> TomlError {
-    TomlError::InvalidValue {
-        field: "layout".into(),
-        reason: err.to_string().into(),
-    }
+    TomlError::LayoutError(err)
 }
 
 macro_rules! build_preset {
@@ -181,8 +181,8 @@ fn build_from_def(def: LayoutDef) -> Result<Layout, TomlError> {
         "dwindle" => build_preset!(def, Layout::dwindle, ratio, gap),
         "spiral" => build_preset!(def, Layout::spiral, ratio, gap),
         "deck" => build_preset!(def, Layout::deck, master_ratio, active, gap),
-        "tabbed" => build_preset!(def, Layout::tabbed, active, tab_height, gap),
-        "stacked" => build_preset!(def, Layout::stacked, active, title_height, gap),
+        "tabbed" => build_preset!(def, Layout::tabbed, active, bar_height, gap),
+        "stacked" => build_preset!(def, Layout::stacked, active, bar_height, gap),
         "columns" | "grid" => build_grid_or_columns(def),
         "sidebar" => build_sidebar(def),
         "split" => build_split(def),
@@ -220,26 +220,15 @@ fn require_field<'a>(value: &'a Option<Box<str>>, name: &str) -> Result<&'a str,
 // -- Count + list / named-param / dashboard builders --
 
 /// Build a grid or columns strategy as a dashboard with span-1 cards.
-fn build_grid_or_columns(mut def: LayoutDef) -> Result<Layout, TomlError> {
+fn build_grid_or_columns(def: LayoutDef) -> Result<Layout, TomlError> {
     match (def.columns.is_some(), def.min_column_width.is_some()) {
         (false, false) => return Err(TomlError::MissingField("columns".into())),
-        (true, true) => {
-            return Err(TomlError::InvalidValue {
-                field: "columns".into(),
-                reason: "columns and min_column_width are mutually exclusive".into(),
-            });
-        }
         _ => {}
     }
-    let panels = require_panels_strings(&def)?;
-    let cards: Vec<CardDef> = panels
-        .iter()
-        .map(|k| CardDef {
-            kind: k.clone(),
-            span: SpanValue::Number(1),
-        })
-        .collect();
-    def.panels = Some(PanelsList::Cards(cards));
+    // Validate panels exist before delegating; build_dashboard handles
+    // PanelsList::Strings directly with span-1 cards.
+    require_panels_strings(&def)?;
+    // Mutual-exclusivity of columns/min_column_width is validated in build_dashboard.
     build_dashboard(def)
 }
 
@@ -293,11 +282,11 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
     let cards = match &def.panels {
         Some(PanelsList::Cards(cards)) => cards
             .iter()
-            .map(|c| Ok((c.kind.clone(), c.span.to_card_span()?)))
+            .map(|c| Ok((Arc::from(&*c.kind), c.span.to_card_span()?)))
             .collect::<Result<Vec<_>, TomlError>>()?,
         Some(PanelsList::Strings(strings)) => strings
             .iter()
-            .map(|s| (s.clone(), crate::strategy::CardSpan::Columns(1)))
+            .map(|s| (Arc::from(&**s), crate::strategy::CardSpan::Columns(1)))
             .collect::<Vec<_>>(),
         None => return Err(TomlError::MissingField("panels".into())),
     };
@@ -378,9 +367,7 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
     match (node.kind.as_deref(), node.node_type.as_deref()) {
         (Some(_), Some(_)) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
-                crate::error::TreeError::Dynamic(
-                    "node has both 'kind' and 'type'; use one or the other".into(),
-                ),
+                crate::error::TreeError::NodeKindAndType,
             ));
         }
         (Some(_), None) if node.grow.is_some() && node.fixed.is_some() => {
@@ -404,16 +391,12 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
         }
         (None, Some(other)) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
-                crate::error::TreeError::Dynamic(
-                    format!("unknown node type '{other}'; expected 'row' or 'col'").into(),
-                ),
+                crate::error::TreeError::UnknownNodeType(other.into()),
             ));
         }
         (None, None) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
-                crate::error::TreeError::Dynamic(
-                    "node must have either 'kind' (panel) or 'type' (container)".into(),
-                ),
+                crate::error::TreeError::NodeMissingKindOrType,
             ));
         }
     }
@@ -454,7 +437,7 @@ pub(crate) fn parse_runtime(input: &str) -> Result<LayoutRuntime, TomlError> {
 
 fn build_adaptive(def: LayoutDef) -> Result<LayoutRuntime, TomlError> {
     let panels = require_panels_strings(&def)?;
-    let panel_arcs: Vec<Arc<str>> = panels.iter().map(|s| Arc::from(s.as_ref())).collect();
+    let panel_arcs: Box<[Arc<str>]> = panels.iter().map(|s| Arc::from(s.as_ref())).collect();
     let bp_defs = def
         .breakpoints
         .ok_or(TomlError::MissingField("breakpoints".into()))?;

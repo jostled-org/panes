@@ -1,2 +1,12 @@
 /target
+*.swp
+*.swo
+.DS_Store
 logs/
+docs/.codebase-snapshot.md
+.manifest.toml
+docs/specs/
+docs/plans/
+docs/scripts/
+docs/planning_guidelines.md
+docs/testing.md

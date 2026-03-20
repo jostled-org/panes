@@ -125,9 +125,18 @@ pub enum TreeError {
         /// The container's child count.
         len: usize,
     },
-    /// Wrapped error from Taffy or other dynamic source.
-    #[error("{0}")]
-    Dynamic(Box<str>),
+    /// Taffy layout engine error.
+    #[error("taffy error: {0}")]
+    TaffyError(Box<str>),
+    /// TOML node has both 'kind' and 'type' attributes.
+    #[error("node has both 'kind' and 'type'; use one or the other")]
+    NodeKindAndType,
+    /// TOML node has unknown type attribute.
+    #[error("unknown node type '{0}'; expected 'row' or 'col'")]
+    UnknownNodeType(Box<str>),
+    /// TOML node missing both 'kind' and 'type' attributes.
+    #[error("node must have either 'kind' (panel) or 'type' (container)")]
+    NodeMissingKindOrType,
 }
 
 /// Invalid viewport dimensions.
@@ -188,6 +197,9 @@ pub enum MutationError {
     /// Move not supported for this layout.
     #[error("move not supported for this layout")]
     MoveNotSupported,
+    /// set_card_span requires a dashboard strategy.
+    #[error("set_card_span requires a dashboard strategy")]
+    SpanNotSupported,
     /// Spatial focus navigation is not supported for this strategy.
     #[error("spatial navigation not supported — use focus_next/focus_prev")]
     SpatialNavUnsupported,

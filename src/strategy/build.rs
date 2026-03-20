@@ -136,7 +136,7 @@ pub(super) fn build_binary_split_tree(
     Ok(LayoutTree::from(layout))
 }
 
-fn build_cards(kinds: &[Arc<str>], spans: &[CardSpan]) -> Vec<(Arc<str>, CardSpan)> {
+fn build_cards(kinds: &[Arc<str>], spans: &[CardSpan]) -> Box<[(Arc<str>, CardSpan)]> {
     kinds
         .iter()
         .enumerate()
@@ -195,11 +195,11 @@ fn build_active_panel_tree(
             .build()?,
         ActivePanelVariant::Tabbed => crate::preset::Tabbed::new(kinds.iter().map(Arc::clone))
             .active(active)
-            .tab_height(bar_height)
+            .bar_height(bar_height)
             .build()?,
         ActivePanelVariant::Stacked => crate::preset::Stacked::new(kinds.iter().map(Arc::clone))
             .active(active)
-            .title_height(bar_height)
+            .bar_height(bar_height)
             .build()?,
     };
     Ok(LayoutTree::from(layout))
