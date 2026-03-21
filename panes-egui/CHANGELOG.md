@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5](https://github.com/jostled-org/panes/compare/panes-egui-v0.4.4...panes-egui-v0.4.5) - 2026-03-20
+
+### Other
+
+- updated the following local packages: panes, panes
+
 ## [0.4.4](https://github.com/jostled-org/panes/compare/panes-egui-v0.4.3...panes-egui-v0.4.4) - 2026-03-19
 
 ### Added

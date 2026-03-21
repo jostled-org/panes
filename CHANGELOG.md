@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/jostled-org/panes/compare/panes-v0.13.1...panes-v0.14.0) - 2026-03-20
+
+### Added
+
+- cross-container resize with runtime and strategy refactoring
+
 ## [0.13.1](https://github.com/jostled-org/panes/compare/panes-v0.13.0...panes-v0.13.1) - 2026-03-19
 
 ### Other
