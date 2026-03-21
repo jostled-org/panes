@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/jostled-org/panes/compare/panes-v0.14.0...panes-v0.15.0) - 2026-03-21
+
+### Fixed
+
+- *(ci)* remove stale pedant config path
+
+### Other
+
+- [**breaking**] collapse dashboard variants, remove deprecated APIs, double-buffer resolve
+
 ## [0.14.0](https://github.com/jostled-org/panes/compare/panes-v0.13.1...panes-v0.14.0) - 2026-03-20
 
 ### Added

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/jostled-org/panes/compare/panes-css-v0.4.1...panes-css-v0.5.0) - 2026-03-21
+
+### Other
+
+- [**breaking**] collapse dashboard variants, remove deprecated APIs, double-buffer resolve
+
 ## [0.4.1](https://github.com/jostled-org/panes/compare/panes-css-v0.4.0...panes-css-v0.4.1) - 2026-03-20
 
 ### Added
