@@ -121,33 +121,6 @@ fn spiral_runtime() {
     assert_eq!(frame.layout().by_kind("c").len(), 1);
 }
 
-#[test]
-fn columns_runtime() {
-    let mut rt = Strategy::columns()
-        .gap(2.0)
-        .with_panels(["c1", "c2", "c3"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("c1").len(), 1);
-    assert_eq!(frame.layout().by_kind("c2").len(), 1);
-    assert_eq!(frame.layout().by_kind("c3").len(), 1);
-}
-
-#[test]
-fn grid_runtime() {
-    let mut rt = Strategy::grid(3)
-        .gap(1.0)
-        .with_panels(["g1", "g2", "g3", "g4", "g5", "g6"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("g1").len(), 1);
-    assert_eq!(frame.layout().by_kind("g6").len(), 1);
-}
-
 // ---------------------------------------------------------------------------
 // Split (fixed 2 panels)
 // ---------------------------------------------------------------------------
@@ -311,19 +284,6 @@ fn master_stack_static_build() {
 }
 
 #[test]
-fn columns_static_build() {
-    let layout = Strategy::columns()
-        .gap(1.0)
-        .with_panels(["x", "y"])
-        .build()
-        .unwrap();
-
-    let resolved = layout.resolve(100.0, 100.0).unwrap();
-    assert_eq!(resolved.by_kind("x").len(), 1);
-    assert_eq!(resolved.by_kind("y").len(), 1);
-}
-
-#[test]
 fn holy_grail_static_build() {
     let layout = Strategy::holy_grail()
         .with_panels("h", "f", "l", "m", "r")
@@ -419,17 +379,6 @@ fn dashboard_empty_cards_is_error() {
         .with_cards(Vec::<(&str, usize)>::new())
         .into_runtime();
     assert!(result.is_err());
-}
-
-#[allow(deprecated)]
-#[test]
-fn zero_columns_grid_resolves_to_panel_count() {
-    let mut rt = Strategy::grid(0)
-        .with_panels(["a", "b"])
-        .into_runtime()
-        .unwrap();
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 2);
 }
 
 #[test]

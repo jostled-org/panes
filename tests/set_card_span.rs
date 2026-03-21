@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{CardSpan, Layout, MutationError, PaneError, StrategyKind};
+use panes::{CardSpan, GridColumnMode, Layout, MutationError, PaneError, StrategyKind};
 
 fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
@@ -12,7 +12,7 @@ fn dashboard_runtime(n: usize, columns: usize) -> LayoutRuntime {
     let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); n].into();
     LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
-            columns,
+            columns: GridColumnMode::Fixed(columns),
             gap: 0.0,
             spans,
         },
@@ -111,8 +111,8 @@ fn auto_fill_set_span() {
     let k = kinds(3);
     let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); 3].into();
     let mut rt = LayoutRuntime::from_strategy(
-        StrategyKind::DashboardAutoFill {
-            min_width: 100.0,
+        StrategyKind::Dashboard {
+            columns: GridColumnMode::AutoFill { min_width: 100.0 },
             gap: 0.0,
             spans,
         },
@@ -125,10 +125,14 @@ fn auto_fill_set_span() {
 
     // Verify strategy was updated
     match rt.strategy().unwrap() {
-        StrategyKind::DashboardAutoFill { spans, .. } => {
+        StrategyKind::Dashboard {
+            spans,
+            columns: GridColumnMode::AutoFill { .. },
+            ..
+        } => {
             assert_eq!(spans[0], CardSpan::Columns(2));
         }
-        other => panic!("expected DashboardAutoFill, got {other:?}"),
+        other => panic!("expected Dashboard with AutoFill, got {other:?}"),
     }
 }
 
@@ -143,7 +147,7 @@ fn preserves_other_spans() {
     .into();
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
-            columns: 4,
+            columns: GridColumnMode::Fixed(4),
             gap: 0.0,
             spans: initial_spans,
         },

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use helpers::build_row_tree;
 use panes::runtime::LayoutRuntime;
-use panes::{CardSpan, Layout, StrategyKind, fixed, grow};
+use panes::{CardSpan, GridColumnMode, Layout, StrategyKind, fixed, grow};
 
 #[test]
 fn two_equal_resize_larger() {
@@ -669,12 +669,73 @@ fn stack_vertical_resize_stays_within_container() {
 }
 
 #[test]
+fn tabbed_resize_skips_tab_bar() {
+    let mut rt = Layout::tabbed(["editor", "chat", "status"])
+        .bar_height(30.0)
+        .into_runtime()
+        .unwrap();
+    let editor_pid = rt.tree().panels_by_kind("editor")[0];
+
+    // Active panel is grow(1.0), hidden panels are fixed(0.0), tab bar is
+    // TaffyPassthrough with flex_grow=0. Resize adjusts a neighboring fixed
+    // panel — verify the tab bar container is untouched.
+    rt.resize_boundary(editor_pid, 10.0).unwrap();
+
+    let frame = rt.resolve(800.0, 600.0).unwrap();
+    let tab_rect = frame
+        .layout()
+        .get(rt.tree().panels_by_kind("editor_tab")[0])
+        .unwrap();
+    // Tab bar has fixed height 30. If the tab bar were touched, this would differ.
+    assert!(
+        (tab_rect.h - 30.0).abs() < 1.0,
+        "tab bar should remain ~30px, got {}",
+        tab_rect.h
+    );
+}
+
+#[test]
+fn stacked_resize_adjusts_nearest_title() {
+    // Stacked layout order: editor_title, chat_title, status_title, editor(active), chat, status.
+    // Resizing editor (grow) adjusts the nearest fixed neighbor: status_title.
+    let mut rt = Layout::stacked(["editor", "chat", "status"])
+        .bar_height(20.0)
+        .into_runtime()
+        .unwrap();
+    let editor_pid = rt.tree().panels_by_kind("editor")[0];
+    let nearest_title_pid = rt.tree().panels_by_kind("status_title")[0];
+
+    let before = rt.tree().panel_constraints(nearest_title_pid).unwrap();
+    assert!(
+        (before.fixed.unwrap() - 20.0).abs() < 0.01,
+        "title should start at 20.0"
+    );
+
+    rt.resize_boundary(editor_pid, -5.0).unwrap();
+
+    let after = rt.tree().panel_constraints(nearest_title_pid).unwrap();
+    assert!(
+        (after.fixed.unwrap() - 25.0).abs() < 0.01,
+        "nearest title should grow to ~25.0, got {}",
+        after.fixed.unwrap()
+    );
+
+    // Other titles should be untouched.
+    let editor_title = rt.tree().panels_by_kind("editor_title")[0];
+    let et = rt.tree().panel_constraints(editor_title).unwrap();
+    assert!(
+        (et.fixed.unwrap() - 20.0).abs() < 0.01,
+        "editor_title should be untouched"
+    );
+}
+
+#[test]
 fn dashboard_resize_boundary_error() {
     let kinds: Vec<Arc<str>> = (0..4).map(|i| Arc::from(format!("p{i}"))).collect();
     let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); 4].into();
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
-            columns: 2,
+            columns: GridColumnMode::Fixed(2),
             gap: 0.0,
             spans,
         },

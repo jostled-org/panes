@@ -1,7 +1,7 @@
 #[cfg(feature = "serde")]
 use panes::LayoutSnapshot;
 use panes::runtime::LayoutRuntime;
-use panes::{Layout, SnapshotSource, StrategyConfig};
+use panes::{GridColumnMode, Layout, SnapshotSource, StrategyConfig};
 
 #[test]
 fn strategy_snapshot_round_trip() {
@@ -206,19 +206,6 @@ fn spiral_snapshot_round_trip() {
 }
 
 #[test]
-fn grid_snapshot_round_trip() {
-    let rt = Layout::grid(2, ["a", "b", "c", "d"])
-        .gap(1.0)
-        .into_runtime()
-        .unwrap();
-
-    let snap = rt.snapshot().unwrap();
-    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let frame = rt2.resolve(800.0, 600.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 4);
-}
-
-#[test]
 fn empty_tree_snapshot_errors() {
     // A runtime from an empty tree has no serializable root
     let tree = panes::LayoutTree::new();
@@ -268,116 +255,15 @@ fn dashboard_auto_fill_round_trips() {
     let snap = rt.snapshot().unwrap();
     match snap.source() {
         SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::DashboardAutoFill { .. }));
+            assert!(matches!(
+                strategy,
+                StrategyConfig::Dashboard {
+                    columns: GridColumnMode::AutoFill { .. },
+                    ..
+                }
+            ));
         }
         SnapshotSource::Tree { .. } | _ => panic!("expected Strategy source"),
-    }
-
-    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let frame = rt2.resolve(800.0, 600.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 3);
-}
-
-#[allow(deprecated)]
-#[test]
-fn grid_auto_fill_snapshot_round_trip() {
-    let rt = Layout::grid(2, ["a", "b", "c", "d"])
-        .auto_fill(200.0)
-        .gap(1.0)
-        .into_runtime()
-        .unwrap();
-
-    let snap = rt.snapshot().unwrap();
-    match snap.source() {
-        SnapshotSource::Strategy { strategy, panels } => {
-            assert!(matches!(strategy, StrategyConfig::DashboardAutoFill { .. }));
-            assert_eq!(panels.len(), 4);
-        }
-        _ => panic!("expected Strategy source"),
-    }
-
-    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let frame = rt2.resolve(800.0, 600.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 4);
-}
-
-#[allow(deprecated)]
-#[test]
-fn grid_auto_fit_snapshot_round_trip() {
-    let rt = Layout::grid(2, ["a", "b"])
-        .auto_fit(250.0)
-        .into_runtime()
-        .unwrap();
-
-    let snap = rt.snapshot().unwrap();
-    match snap.source() {
-        SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::DashboardAutoFit { .. }));
-        }
-        _ => panic!("expected Strategy source"),
-    }
-
-    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let frame = rt2.resolve(800.0, 600.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 2);
-}
-
-#[allow(deprecated)]
-#[test]
-fn columns_fixed_snapshot_round_trip() {
-    let rt = Layout::columns(2, ["a", "b", "c", "d"])
-        .gap(1.0)
-        .into_runtime()
-        .unwrap();
-
-    let snap = rt.snapshot().unwrap();
-    match snap.source() {
-        SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::Dashboard { .. }));
-        }
-        _ => panic!("expected Strategy source"),
-    }
-
-    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let frame = rt2.resolve(800.0, 600.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 4);
-}
-
-#[allow(deprecated)]
-#[test]
-fn columns_auto_fill_snapshot_round_trip() {
-    let rt = Layout::columns(3, ["a", "b", "c"])
-        .auto_fill(200.0)
-        .into_runtime()
-        .unwrap();
-
-    let snap = rt.snapshot().unwrap();
-    match snap.source() {
-        SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::DashboardAutoFill { .. }));
-        }
-        _ => panic!("expected Strategy source"),
-    }
-
-    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let frame = rt2.resolve(800.0, 600.0).unwrap();
-    assert_eq!(frame.layout().panels().count(), 3);
-}
-
-#[allow(deprecated)]
-#[test]
-fn columns_auto_fit_snapshot_round_trip() {
-    let rt = Layout::columns(3, ["a", "b", "c"])
-        .auto_fit(180.0)
-        .into_runtime()
-        .unwrap();
-
-    let snap = rt.snapshot().unwrap();
-    match snap.source() {
-        SnapshotSource::Strategy { strategy, .. } => {
-            assert!(matches!(strategy, StrategyConfig::DashboardAutoFit { .. }));
-        }
-        _ => panic!("expected Strategy source"),
     }
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();

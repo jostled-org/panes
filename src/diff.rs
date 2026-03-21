@@ -96,6 +96,15 @@ pub struct DiffScratch {
 }
 
 impl DiffScratch {
+    /// Clear all output buffers, retaining allocated capacity.
+    fn clear(&mut self) {
+        self.added.clear();
+        self.removed.clear();
+        self.moved.clear();
+        self.resized.clear();
+        self.unchanged.clear();
+    }
+
     /// Borrow the diff result from this scratch buffer.
     pub fn as_diff(&self) -> LayoutDiff<'_> {
         LayoutDiff {
@@ -119,18 +128,13 @@ pub(crate) fn diff_reuse<'a>(
     scratch.new_ids.clear();
     scratch.new_ids.extend(new.panel_ids());
 
-    scratch.removed.clear();
+    scratch.clear();
     scratch
         .removed
         .extend(scratch.old_ids.difference(&scratch.new_ids).copied());
-    scratch.added.clear();
     scratch
         .added
         .extend(scratch.new_ids.difference(&scratch.old_ids).copied());
-
-    scratch.moved.clear();
-    scratch.resized.clear();
-    scratch.unchanged.clear();
 
     for &pid in scratch.old_ids.intersection(&scratch.new_ids) {
         let (Some(old_rect), Some(new_rect)) = (old.get(pid), new.get(pid)) else {
@@ -156,11 +160,7 @@ pub(crate) fn diff_same_panels_reuse<'a>(
     new: &ResolvedLayout,
     scratch: &'a mut DiffScratch,
 ) -> LayoutDiff<'a> {
-    scratch.added.clear();
-    scratch.removed.clear();
-    scratch.moved.clear();
-    scratch.resized.clear();
-    scratch.unchanged.clear();
+    scratch.clear();
 
     for (pid, new_rect) in new.iter() {
         let Some(old_rect) = old.get(pid) else {
@@ -185,12 +185,8 @@ pub(crate) fn first_frame<'a>(
     layout: &ResolvedLayout,
     scratch: &'a mut DiffScratch,
 ) -> LayoutDiff<'a> {
-    scratch.added.clear();
+    scratch.clear();
     scratch.added.extend(layout.panel_ids());
-    scratch.removed.clear();
-    scratch.moved.clear();
-    scratch.resized.clear();
-    scratch.unchanged.clear();
     scratch.as_diff()
 }
 
@@ -234,6 +230,15 @@ pub(crate) struct OverlayDiffScratch {
 }
 
 impl OverlayDiffScratch {
+    /// Clear all output buffers, retaining allocated capacity.
+    fn clear(&mut self) {
+        self.added.clear();
+        self.removed.clear();
+        self.moved.clear();
+        self.resized.clear();
+        self.unchanged.clear();
+    }
+
     pub(crate) fn as_diff(&self) -> OverlayDiff<'_> {
         OverlayDiff {
             added: &self.added,
@@ -251,11 +256,7 @@ pub(crate) fn diff_overlays<'a>(
     curr: &[(OverlayId, Arc<str>, Rect)],
     scratch: &'a mut OverlayDiffScratch,
 ) -> OverlayDiff<'a> {
-    scratch.added.clear();
-    scratch.removed.clear();
-    scratch.moved.clear();
-    scratch.resized.clear();
-    scratch.unchanged.clear();
+    scratch.clear();
 
     // Find removed and common
     for (old_id, old_rect) in prev {
@@ -290,11 +291,7 @@ pub(crate) fn first_frame_overlays<'a>(
     rects: &[(OverlayId, Arc<str>, Rect)],
     scratch: &'a mut OverlayDiffScratch,
 ) -> OverlayDiff<'a> {
-    scratch.added.clear();
+    scratch.clear();
     scratch.added.extend(rects.iter().map(|(id, _, _)| *id));
-    scratch.removed.clear();
-    scratch.moved.clear();
-    scratch.resized.clear();
-    scratch.unchanged.clear();
     scratch.as_diff()
 }

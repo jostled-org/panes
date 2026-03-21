@@ -62,6 +62,7 @@ pub struct LayoutRuntime {
     pub(crate) cached_compile: Option<CompileResult>,
     pub(crate) cached_kinds: Option<resolver::KindIndex>,
     pub(crate) rects_buf: Option<Vec<Option<Rect>>>,
+    pub(crate) rects_buf_alt: Option<Vec<Option<Rect>>>,
     pub(crate) diff_scratch: diff::DiffScratch,
     pub(crate) overlay_diff_scratch: OverlayDiffScratch,
     pub(crate) resolve_scratch: ResolveScratch,
@@ -72,6 +73,7 @@ pub struct LayoutRuntime {
     pub(crate) overlay_index: FxHashMap<Arc<str>, usize>,
     pub(crate) prev_overlay_rects: Vec<(OverlayId, Rect)>,
     pub(crate) overlay_rects_buf: Vec<(OverlayId, Arc<str>, Rect)>,
+    pub(crate) overlay_rects_buf_alt: Vec<(OverlayId, Arc<str>, Rect)>,
     pub(crate) breakpoints: Option<Box<[BreakpointEntry]>>,
     pub(crate) active_bp_idx: usize,
 }
@@ -90,6 +92,7 @@ pub(crate) fn base(
         cached_compile: None,
         cached_kinds: None,
         rects_buf: None,
+        rects_buf_alt: None,
         diff_scratch: diff::DiffScratch::default(),
         overlay_diff_scratch: OverlayDiffScratch::default(),
         resolve_scratch: ResolveScratch::default(),
@@ -100,6 +103,7 @@ pub(crate) fn base(
         overlay_index: FxHashMap::default(),
         prev_overlay_rects: Vec::new(),
         overlay_rects_buf: Vec::new(),
+        overlay_rects_buf_alt: Vec::new(),
         breakpoints: None,
         active_bp_idx: 0,
     }

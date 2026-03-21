@@ -5,6 +5,8 @@ use super::types::LayoutRuntime;
 use crate::compiler::CompileResult;
 use crate::diff::{self, LayoutDiff, OverlayDiff};
 use crate::error::PaneError;
+use crate::overlay::OverlayId;
+use crate::rect::Rect;
 use crate::resolver::{self, ResolvedLayout};
 
 impl LayoutRuntime {
@@ -26,11 +28,15 @@ impl LayoutRuntime {
         let layout = Arc::new(layout);
         let prev_arc = self.previous.replace(Arc::clone(&layout));
 
-        // Reclaim the previous frame's buffers if no other consumers hold a reference.
-        if let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) {
-            self.rects_buf = Some(prev_layout.take_rects());
-            self.overlay_rects_buf = prev_layout.take_overlay_rects();
-        }
+        // Double-buffer rotation: move the alternate buffer into the primary slot
+        // so the next resolve() always has a buffer to give the resolver, even when
+        // the consumer still holds a Frame from the previous call.
+        rotate_buf(&mut self.rects_buf, &mut self.rects_buf_alt);
+        rotate_overlay_buf(&mut self.overlay_rects_buf, &mut self.overlay_rects_buf_alt);
+
+        // Bonus: reclaim the previous frame's buffers if no other consumers hold a reference.
+        // This replenishes the alternate slot for the frame after next.
+        reclaim_buffers(prev_arc, self);
 
         Ok(Frame::new(layout))
     }
@@ -125,13 +131,53 @@ impl LayoutRuntime {
             }
         };
 
-        self.prev_overlay_rects.clear();
-        self.prev_overlay_rects.extend(
-            layout
-                .overlay_rects_raw()
-                .iter()
-                .map(|(id, _, rect)| (*id, *rect)),
-        );
+        let new_overlay_rects = layout.overlay_rects_raw();
+        match (
+            self.prev_overlay_rects.is_empty(),
+            new_overlay_rects.is_empty(),
+        ) {
+            (true, true) => {}
+            _ => {
+                self.prev_overlay_rects.clear();
+                self.prev_overlay_rects
+                    .extend(new_overlay_rects.iter().map(|(id, _, rect)| (*id, *rect)));
+            }
+        }
+    }
+}
+
+/// Promote the alternate rects buffer into the primary slot when the primary is empty.
+fn rotate_buf(primary: &mut Option<Vec<Option<Rect>>>, alt: &mut Option<Vec<Option<Rect>>>) {
+    if let (None, Some(_)) = (primary.as_ref(), alt.as_ref()) {
+        *primary = alt.take();
+    }
+}
+
+/// Promote the alternate overlay buffer into the primary slot when the primary is empty.
+fn rotate_overlay_buf(
+    primary: &mut Vec<(OverlayId, Arc<str>, Rect)>,
+    alt: &mut Vec<(OverlayId, Arc<str>, Rect)>,
+) {
+    if primary.is_empty() {
+        std::mem::swap(primary, alt);
+    }
+}
+
+/// Reclaim buffers from the previous frame if no other consumers hold a reference.
+fn reclaim_buffers(prev_arc: Option<Arc<ResolvedLayout>>, rt: &mut LayoutRuntime) {
+    let Some(Ok(mut prev_layout)) = prev_arc.map(Arc::try_unwrap) else {
+        return;
+    };
+    let reclaimed_rects = prev_layout.take_rects();
+    let reclaimed_overlay = prev_layout.take_overlay_rects();
+
+    match rt.rects_buf.is_none() {
+        true => rt.rects_buf = Some(reclaimed_rects),
+        false => rt.rects_buf_alt = Some(reclaimed_rects),
+    }
+    match rt.overlay_rects_buf_alt.is_empty() {
+        true => rt.overlay_rects_buf_alt = reclaimed_overlay,
+        false => {}
     }
 }
 

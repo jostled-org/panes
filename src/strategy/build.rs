@@ -5,7 +5,7 @@ use crate::error::PaneError;
 use crate::sequence::PanelSequence;
 use crate::tree::LayoutTree;
 
-use super::{ActivePanelVariant, CardSpan, Direction, SlotDef, StrategyKind};
+use super::{ActivePanelVariant, CardSpan, Direction, GridColumnMode, SlotDef, StrategyKind};
 
 /// Build the initial tree for a strategy and panel kinds.
 /// Returns the tree and populates the sequence with panel IDs in order.
@@ -149,35 +149,19 @@ fn build_cards(kinds: &[Arc<str>], spans: &[CardSpan]) -> Box<[(Arc<str>, CardSp
         .collect()
 }
 
-pub(super) fn build_dashboard_tree(
+pub(super) fn build_dashboard_for_mode(
     kinds: &[Arc<str>],
-    columns: usize,
+    columns: GridColumnMode,
     gap_px: f32,
     spans: &[CardSpan],
 ) -> Result<LayoutTree, PaneError> {
     let cards = build_cards(kinds, spans);
-    let resolved_columns = match columns {
-        0 => kinds.len(),
-        n => n,
-    };
-    let layout = crate::preset::Dashboard::new(cards)
-        .columns(resolved_columns)
-        .gap(gap_px)
-        .build()?;
-    Ok(LayoutTree::from(layout))
-}
-
-pub(super) fn build_responsive_dashboard_tree(
-    kinds: &[Arc<str>],
-    min_width: f32,
-    auto_fit: bool,
-    gap_px: f32,
-    spans: &[CardSpan],
-) -> Result<LayoutTree, PaneError> {
-    let cards = build_cards(kinds, spans);
-    let preset = match auto_fit {
-        true => crate::preset::Dashboard::new(cards).auto_fit(min_width),
-        false => crate::preset::Dashboard::new(cards).auto_fill(min_width),
+    let mut preset = crate::preset::Dashboard::new(cards);
+    preset = match columns {
+        GridColumnMode::Fixed(0) => preset.columns(kinds.len()),
+        GridColumnMode::Fixed(n) => preset.columns(n),
+        GridColumnMode::AutoFill { min_width } => preset.auto_fill(min_width),
+        GridColumnMode::AutoFit { min_width } => preset.auto_fit(min_width),
     };
     let layout = preset.gap(gap_px).build()?;
     Ok(LayoutTree::from(layout))
@@ -207,7 +191,6 @@ fn build_active_panel_tree(
 
 fn build_window_tree(
     kinds: &[Arc<str>],
-    _size: usize,
     gap_px: f32,
     window_start: usize,
 ) -> Result<LayoutTree, PaneError> {
@@ -261,17 +244,7 @@ pub(crate) fn build_tree_for_strategy(
             columns,
             gap,
             spans,
-        } => build_dashboard_tree(kinds, *columns, *gap, spans),
-        StrategyKind::DashboardAutoFill {
-            min_width,
-            gap,
-            spans,
-        } => build_responsive_dashboard_tree(kinds, *min_width, false, *gap, spans),
-        StrategyKind::DashboardAutoFit {
-            min_width,
-            gap,
-            spans,
-        } => build_responsive_dashboard_tree(kinds, *min_width, true, *gap, spans),
+        } => build_dashboard_for_mode(kinds, *columns, *gap, spans),
         StrategyKind::ActivePanel {
             variant,
             bar_height,
@@ -279,7 +252,7 @@ pub(crate) fn build_tree_for_strategy(
         StrategyKind::Window { size, .. } if *size == 0 => Err(PaneError::InvalidTree(
             crate::error::TreeError::WindowSizeZero,
         )),
-        StrategyKind::Window { size, gap } => build_window_tree(kinds, *size, *gap, 0),
+        StrategyKind::Window { gap, .. } => build_window_tree(kinds, *gap, 0),
         StrategyKind::Slotted {
             slots,
             gap,

@@ -13,6 +13,23 @@ use super::build::{build_tree_for_strategy, populate_sequence_by_kinds};
 use super::focus::try_apply_focus;
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// After a rebuild (which hardcodes active=0), reset viewport focus to index 0
+/// then transition to the desired target panel.
+fn focus_after_rebuild(
+    strategy: &StrategyKind,
+    tree: &mut LayoutTree,
+    sequence: &mut PanelSequence,
+    viewport: &mut ViewportState,
+    target: PanelId,
+) {
+    viewport.focus = sequence.get(0);
+    try_apply_focus(strategy, tree, sequence, viewport, target);
+}
+
+// ---------------------------------------------------------------------------
 // apply_add
 // ---------------------------------------------------------------------------
 
@@ -55,10 +72,7 @@ fn add_via_rebuild(
     let new_pid = sequence
         .get(clamped)
         .ok_or(PaneError::InvalidTree(TreeError::EmptyAfterRebuild))?;
-    // Rebuild hardcodes active=0. Set focus to match so try_apply_focus
-    // can properly transition away from it.
-    viewport.focus = sequence.get(0);
-    try_apply_focus(strategy, tree, sequence, viewport, new_pid);
+    focus_after_rebuild(strategy, tree, sequence, viewport, new_pid);
     Ok(new_pid)
 }
 
@@ -138,11 +152,8 @@ fn remove_via_rebuild(
     })?;
     let focus_idx = removed_idx.min(sequence.len().saturating_sub(1));
     let new_focus = sequence.get(focus_idx);
-    // Rebuild hardcodes active=0. Set focus to match so try_apply_focus
-    // can properly transition away from it.
-    viewport.focus = sequence.get(0);
     if let Some(pid) = new_focus {
-        try_apply_focus(strategy, tree, sequence, viewport, pid);
+        focus_after_rebuild(strategy, tree, sequence, viewport, pid);
     }
     Ok(new_focus)
 }
@@ -181,10 +192,7 @@ pub fn apply_move(
     let moved_pid = sequence
         .get(new_index)
         .ok_or_else(|| PaneError::SequenceOutOfBounds(new_index, sequence.len()))?;
-    // Rebuild hardcodes active=0. Set focus to match so try_apply_focus
-    // can properly transition away from it.
-    viewport.focus = sequence.get(0);
-    try_apply_focus(strategy, tree, sequence, viewport, moved_pid);
+    focus_after_rebuild(strategy, tree, sequence, viewport, moved_pid);
     Ok(moved_pid)
 }
 
@@ -263,10 +271,18 @@ pub fn apply_set_card_span(
         build_tree_for_strategy(&new_strategy, kinds)
     })?;
 
-    viewport.focus = sequence.get(0);
-    try_apply_focus(&new_strategy, tree, sequence, viewport, pid);
+    focus_after_rebuild(&new_strategy, tree, sequence, viewport, pid);
 
     Ok(new_strategy)
+}
+
+fn update_spans(old: &[CardSpan], index: usize, span: CardSpan) -> Arc<[CardSpan]> {
+    let len = old.len().max(index + 1);
+    let mut new_spans: Vec<CardSpan> = Vec::with_capacity(len);
+    new_spans.extend_from_slice(old);
+    new_spans.resize(len, CardSpan::Columns(1));
+    new_spans[index] = span;
+    new_spans.into()
 }
 
 fn build_updated_strategy(
@@ -274,48 +290,16 @@ fn build_updated_strategy(
     index: usize,
     span: CardSpan,
 ) -> Result<StrategyKind, PaneError> {
-    let update_spans = |old: &Arc<[CardSpan]>| -> Arc<[CardSpan]> {
-        let mut spans: Vec<CardSpan> = old.to_vec();
-        if index >= spans.len() {
-            spans.resize(index + 1, CardSpan::Columns(1));
-        }
-        spans[index] = span;
-        spans.into()
-    };
-
-    macro_rules! with_updated_spans {
-        ($variant:ident, $first_field:ident = $first_val:expr, $gap_val:expr, $spans_val:expr) => {{
-            let new_spans = update_spans($spans_val);
-            Ok(StrategyKind::$variant {
-                $first_field: *$first_val,
-                gap: *$gap_val,
-                spans: new_spans,
-            })
-        }};
-    }
-
     match strategy {
         StrategyKind::Dashboard {
             columns,
             gap,
             spans,
-        } => {
-            with_updated_spans!(Dashboard, columns = columns, gap, spans)
-        }
-        StrategyKind::DashboardAutoFill {
-            min_width,
-            gap,
-            spans,
-        } => {
-            with_updated_spans!(DashboardAutoFill, min_width = min_width, gap, spans)
-        }
-        StrategyKind::DashboardAutoFit {
-            min_width,
-            gap,
-            spans,
-        } => {
-            with_updated_spans!(DashboardAutoFit, min_width = min_width, gap, spans)
-        }
+        } => Ok(StrategyKind::Dashboard {
+            columns: *columns,
+            gap: *gap,
+            spans: update_spans(spans, index, span),
+        }),
         _ => Err(PaneError::InvalidMutation(MutationError::SpanNotSupported)),
     }
 }

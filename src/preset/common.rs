@@ -189,24 +189,4 @@ macro_rules! impl_preset {
     };
 }
 
-/// Convert a `GridColumnMode` + kinds into a `Dashboard` preset.
-/// Shared by the deprecated `Columns` and `Grid` presets.
-pub(crate) fn kinds_to_dashboard(
-    cols: GridColumnMode,
-    kinds: &[Arc<str>],
-    gap: f32,
-) -> super::Dashboard {
-    let cards: Vec<(Arc<str>, crate::strategy::CardSpan)> = kinds
-        .iter()
-        .map(|k| (Arc::clone(k), crate::strategy::CardSpan::Columns(1)))
-        .collect();
-    let mut d = super::Dashboard::new(cards);
-    d = match cols {
-        GridColumnMode::Fixed(n) => d.columns(n),
-        GridColumnMode::AutoFill { min_width } => d.auto_fill(min_width),
-        GridColumnMode::AutoFit { min_width } => d.auto_fit(min_width),
-    };
-    d.gap(gap)
-}
-
 pub(crate) use impl_preset;

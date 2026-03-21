@@ -114,7 +114,7 @@ for entry in panes_ratatui::panels(&resolved) {
 
 ## Performance
 
-`LayoutRuntime` resolves a 100-panel flat layout in ~1µs on the hot path — roughly 3x over raw Taffy. The abstraction layer (tree compilation, rect resolution, frame diffing) adds minimal overhead.
+`LayoutRuntime` resolves a 100-panel flat layout in <1µs on the hot path — roughly 3x over raw Taffy. The abstraction layer (tree compilation, rect resolution, frame diffing) adds minimal overhead.
 
 See [`benches/`](benches/) for methodology.
 

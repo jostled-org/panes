@@ -52,6 +52,6 @@ impl SidebarStrategy {
             gap: self.gap,
             direction: Direction::Horizontal,
         };
-        BoundStrategy::new(kind, vec![sidebar, content], None)
+        BoundStrategy::new(kind, Box::from([sidebar, content]), None)
     }
 }

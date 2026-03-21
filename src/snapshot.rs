@@ -4,7 +4,9 @@ use crate::error::{PaneError, TreeError};
 use crate::node::{Node, NodeId};
 use crate::overlay::{OverlayDef, SnapshotOverlay};
 use crate::panel::Constraints;
-use crate::strategy::{ActivePanelVariant, CardSpan, Direction, SlotDef, StrategyKind};
+use crate::strategy::{
+    ActivePanelVariant, CardSpan, Direction, GridColumnMode, SlotDef, StrategyKind,
+};
 use crate::tree::LayoutTree;
 
 /// Serializable snapshot of a [`LayoutRuntime`](crate::runtime::LayoutRuntime)
@@ -162,26 +164,8 @@ pub enum StrategyConfig {
     },
     /// CSS Grid with per-panel column spans (dashboard, grid, columns).
     Dashboard {
-        /// Fixed number of columns.
-        columns: usize,
-        /// Gap between panels.
-        gap: f32,
-        /// Column span for each panel.
-        spans: Box<[CardSpan]>,
-    },
-    /// Dashboard with responsive auto-fill columns.
-    DashboardAutoFill {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-        /// Column span for each panel.
-        spans: Box<[CardSpan]>,
-    },
-    /// Dashboard with responsive auto-fit columns.
-    DashboardAutoFit {
-        /// Minimum column width in pixels.
-        min_width: f32,
+        /// Column mode (fixed count, auto-fill, or auto-fit).
+        columns: GridColumnMode,
         /// Gap between panels.
         gap: f32,
         /// Column span for each panel.
@@ -309,12 +293,6 @@ strategy_convert! {
         StrategyKind::Dashboard { columns, gap, spans } => StrategyConfig::Dashboard {
             columns: *columns, gap: *gap, spans: spans_to_boxed(spans),
         },
-        StrategyKind::DashboardAutoFill { min_width, gap, spans } => StrategyConfig::DashboardAutoFill {
-            min_width: *min_width, gap: *gap, spans: spans_to_boxed(spans),
-        },
-        StrategyKind::DashboardAutoFit { min_width, gap, spans } => StrategyConfig::DashboardAutoFit {
-            min_width: *min_width, gap: *gap, spans: spans_to_boxed(spans),
-        },
         StrategyKind::Slotted { slots, gap, direction } => StrategyConfig::Slotted {
             slots: slots.iter().map(|s| SnapshotSlotDef {
                 kind: Box::from(&*s.kind), constraints: s.constraints,
@@ -325,12 +303,6 @@ strategy_convert! {
     custom_to_kind: [
         StrategyConfig::Dashboard { columns, gap, spans } => StrategyKind::Dashboard {
             columns: *columns, gap: *gap, spans: Arc::from(&**spans),
-        },
-        StrategyConfig::DashboardAutoFill { min_width, gap, spans } => StrategyKind::DashboardAutoFill {
-            min_width: *min_width, gap: *gap, spans: Arc::from(&**spans),
-        },
-        StrategyConfig::DashboardAutoFit { min_width, gap, spans } => StrategyKind::DashboardAutoFit {
-            min_width: *min_width, gap: *gap, spans: Arc::from(&**spans),
         },
         StrategyConfig::Slotted { slots, gap, direction } => StrategyKind::Slotted {
             slots: slots.iter().map(|s| SlotDef {

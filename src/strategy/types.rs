@@ -53,7 +53,7 @@ impl From<usize> for CardSpan {
 /// Column mode for CSS Grid-based presets.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) enum GridColumnMode {
+pub enum GridColumnMode {
     /// Fixed number of equal-width columns.
     Fixed(usize),
     /// Responsive columns via `repeat(auto-fill, minmax(min_width, 1fr))`.
@@ -69,24 +69,12 @@ pub(crate) enum GridColumnMode {
 }
 
 impl GridColumnMode {
-    /// Build the appropriate `StrategyKind` dashboard variant from this column mode.
+    /// Build a `StrategyKind::Dashboard` from this column mode.
     pub(crate) fn to_dashboard_strategy(self, gap: f32, spans: Arc<[CardSpan]>) -> StrategyKind {
-        match self {
-            Self::Fixed(columns) => StrategyKind::Dashboard {
-                columns,
-                gap,
-                spans,
-            },
-            Self::AutoFill { min_width } => StrategyKind::DashboardAutoFill {
-                min_width,
-                gap,
-                spans,
-            },
-            Self::AutoFit { min_width } => StrategyKind::DashboardAutoFit {
-                min_width,
-                gap,
-                spans,
-            },
+        StrategyKind::Dashboard {
+            columns: self,
+            gap,
+            spans,
         }
     }
 }
@@ -143,28 +131,8 @@ pub enum StrategyKind {
 
     /// CSS-grid dashboard with per-card column spans (dashboard, grid, columns).
     Dashboard {
-        /// Fixed number of columns.
-        columns: usize,
-        /// Gap between panels.
-        gap: f32,
-        /// Column span per card, in order.
-        spans: Arc<[CardSpan]>,
-    },
-
-    /// Dashboard with responsive auto-fill columns.
-    DashboardAutoFill {
-        /// Minimum column width in pixels.
-        min_width: f32,
-        /// Gap between panels.
-        gap: f32,
-        /// Column span per card, in order.
-        spans: Arc<[CardSpan]>,
-    },
-
-    /// Dashboard with responsive auto-fit columns.
-    DashboardAutoFit {
-        /// Minimum column width in pixels.
-        min_width: f32,
+        /// Column mode (fixed count, auto-fill, or auto-fit).
+        columns: GridColumnMode,
         /// Gap between panels.
         gap: f32,
         /// Column span per card, in order.
@@ -209,8 +177,6 @@ impl StrategyKind {
             | Self::CenteredMaster { gap, .. }
             | Self::BinarySplit { gap, .. }
             | Self::Dashboard { gap, .. }
-            | Self::DashboardAutoFill { gap, .. }
-            | Self::DashboardAutoFit { gap, .. }
             | Self::Window { gap, .. }
             | Self::Slotted { gap, .. } => *gap,
             Self::ActivePanel { .. } => 0.0,

@@ -365,14 +365,6 @@ Layout::spiral(["a", "b", "c", "d", "e"])
     .resolve(100.0, 100.0)?;
 ```
 
-#### columns (deprecated)
-
-Use [`dashboard`](#dashboard) with span-1 cards instead. `Layout::columns` now delegates to `Dashboard` internally.
-
-#### grid (deprecated)
-
-Use [`dashboard`](#dashboard) with span-1 cards instead. `Layout::grid` now delegates to `Dashboard` internally.
-
 ### Stateful Presets
 
 These presets have an `active` index controlling which panel is visible.
@@ -504,7 +496,7 @@ Layout::scrollable(["project-a", "project-b", "project-c"])
 
 Presets fall into two families based on their CSS layout model.
 
-**Grid-based** (`dashboard`) uses CSS Grid under the hood. It supports responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`, per-card column spans, and full-width cards. Panels are placed in a flat grid and wrap to new rows as viewport width changes. The legacy `grid` and `columns` presets are deprecated and delegate to `Dashboard`.
+**Grid-based** (`dashboard`) uses CSS Grid under the hood. It supports responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`, per-card column spans, and full-width cards. Panels are placed in a flat grid and wrap to new rows as viewport width changes.
 
 ```rust
 use panes::CardSpan;
@@ -558,7 +550,7 @@ master_ratio = 0.6
 gap = 1.0
 ```
 
-Every preset is available as a strategy name: `master-stack`, `centered-master`, `monocle`, `scrollable`, `dwindle`, `spiral`, `deck`, `tabbed`, `stacked`, `sidebar`, `split`, `holy-grail`, `dashboard`. The names `columns` and `grid` are still accepted for backward compatibility but resolve to `dashboard` internally.
+Every preset is available as a strategy name: `master-stack`, `centered-master`, `monocle`, `scrollable`, `dwindle`, `spiral`, `deck`, `tabbed`, `stacked`, `sidebar`, `split`, `holy-grail`, `dashboard`. The legacy names `columns` and `grid` are accepted in TOML configs for backward compatibility and resolve to `dashboard` internally.
 
 ### Named-parameter strategies
 
@@ -591,28 +583,6 @@ right = "inspector"
 header_height = 3.0
 footer_height = 2.0
 sidebar_width = 15.0
-```
-
-### Responsive columns (grid, columns, dashboard)
-
-Grid-based strategies accept `min_column_width` for responsive reflow. When set, panels wrap into fewer columns as the viewport narrows. Use `column_mode` to choose between `auto-fill` (default) and `auto-fit`.
-
-`columns` and `min_column_width` are mutually exclusive.
-
-```toml
-# Grid with responsive auto-fill
-[layout]
-strategy = "grid"
-min_column_width = 200.0
-gap = 8.0
-panels = ["a", "b", "c", "d"]
-
-# Columns with auto-fit (items expand to fill remaining space)
-[layout]
-strategy = "columns"
-min_column_width = 200.0
-column_mode = "auto-fit"
-panels = ["a", "b", "c"]
 ```
 
 ### Dashboard

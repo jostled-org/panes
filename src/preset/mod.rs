@@ -1,11 +1,9 @@
 pub(crate) mod catalog;
 mod centered_master;
-mod columns;
 mod common;
 mod dashboard;
 mod deck;
 mod dwindle;
-mod grid;
 mod holy_grail;
 mod master_stack;
 mod monocle;
@@ -17,13 +15,9 @@ mod stacked;
 mod tabbed;
 
 pub use centered_master::CenteredMaster;
-#[allow(deprecated)]
-pub use columns::Columns;
 pub use dashboard::Dashboard;
 pub use deck::Deck;
 pub use dwindle::Dwindle;
-#[allow(deprecated)]
-pub use grid::Grid;
 pub use holy_grail::HolyGrail;
 pub use master_stack::MasterStack;
 pub use monocle::Monocle;

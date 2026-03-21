@@ -7,7 +7,7 @@ fn basic_breakpoint_selection() {
     let mut rt = Layout::adaptive(["a", "b", "c"])
         .at(0, Strategy::stacked())
         .at(600, Strategy::master_stack().master_ratio(0.6).gap(1.0))
-        .at(1200, Strategy::columns())
+        .at(1200, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 
@@ -28,7 +28,7 @@ fn basic_breakpoint_selection() {
 fn breakpoint_switch_preserves_panels() {
     let mut rt = Layout::adaptive(["editor", "chat", "status"])
         .at(0, Strategy::stacked())
-        .at(600, Strategy::columns())
+        .at(600, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 
@@ -54,7 +54,7 @@ fn breakpoint_switch_preserves_panels() {
 fn focus_preserved_across_switch() {
     let mut rt = Layout::adaptive(["a", "b", "c"])
         .at(0, Strategy::stacked())
-        .at(600, Strategy::columns())
+        .at(600, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 
@@ -77,7 +77,7 @@ fn focus_preserved_across_switch() {
 fn add_panel_survives_switch() {
     let mut rt = Layout::adaptive(["a", "b"])
         .at(0, Strategy::stacked())
-        .at(600, Strategy::columns())
+        .at(600, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 
@@ -101,7 +101,7 @@ fn add_panel_survives_switch() {
 fn remove_panel_survives_switch() {
     let mut rt = Layout::adaptive(["a", "b", "c"])
         .at(0, Strategy::stacked())
-        .at(600, Strategy::columns())
+        .at(600, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 
@@ -154,7 +154,7 @@ fn snapshot_round_trip() {
 #[test]
 fn single_breakpoint() {
     let mut rt = Layout::adaptive(["a", "b"])
-        .at(0, Strategy::columns())
+        .at(0, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 
@@ -167,7 +167,7 @@ fn single_breakpoint() {
 fn same_breakpoint_no_rebuild() {
     let mut rt = Layout::adaptive(["a", "b"])
         .at(0, Strategy::stacked())
-        .at(600, Strategy::columns())
+        .at(600, Strategy::dashboard())
         .into_runtime()
         .unwrap();
 

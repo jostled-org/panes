@@ -166,19 +166,6 @@ impl Layout {
         crate::preset::Spiral::new(kinds)
     }
 
-    /// Create a [`Columns`](crate::preset::Columns) builder.
-    ///
-    /// # Deprecated
-    /// Use [`Layout::dashboard`] with span-1 cards instead.
-    #[deprecated(since = "0.12.0", note = "use Layout::dashboard() with span-1 cards")]
-    #[allow(deprecated)]
-    pub fn columns(
-        count: usize,
-        kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
-    ) -> crate::preset::Columns {
-        crate::preset::Columns::new(count, kinds)
-    }
-
     /// Create a [`Deck`](crate::preset::Deck) builder.
     pub fn deck(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Deck {
         crate::preset::Deck::new(kinds)
@@ -231,19 +218,6 @@ impl Layout {
     ) -> crate::breakpoint::AdaptiveBuilder {
         let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
         crate::breakpoint::AdaptiveBuilder::new(panels)
-    }
-
-    /// Create a [`Grid`](crate::preset::Grid) builder.
-    ///
-    /// # Deprecated
-    /// Use [`Layout::dashboard`] with span-1 cards instead.
-    #[deprecated(since = "0.12.0", note = "use Layout::dashboard() with span-1 cards")]
-    #[allow(deprecated)]
-    pub fn grid(
-        cols: usize,
-        kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
-    ) -> crate::preset::Grid {
-        crate::preset::Grid::new(cols, kinds)
     }
 }
 

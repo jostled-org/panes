@@ -50,14 +50,6 @@ fn stacked_active_out_of_bounds() {
     assert!(matches!(err, PaneError::InvalidTree(_)));
 }
 
-// -- Step 3: grid cols == 0 --
-
-#[test]
-fn grid_zero_cols() {
-    let err = Layout::grid(0, ["a", "b"]).build().unwrap_err();
-    assert!(matches!(err, PaneError::InvalidTree(_)));
-}
-
 // -- node_count maintained counter --
 
 #[test]
@@ -163,14 +155,6 @@ fn spiral_infinite_ratio() {
 }
 
 // -- empty kinds / cards validation --
-
-#[test]
-fn columns_empty_kinds() {
-    let err = Layout::columns(2, std::iter::empty::<&str>())
-        .build()
-        .unwrap_err();
-    assert!(matches!(err, PaneError::InvalidTree(_)));
-}
 
 #[test]
 fn dashboard_empty_cards() {

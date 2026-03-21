@@ -44,7 +44,7 @@ impl DashboardStrategy {
             .into_iter()
             .map(|(k, s)| (k.into(), s.into()))
             .collect();
-        let panels: Vec<Arc<str>> = cards.iter().map(|(k, _)| Arc::clone(k)).collect();
+        let panels: Box<[Arc<str>]> = cards.iter().map(|(k, _)| Arc::clone(k)).collect();
         let spans: Arc<[CardSpan]> = cards.iter().map(|(_, s)| *s).collect();
         let kind = self.to_strategy_kind(spans);
         BoundStrategy::new(kind, panels, None)
@@ -55,7 +55,7 @@ impl DashboardStrategy {
         self,
         panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> BoundStrategy {
-        let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
+        let panels: Box<[Arc<str>]> = panels.into_iter().map(Into::into).collect();
         let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); panels.len()].into();
         let kind = self.to_strategy_kind(spans);
         BoundStrategy::new(kind, panels, None)

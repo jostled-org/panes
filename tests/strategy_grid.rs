@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{CardSpan, StrategyKind};
+use panes::{CardSpan, GridColumnMode, StrategyKind};
 
 fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
@@ -12,7 +12,7 @@ fn dashboard_fixed_runtime(n: usize, columns: usize) -> LayoutRuntime {
     let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); n].into();
     LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
-            columns,
+            columns: GridColumnMode::Fixed(columns),
             gap: 0.0,
             spans,
         },
@@ -25,8 +25,8 @@ fn dashboard_auto_fill_runtime(n: usize) -> LayoutRuntime {
     let k = kinds(n);
     let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); n].into();
     LayoutRuntime::from_strategy(
-        StrategyKind::DashboardAutoFill {
-            min_width: 200.0,
+        StrategyKind::Dashboard {
+            columns: GridColumnMode::AutoFill { min_width: 200.0 },
             gap: 0.0,
             spans,
         },

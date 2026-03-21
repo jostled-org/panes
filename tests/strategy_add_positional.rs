@@ -239,7 +239,7 @@ fn swap_next_after_add_on_all_strategies() {
             gap: 0.0,
         },
         StrategyKind::Dashboard {
-            columns: 2,
+            columns: panes::GridColumnMode::Fixed(2),
             gap: 0.0,
             spans: std::sync::Arc::from([]),
         },

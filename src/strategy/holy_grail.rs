@@ -111,7 +111,7 @@ impl HolyGrailStrategy {
         .gap(self.gap)
         .build()?;
 
-        let panels = vec![header, left, main_kind, right, footer];
+        let panels: Box<[Arc<str>]> = Box::from([header, left, main_kind, right, footer]);
         Ok(BoundStrategy::new(kind, panels, Some(layout)))
     }
 }

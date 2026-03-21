@@ -49,10 +49,9 @@ pub use overlay::{
     OverlayId, SnapshotOverlay, VAlign,
 };
 pub use panel::{Constraints, PanelIdGenerator, fixed, grow};
-#[allow(deprecated)]
 pub use preset::{
-    CenteredMaster, Columns, Dashboard, Deck, Dwindle, Grid, HolyGrail, MasterStack, Monocle,
-    PanelInputKind, PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
+    CenteredMaster, Dashboard, Deck, Dwindle, HolyGrail, MasterStack, Monocle, PanelInputKind,
+    PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
 };
 pub use rect::Rect;
 pub use resolver::{PanelEntry, ResolvedLayout};
@@ -62,12 +61,11 @@ pub use snapshot::{
     LayoutSnapshot, SnapshotBreakpoint, SnapshotNode, SnapshotSlotDef, SnapshotSource,
     StrategyConfig,
 };
-#[allow(deprecated)]
 pub use strategy::{
     ActivePanelStrategy, ActivePanelVariant, BinarySplitStrategy, BoundStrategy, CardSpan,
-    CenteredMasterStrategy, ColumnGridStrategy, ColumnsStrategy, DashboardStrategy, DeckStrategy,
-    Direction, HolyGrailStrategy, MasterStackStrategy, SidebarStrategy, SlotDef, SlottedStrategy,
-    SplitStrategy, Strategy, StrategyKind, WindowStrategy,
+    CenteredMasterStrategy, DashboardStrategy, DeckStrategy, Direction, GridColumnMode,
+    HolyGrailStrategy, MasterStackStrategy, SidebarStrategy, SlotDef, SplitStrategy, Strategy,
+    StrategyKind, WindowStrategy,
 };
 #[cfg(feature = "toml")]
 pub use toml_parse::TomlError;

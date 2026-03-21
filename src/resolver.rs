@@ -375,6 +375,9 @@ pub(crate) fn resolve_dirty(
 
     resolve_dfs(tree, result, root_id, 0.0, 0.0, &mut rects, kinds_buf)?;
 
+    // Remove stale entries for panel kinds no longer present in the tree.
+    kinds_buf.retain(|_, v| !v.is_empty());
+
     let kinds = Arc::new(
         kinds_buf
             .iter()

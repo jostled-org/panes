@@ -6,10 +6,6 @@ use crate::runtime::LayoutRuntime;
 use crate::tree::LayoutTree;
 
 use super::build::build_tree_for_strategy;
-#[allow(deprecated)]
-use super::column_grid::ColumnGridStrategy;
-#[allow(deprecated)]
-use super::columns::ColumnsStrategy;
 use super::dashboard::DashboardStrategy;
 use super::holy_grail::HolyGrailStrategy;
 use super::sidebar::SidebarStrategy;
@@ -109,7 +105,7 @@ impl Strategy {
         self,
         panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> BoundStrategy {
-        let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
+        let panels: Box<[Arc<str>]> = panels.into_iter().map(Into::into).collect();
         BoundStrategy {
             kind: self.kind,
             panels,
@@ -190,13 +186,6 @@ impl Strategy {
         }
     }
 
-    /// Columns strategy. Deprecated — use [`Strategy::dashboard`] instead.
-    #[deprecated(since = "0.12.0", note = "use Strategy::dashboard() instead")]
-    #[allow(deprecated)]
-    pub fn columns() -> ColumnsStrategy {
-        ColumnsStrategy::new()
-    }
-
     /// Split strategy: two panels with configurable ratio.
     pub fn split() -> SplitStrategy {
         SplitStrategy {
@@ -204,13 +193,6 @@ impl Strategy {
             gap: 0.0,
             is_vertical: false,
         }
-    }
-
-    /// Grid strategy. Deprecated — use [`Strategy::dashboard`] instead.
-    #[deprecated(since = "0.12.0", note = "use Strategy::dashboard() instead")]
-    #[allow(deprecated)]
-    pub fn grid(columns: usize) -> ColumnGridStrategy {
-        ColumnGridStrategy::new(columns)
     }
 
     /// Dashboard strategy: CSS-grid layout with per-card column spans.
@@ -239,7 +221,7 @@ impl Strategy {
 /// A strategy with panels bound, ready to produce a layout or runtime.
 pub struct BoundStrategy {
     kind: StrategyKind,
-    panels: Vec<Arc<str>>,
+    panels: Box<[Arc<str>]>,
     tree_override: Option<Layout>,
 }
 
@@ -247,7 +229,7 @@ impl BoundStrategy {
     /// Create a new bound strategy.
     pub(crate) fn new(
         kind: StrategyKind,
-        panels: Vec<Arc<str>>,
+        panels: Box<[Arc<str>]>,
         tree_override: Option<Layout>,
     ) -> Self {
         Self {
@@ -434,7 +416,7 @@ impl SplitStrategy {
         first: impl Into<Arc<str>>,
         second: impl Into<Arc<str>>,
     ) -> BoundStrategy {
-        let panels = vec![first.into(), second.into()];
+        let panels: Box<[Arc<str>]> = Box::from([first.into(), second.into()]);
         let kind = self.build().kind;
         BoundStrategy {
             kind,

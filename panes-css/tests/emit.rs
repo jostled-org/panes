@@ -263,8 +263,8 @@ fn adaptive_single_breakpoint_no_media_query() {
 }
 
 #[test]
-fn grid_auto_fill_css() {
-    let layout = Layout::grid(2, ["a", "b", "c", "d"])
+fn dashboard_auto_fill_css_via_emit() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1), ("c", 1), ("d", 1)])
         .auto_fill(250.0)
         .build()
         .unwrap();
@@ -277,8 +277,11 @@ fn grid_auto_fill_css() {
 }
 
 #[test]
-fn grid_auto_fit_css() {
-    let layout = Layout::grid(2, ["a", "b"]).auto_fit(300.0).build().unwrap();
+fn dashboard_auto_fit_css_via_emit() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1)])
+        .auto_fit(300.0)
+        .build()
+        .unwrap();
     let css = panes_css::emit(&layout);
 
     assert!(
@@ -288,60 +291,20 @@ fn grid_auto_fit_css() {
 }
 
 #[test]
-fn grid_fixed_css_emits_grid() {
-    let layout = Layout::grid(3, ["a", "b", "c"]).build().unwrap();
+fn dashboard_fixed_css_emits_grid_via_emit() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1), ("c", 1)])
+        .columns(3)
+        .build()
+        .unwrap();
     let css = panes_css::emit(&layout);
 
     assert!(
         css.contains("display: grid"),
-        "grid preset should use CSS Grid, got: {css}"
+        "dashboard should use CSS Grid, got: {css}"
     );
     assert!(
         css.contains("repeat(3, 1fr)"),
-        "fixed grid should use repeat(N, 1fr), got: {css}"
-    );
-}
-
-#[test]
-fn columns_auto_fill_css() {
-    let layout = Layout::columns(3, ["a", "b", "c", "d", "e", "f"])
-        .auto_fill(200.0)
-        .build()
-        .unwrap();
-    let css = panes_css::emit(&layout);
-
-    assert!(
-        css.contains("repeat(auto-fill, minmax(200px, 1fr))"),
-        "missing auto-fill grid-template-columns for columns, got: {css}"
-    );
-}
-
-#[test]
-fn columns_auto_fit_css() {
-    let layout = Layout::columns(3, ["a", "b", "c"])
-        .auto_fit(250.0)
-        .build()
-        .unwrap();
-    let css = panes_css::emit(&layout);
-
-    assert!(
-        css.contains("repeat(auto-fit, minmax(250px, 1fr))"),
-        "missing auto-fit grid-template-columns for columns, got: {css}"
-    );
-}
-
-#[test]
-fn columns_fixed_css_emits_grid() {
-    let layout = Layout::columns(4, ["a", "b", "c", "d"]).build().unwrap();
-    let css = panes_css::emit(&layout);
-
-    assert!(
-        css.contains("display: grid"),
-        "columns preset should use CSS Grid, got: {css}"
-    );
-    assert!(
-        css.contains("repeat(4, 1fr)"),
-        "fixed columns should use repeat(N, 1fr), got: {css}"
+        "fixed dashboard should use repeat(N, 1fr), got: {css}"
     );
 }
 
