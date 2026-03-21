@@ -33,7 +33,7 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-features -- -D warnings
-      - run: cargo install pedant && find . -path '*/src/*.rs' | xargs pedant -c pedant.toml
+      - run: cargo install pedant && find . -path '*/src/*.rs' | xargs pedant
       - run: cargo test --workspace --all-features
       - run: cargo install cargo-deny && cargo deny --workspace check
 
