@@ -398,7 +398,7 @@ Tab header bar over a single visible content pane. Each panel gets a `{kind}_tab
 ```rust
 Layout::tabbed(["editor", "chat", "terminal"])
     .active(0)
-    .tab_height(1.0)  // default: 1.0
+    .bar_height(1.0)  // default: 1.0
     .gap(0.0)
     .resolve(80.0, 24.0)?;
 
@@ -413,7 +413,7 @@ Vertical list of title bars over a single visible content pane. Each panel gets 
 ```rust
 Layout::stacked(["editor", "chat", "terminal"])
     .active(0)
-    .title_height(1.0)  // default: 1.0
+    .bar_height(1.0)  // default: 1.0
     .gap(0.0)
     .resolve(80.0, 24.0)?;
 ```
@@ -530,7 +530,7 @@ Enable the `toml` feature:
 
 ```toml
 [dependencies]
-panes = { version = "0.1", features = ["toml"] }
+panes = { version = "0.14", features = ["toml"] }
 ```
 
 Then load layouts from TOML strings or files:
@@ -781,7 +781,7 @@ let (pid, _) = tree.add_panel("terminal", grow(1.0))?;
 tree.set_constraints(pid, fixed(30.0))?;
 ```
 
-**Resize boundaries:** Only available in direct mode. Adjusts a panel's share of its container.
+**Resize boundaries:** Adjusts a panel's share of its container. Works in both strategy and direct modes — strategy runtimes support cross-container resize escalation.
 
 ```rust
 rt.resize_boundary(pid, 0.1)?;   // give 10% more space
@@ -981,7 +981,7 @@ let entries: Vec<_> = resolved
 
 ```toml
 [dependencies]
-panes-ratatui = "0.1"
+panes-ratatui = "0.4"
 ```
 
 ```rust
@@ -1026,7 +1026,7 @@ panes_ratatui::render_overlays(frame, &resolved, |frame, entry| {
 
 ```toml
 [dependencies]
-panes-egui = "0.1"
+panes-egui = "0.4"
 ```
 
 ```rust
@@ -1046,7 +1046,7 @@ Direct f32 mapping.
 
 ```toml
 [dependencies]
-panes-css = "0.1"
+panes-css = "0.4"
 ```
 
 ```rust
@@ -1061,7 +1061,7 @@ Grid-based presets (`dashboard`) emit `display: grid` with `grid-template-column
 
 ```toml
 [dependencies]
-panes-wasm = "0.1"
+panes-wasm = "0.4"
 ```
 
 ```rust
@@ -1082,7 +1082,7 @@ Enable the `serde` feature to derive `Serialize` and `Deserialize` on core types
 
 ```toml
 [dependencies]
-panes = { version = "0.1", features = ["serde"] }
+panes = { version = "0.14", features = ["serde"] }
 ```
 
 Types with serde derives: `Rect`, `PanelId`, `NodeId`, `Constraints`, `Direction`, `ActivePanelVariant`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).

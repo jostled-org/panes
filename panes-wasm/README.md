@@ -23,7 +23,8 @@ cargo add panes-wasm --features js
 ```rust
 use panes::Layout;
 
-let resolved = Layout::grid(3, ["a", "b", "c", "d", "e", "f"])
+let resolved = Layout::dashboard([("a", 1), ("b", 1), ("c", 1), ("d", 1), ("e", 1), ("f", 1)])
+    .columns(3)
     .resolve(800.0, 600.0)?;
 
 let rects = panes_wasm::convert(&resolved);
