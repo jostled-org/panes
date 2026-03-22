@@ -48,13 +48,13 @@ pub use overlay::{
     ExtentValue, HAlign, Overlay, OverlayAnchor, OverlayDef, OverlayEntry, OverlayExtent,
     OverlayId, SnapshotOverlay, VAlign,
 };
-pub use panel::{Constraints, PanelIdGenerator, fixed, grow};
+pub use panel::{Align, Constraints, PanelIdGenerator, fixed, grow};
 pub use preset::{
     CenteredMaster, Dashboard, Deck, Dwindle, HolyGrail, MasterStack, Monocle, PanelInputKind,
     PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
 };
 pub use rect::Rect;
-pub use resolver::{PanelEntry, ResolvedLayout};
+pub use resolver::{BoundaryAxis, BoundaryHit, PanelEntry, ResolvedLayout};
 pub use runtime::Placement;
 pub use sequence::PanelSequence;
 pub use snapshot::{

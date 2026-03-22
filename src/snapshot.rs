@@ -170,6 +170,9 @@ pub enum StrategyConfig {
         gap: f32,
         /// Column span for each panel.
         spans: Box<[CardSpan]>,
+        /// When true, rows size to their tallest card instead of equal `1fr`.
+        #[cfg_attr(feature = "serde", serde(default))]
+        auto_rows: bool,
     },
     /// Only one panel visible at a time (monocle, tabbed, stacked).
     ActivePanel {
@@ -290,8 +293,8 @@ strategy_convert! {
         Window { size, gap },
     ],
     custom_to_config: [
-        StrategyKind::Dashboard { columns, gap, spans } => StrategyConfig::Dashboard {
-            columns: *columns, gap: *gap, spans: spans_to_boxed(spans),
+        StrategyKind::Dashboard { columns, gap, spans, auto_rows } => StrategyConfig::Dashboard {
+            columns: *columns, gap: *gap, spans: spans_to_boxed(spans), auto_rows: *auto_rows,
         },
         StrategyKind::Slotted { slots, gap, direction } => StrategyConfig::Slotted {
             slots: slots.iter().map(|s| SnapshotSlotDef {
@@ -301,8 +304,8 @@ strategy_convert! {
         },
     ],
     custom_to_kind: [
-        StrategyConfig::Dashboard { columns, gap, spans } => StrategyKind::Dashboard {
-            columns: *columns, gap: *gap, spans: Arc::from(&**spans),
+        StrategyConfig::Dashboard { columns, gap, spans, auto_rows } => StrategyKind::Dashboard {
+            columns: *columns, gap: *gap, spans: Arc::from(&**spans), auto_rows: *auto_rows,
         },
         StrategyConfig::Slotted { slots, gap, direction } => StrategyKind::Slotted {
             slots: slots.iter().map(|s| SlotDef {

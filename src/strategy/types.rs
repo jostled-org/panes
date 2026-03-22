@@ -70,11 +70,17 @@ pub enum GridColumnMode {
 
 impl GridColumnMode {
     /// Build a `StrategyKind::Dashboard` from this column mode.
-    pub(crate) fn to_dashboard_strategy(self, gap: f32, spans: Arc<[CardSpan]>) -> StrategyKind {
+    pub(crate) fn to_dashboard_strategy(
+        self,
+        gap: f32,
+        spans: Arc<[CardSpan]>,
+        auto_rows: bool,
+    ) -> StrategyKind {
         StrategyKind::Dashboard {
             columns: self,
             gap,
             spans,
+            auto_rows,
         }
     }
 }
@@ -137,6 +143,8 @@ pub enum StrategyKind {
         gap: f32,
         /// Column span per card, in order.
         spans: Arc<[CardSpan]>,
+        /// When true, rows size to their tallest card instead of equal `1fr`.
+        auto_rows: bool,
     },
 
     /// Only one panel visible at a time (monocle, tabbed, stacked).

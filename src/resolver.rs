@@ -8,6 +8,42 @@ use crate::overlay::{OverlayEntry, OverlayId};
 use crate::rect::Rect;
 use crate::tree::LayoutTree;
 
+/// Axis of a resize boundary between sibling nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoundaryAxis {
+    /// Vertical boundary (between siblings in a row).
+    Vertical,
+    /// Horizontal boundary (between siblings in a column).
+    Horizontal,
+}
+
+/// Result of a boundary hit-test: the resize handle closest to a query point.
+#[derive(Debug, Clone, Copy)]
+pub struct BoundaryHit {
+    /// Whether this boundary runs vertically or horizontally.
+    pub axis: BoundaryAxis,
+    /// The two sibling nodes on either side of the boundary.
+    pub sides: (NodeId, NodeId),
+    /// The position of the boundary on its axis (x for Vertical, y for Horizontal).
+    pub position: f32,
+}
+
+/// Internal boundary segment computed during resolve.
+#[derive(Debug, Clone, Copy)]
+struct BoundarySegment {
+    axis: BoundaryAxis,
+    /// Position on the main axis (x for Vertical, y for Horizontal).
+    position: f32,
+    /// Perpendicular span start (y for Vertical, x for Horizontal).
+    span_start: f32,
+    /// Perpendicular span end.
+    span_end: f32,
+    /// Node before the boundary (left/top).
+    before: NodeId,
+    /// Node after the boundary (right/bottom).
+    after: NodeId,
+}
+
 /// A single panel's identity and computed rectangle.
 ///
 /// Generic over `R` so the core crate yields `PanelEntry<'_, &Rect>` while
@@ -43,6 +79,7 @@ pub struct ResolvedLayout {
     rects: Vec<Option<Rect>>,
     kinds: KindIndex,
     overlay_rects: Vec<(OverlayId, Arc<str>, Rect)>,
+    boundaries: Vec<BoundarySegment>,
 }
 
 impl ResolvedLayout {
@@ -118,6 +155,36 @@ impl ResolvedLayout {
             })
     }
 
+    /// Return the panel whose rect contains the given point.
+    ///
+    /// Iterates panels in reverse insertion order so that later (higher z)
+    /// panels win when rects overlap. Overlays are ignored — use
+    /// [`overlay_at_point`](Self::overlay_at_point) for overlay hit-testing.
+    pub fn panel_at_point(&self, x: f32, y: f32) -> Option<PanelId> {
+        self.rects
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(|(i, slot)| {
+                let rect = slot.as_ref()?;
+                let raw = u32::try_from(i).ok()?;
+                rect.contains(x, y).then(|| PanelId::from_raw(raw))
+            })
+            .next()
+    }
+
+    /// Return the overlay whose rect contains the given point.
+    ///
+    /// Iterates in reverse z-order (topmost overlay first) so the
+    /// visually-frontmost overlay wins.
+    pub fn overlay_at_point(&self, x: f32, y: f32) -> Option<OverlayId> {
+        self.overlay_rects
+            .iter()
+            .rev()
+            .find(|(_, _, rect)| rect.contains(x, y))
+            .map(|(id, _, _)| *id)
+    }
+
     /// Look up the resolved rectangle for an overlay by its id.
     pub fn overlay_rect(&self, id: OverlayId) -> Option<&Rect> {
         self.overlay_rects
@@ -126,14 +193,50 @@ impl ResolvedLayout {
             .map(|(_, _, r)| r)
     }
 
+    /// Return the resize boundary closest to the given point within tolerance.
+    ///
+    /// Scans pre-computed boundary segments between adjacent siblings.
+    /// Returns the nearest boundary whose main-axis distance is within
+    /// `tolerance` and whose perpendicular span covers the query point.
+    pub fn boundary_at_point(&self, x: f32, y: f32, tolerance: f32) -> Option<BoundaryHit> {
+        let mut best: Option<(f32, &BoundarySegment)> = None;
+
+        for seg in &self.boundaries {
+            let (dist, in_span) = match seg.axis {
+                BoundaryAxis::Vertical => (
+                    (x - seg.position).abs(),
+                    y >= seg.span_start && y < seg.span_end,
+                ),
+                BoundaryAxis::Horizontal => (
+                    (y - seg.position).abs(),
+                    x >= seg.span_start && x < seg.span_end,
+                ),
+            };
+            match (dist <= tolerance && in_span, &best) {
+                (true, Some((best_dist, _))) if dist < *best_dist => {
+                    best = Some((dist, seg));
+                }
+                (true, None) => best = Some((dist, seg)),
+                _ => {}
+            }
+        }
+
+        best.map(|(_, seg)| BoundaryHit {
+            axis: seg.axis,
+            sides: (seg.before, seg.after),
+            position: seg.position,
+        })
+    }
+
     /// Raw overlay rects for diffing.
     pub(crate) fn overlay_rects_raw(&self) -> &[(OverlayId, Arc<str>, Rect)] {
         &self.overlay_rects
     }
 
-    /// Set the resolved overlay rects (called by runtime after overlay resolution).
-    pub(crate) fn set_overlay_rects(&mut self, rects: Vec<(OverlayId, Arc<str>, Rect)>) {
-        self.overlay_rects = rects;
+    /// Swap the resolved overlay rects buffer into the layout, returning the
+    /// layout's previous buffer so the caller retains its capacity.
+    pub(crate) fn swap_overlay_rects(&mut self, buf: &mut Vec<(OverlayId, Arc<str>, Rect)>) {
+        std::mem::swap(&mut self.overlay_rects, buf);
     }
 
     /// Borrow the shared kinds index.
@@ -188,67 +291,60 @@ impl ResolvedLayout {
             rects,
             kinds,
             overlay_rects: Vec::new(),
+            boundaries: Vec::new(),
         }
     }
 }
 
-/// Single-pass top-down DFS to resolve all panel rects with accumulated offsets.
-fn resolve_dfs(
+/// Iterative DFS that populates both rects and kinds. Reuses the stack across frames.
+fn resolve_iterative_with_kinds(
     tree: &LayoutTree,
     result: &CompileResult,
-    node_id: NodeId,
-    parent_x: f32,
-    parent_y: f32,
+    root_id: NodeId,
     rects: &mut [Option<Rect>],
+    stack: &mut Vec<(NodeId, f32, f32)>,
     kinds: &mut FxHashMap<Arc<str>, Vec<PanelId>>,
 ) -> Result<(), PaneError> {
-    let taffy_id = result
-        .node_map
-        .get(node_id.raw() as usize)
-        .and_then(|s| s.as_ref())
-        .ok_or(PaneError::NodeNotFound(node_id))?;
-    let layout = result
-        .taffy_tree
-        .layout(*taffy_id)
-        .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?;
-    let abs_x = parent_x + layout.location.x;
-    let abs_y = parent_y + layout.location.y;
+    stack.clear();
+    stack.push((root_id, 0.0, 0.0));
 
-    match tree.node(node_id) {
-        Some(Node::Panel { id, kind, .. }) => {
-            let rect = Rect {
-                x: abs_x,
-                y: abs_y,
-                w: layout.size.width,
-                h: layout.size.height,
-            };
-            *rects
-                .get_mut(id.raw() as usize)
-                .ok_or(PaneError::PanelNotFound(*id))? = Some(rect);
-            kinds.entry(Arc::clone(kind)).or_default().push(*id);
-        }
-        Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
-            resolve_children(tree, result, children, abs_x, abs_y, rects, kinds)?;
-        }
-        Some(Node::TaffyPassthrough { children, .. }) => {
-            resolve_children(tree, result, children, abs_x, abs_y, rects, kinds)?;
-        }
-        None => {}
-    }
-    Ok(())
-}
+    while let Some((node_id, parent_x, parent_y)) = stack.pop() {
+        let taffy_id = result
+            .node_map
+            .get(node_id.raw() as usize)
+            .and_then(|s| s.as_ref())
+            .ok_or(PaneError::NodeNotFound(node_id))?;
+        let layout = result
+            .taffy_tree
+            .layout(*taffy_id)
+            .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?;
+        let abs_x = parent_x + layout.location.x;
+        let abs_y = parent_y + layout.location.y;
 
-fn resolve_children(
-    tree: &LayoutTree,
-    result: &CompileResult,
-    children: &[NodeId],
-    abs_x: f32,
-    abs_y: f32,
-    rects: &mut [Option<Rect>],
-    kinds: &mut FxHashMap<Arc<str>, Vec<PanelId>>,
-) -> Result<(), PaneError> {
-    for &child_id in children {
-        resolve_dfs(tree, result, child_id, abs_x, abs_y, rects, kinds)?;
+        match tree.node(node_id) {
+            Some(Node::Panel { id, kind, .. }) => {
+                *rects
+                    .get_mut(id.raw() as usize)
+                    .ok_or(PaneError::PanelNotFound(*id))? = Some(Rect {
+                    x: abs_x,
+                    y: abs_y,
+                    w: layout.size.width,
+                    h: layout.size.height,
+                });
+                kinds.entry(Arc::clone(kind)).or_default().push(*id);
+            }
+            Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
+                for &child_id in children.iter().rev() {
+                    stack.push((child_id, abs_x, abs_y));
+                }
+            }
+            Some(Node::TaffyPassthrough { children, .. }) => {
+                for &child_id in children.iter().rev() {
+                    stack.push((child_id, abs_x, abs_y));
+                }
+            }
+            None => {}
+        }
     }
     Ok(())
 }
@@ -258,6 +354,8 @@ fn resolve_children(
 pub(crate) struct ResolveScratch {
     stack: Vec<(NodeId, f32, f32)>,
     kinds_buf: FxHashMap<Arc<str>, Vec<PanelId>>,
+    boundary_stack: Vec<NodeId>,
+    boundary_buf: Vec<BoundarySegment>,
 }
 
 /// Iterative DFS that only populates rects. Reuses the stack across frames.
@@ -266,12 +364,12 @@ fn resolve_iterative(
     result: &CompileResult,
     root_id: NodeId,
     rects: &mut [Option<Rect>],
-    scratch: &mut ResolveScratch,
+    stack: &mut Vec<(NodeId, f32, f32)>,
 ) -> Result<(), PaneError> {
-    scratch.stack.clear();
-    scratch.stack.push((root_id, 0.0, 0.0));
+    stack.clear();
+    stack.push((root_id, 0.0, 0.0));
 
-    while let Some((node_id, parent_x, parent_y)) = scratch.stack.pop() {
+    while let Some((node_id, parent_x, parent_y)) = stack.pop() {
         let taffy_id = result
             .node_map
             .get(node_id.raw() as usize)
@@ -297,18 +395,116 @@ fn resolve_iterative(
             }
             Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
                 for &child_id in children.iter().rev() {
-                    scratch.stack.push((child_id, abs_x, abs_y));
+                    stack.push((child_id, abs_x, abs_y));
                 }
             }
             Some(Node::TaffyPassthrough { children, .. }) => {
                 for &child_id in children.iter().rev() {
-                    scratch.stack.push((child_id, abs_x, abs_y));
+                    stack.push((child_id, abs_x, abs_y));
                 }
             }
             None => {}
         }
     }
     Ok(())
+}
+
+/// Look up a node's absolute rect from the compiled Taffy tree.
+fn taffy_node_rect(result: &CompileResult, node_id: NodeId, tree: &LayoutTree) -> Option<Rect> {
+    let taffy_id = result.node_map.get(node_id.raw() as usize)?.as_ref()?;
+    let layout = result.taffy_tree.layout(*taffy_id).ok()?;
+
+    // Walk ancestors to accumulate absolute position.
+    let mut abs_x = layout.location.x;
+    let mut abs_y = layout.location.y;
+    let mut current = node_id;
+    while let Ok(Some(parent_id)) = tree.parent(current) {
+        let parent_taffy = result.node_map.get(parent_id.raw() as usize)?.as_ref()?;
+        let parent_layout = result.taffy_tree.layout(*parent_taffy).ok()?;
+        abs_x += parent_layout.location.x;
+        abs_y += parent_layout.location.y;
+        current = parent_id;
+    }
+
+    Some(Rect {
+        x: abs_x,
+        y: abs_y,
+        w: layout.size.width,
+        h: layout.size.height,
+    })
+}
+
+/// Collect boundary segments between adjacent siblings in Row/Col containers.
+fn collect_boundaries(
+    tree: &LayoutTree,
+    result: &CompileResult,
+    root_id: NodeId,
+    boundaries: &mut Vec<BoundarySegment>,
+    stack: &mut Vec<NodeId>,
+) {
+    boundaries.clear();
+    stack.clear();
+    stack.push(root_id);
+
+    while let Some(node_id) = stack.pop() {
+        let Some(node) = tree.node(node_id) else {
+            continue;
+        };
+
+        let axis = match node {
+            Node::Row { .. } => Some(BoundaryAxis::Vertical),
+            Node::Col { .. } => Some(BoundaryAxis::Horizontal),
+            _ => None,
+        };
+
+        let children = node.children();
+
+        // Push children for further traversal.
+        for &child_id in children {
+            stack.push(child_id);
+        }
+
+        let Some(axis) = axis else { continue };
+        if children.len() < 2 {
+            continue;
+        }
+
+        // Get the container's absolute rect for the perpendicular span.
+        let Some(container_rect) = taffy_node_rect(result, node_id, tree) else {
+            continue;
+        };
+
+        // Compute boundaries between each pair of adjacent children.
+        for pair in children.windows(2) {
+            let (a_id, b_id) = (pair[0], pair[1]);
+            let (Some(a_rect), Some(b_rect)) = (
+                taffy_node_rect(result, a_id, tree),
+                taffy_node_rect(result, b_id, tree),
+            ) else {
+                continue;
+            };
+
+            let (position, span_start, span_end) = match axis {
+                BoundaryAxis::Vertical => {
+                    let pos = (a_rect.x + a_rect.w + b_rect.x) / 2.0;
+                    (pos, container_rect.y, container_rect.y + container_rect.h)
+                }
+                BoundaryAxis::Horizontal => {
+                    let pos = (a_rect.y + a_rect.h + b_rect.y) / 2.0;
+                    (pos, container_rect.x, container_rect.x + container_rect.w)
+                }
+            };
+
+            boundaries.push(BoundarySegment {
+                axis,
+                position,
+                span_start,
+                span_end,
+                before: a_id,
+                after: b_id,
+            });
+        }
+    }
 }
 
 /// Prepare a rects buffer: clear existing slots and resize to `capacity`,
@@ -339,12 +535,20 @@ pub(crate) fn resolve_with_cached_kinds(
 
     let capacity = tree.panel_id_high_water() as usize;
     let mut rects = prepare_rects_buf(rects_buf, capacity);
-    resolve_iterative(tree, result, root_id, &mut rects, scratch)?;
+    resolve_iterative(tree, result, root_id, &mut rects, &mut scratch.stack)?;
+    collect_boundaries(
+        tree,
+        result,
+        root_id,
+        &mut scratch.boundary_buf,
+        &mut scratch.boundary_stack,
+    );
 
     Ok(ResolvedLayout {
         rects,
         kinds,
         overlay_rects: Vec::new(),
+        boundaries: scratch.boundary_buf.clone(),
     })
 }
 
@@ -373,7 +577,14 @@ pub(crate) fn resolve_dirty(
         v.clear();
     }
 
-    resolve_dfs(tree, result, root_id, 0.0, 0.0, &mut rects, kinds_buf)?;
+    resolve_iterative_with_kinds(
+        tree,
+        result,
+        root_id,
+        &mut rects,
+        &mut scratch.stack,
+        kinds_buf,
+    )?;
 
     // Remove stale entries for panel kinds no longer present in the tree.
     kinds_buf.retain(|_, v| !v.is_empty());
@@ -385,9 +596,18 @@ pub(crate) fn resolve_dirty(
             .collect(),
     );
 
+    collect_boundaries(
+        tree,
+        result,
+        root_id,
+        &mut scratch.boundary_buf,
+        &mut scratch.boundary_stack,
+    );
+
     Ok(ResolvedLayout {
         rects,
         kinds,
         overlay_rects: Vec::new(),
+        boundaries: scratch.boundary_buf.clone(),
     })
 }

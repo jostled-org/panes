@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 // `fmt::Write` for `String` is infallible. `let _ =` discards the unused `Result`.
 
 use panes::Direction;
-use panes::{Constraints, Layout, LayoutTree, Node, NodeId};
+use panes::{Align, Constraints, Layout, LayoutTree, Node, NodeId};
 
 /// Mutable state threaded through recursive CSS emission.
 struct EmitCtx {
@@ -108,6 +108,8 @@ fn write_panel_rule(
     let _ = write!(css, "[data-pane=\"{kind}\"] {{ ");
     write_flex_sizing(constraints, css);
     write_min_max(constraints, parent_axis, css);
+    write_cross_axis_constraints(constraints, css);
+    write_align_self(constraints, css);
     css.push_str(" }\n");
 }
 
@@ -152,8 +154,12 @@ fn write_grid_rule(selector: &str, style: &taffy::Style, is_root: bool, css: &mu
             );
         }
     }
-    if !style.grid_auto_rows.is_empty() {
-        css.push_str(" grid-auto-rows: 1fr;");
+    match style.grid_auto_rows.is_empty() {
+        true => {}
+        false if is_auto_rows(&style.grid_auto_rows) => {
+            css.push_str(" grid-auto-rows: auto;");
+        }
+        false => css.push_str(" grid-auto-rows: 1fr;"),
     }
     let gap = style.gap.width.into_raw().value();
     if gap > 0.0 {
@@ -229,6 +235,14 @@ fn grid_column_placement(style: &taffy::Style) -> GridColumnPlacement {
     }
 }
 
+fn is_auto_rows(tracks: &[taffy::style::TrackSizingFunction]) -> bool {
+    let auto_track = taffy::prelude::minmax(
+        taffy::style::MinTrackSizingFunction::auto(),
+        taffy::style::MaxTrackSizingFunction::auto(),
+    );
+    matches!(tracks.first(), Some(t) if *t == auto_track)
+}
+
 fn write_passthrough_rule(selector: &str, is_root: bool, css: &mut String) {
     let _ = write!(css, "{selector} {{ display: flex;");
     if !is_root {
@@ -296,4 +310,32 @@ fn write_min_max(constraints: &Constraints, axis: Direction, css: &mut String) {
     if let Some(max) = constraints.max {
         let _ = write!(css, " {max_prop}: {max}px;");
     }
+}
+
+fn write_cross_axis_constraints(constraints: &Constraints, css: &mut String) {
+    if let Some(v) = constraints.min_width {
+        let _ = write!(css, " min-width: {v}px;");
+    }
+    if let Some(v) = constraints.max_width {
+        let _ = write!(css, " max-width: {v}px;");
+    }
+    if let Some(v) = constraints.min_height {
+        let _ = write!(css, " min-height: {v}px;");
+    }
+    if let Some(v) = constraints.max_height {
+        let _ = write!(css, " max-height: {v}px;");
+    }
+}
+
+fn write_align_self(constraints: &Constraints, css: &mut String) {
+    let Some(align) = constraints.align else {
+        return;
+    };
+    let value = match align {
+        Align::Start => "start",
+        Align::Center => "center",
+        Align::End => "end",
+        Align::Stretch => return,
+    };
+    let _ = write!(css, " align-self: {value};");
 }

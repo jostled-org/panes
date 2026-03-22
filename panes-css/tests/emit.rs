@@ -1,4 +1,4 @@
-use panes::{CardSpan, Layout, LayoutBuilder, fixed, grow};
+use panes::{Align, CardSpan, Layout, LayoutBuilder, fixed, grow};
 
 #[test]
 fn simple_row_emits_flex_row() {
@@ -362,5 +362,102 @@ fn dashboard_span_and_full_width_coexist() {
     assert!(
         css.contains("grid-column: 1 / -1"),
         "full-width card should use 1 / -1, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_auto_rows_css_emits_auto() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1), ("c", 1), ("d", 1)])
+        .columns(2)
+        .auto_rows()
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("grid-auto-rows: auto"),
+        "auto_rows should emit grid-auto-rows: auto, got: {css}"
+    );
+    assert!(
+        !css.contains("grid-auto-rows: 1fr"),
+        "auto_rows should NOT emit grid-auto-rows: 1fr, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_default_rows_css_emits_1fr() {
+    let layout = Layout::dashboard([("a", 1), ("b", 1)])
+        .columns(2)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("grid-auto-rows: 1fr"),
+        "default rows should emit grid-auto-rows: 1fr, got: {css}"
+    );
+}
+
+#[test]
+fn css_emits_min_max_height() {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel_with("a", grow(1.0).max_height(200.0));
+    })
+    .unwrap();
+    let layout = b.build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("max-height: 200px"),
+        "missing max-height: 200px, got: {css}"
+    );
+}
+
+#[test]
+fn css_emits_align_self() {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel_with("a", grow(1.0).align(Align::Center));
+    })
+    .unwrap();
+    let layout = b.build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("align-self: center"),
+        "missing align-self: center, got: {css}"
+    );
+}
+
+#[test]
+fn css_omits_defaults() {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel("a");
+    })
+    .unwrap();
+    let layout = b.build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        !css.contains("min-height"),
+        "should not contain min-height, got: {css}"
+    );
+    assert!(
+        !css.contains("max-height"),
+        "should not contain max-height, got: {css}"
+    );
+    assert!(
+        !css.contains("min-width"),
+        "should not contain min-width, got: {css}"
+    );
+    assert!(
+        !css.contains("max-width"),
+        "should not contain max-width, got: {css}"
+    );
+    assert!(
+        !css.contains("align-self"),
+        "should not contain align-self, got: {css}"
     );
 }

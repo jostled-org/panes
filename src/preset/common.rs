@@ -133,8 +133,15 @@ pub(crate) fn auto_repeat_track(kind: &str, min_width: f32) -> GridTemplateCompo
 }
 
 /// Build a `Display::Grid` root style for CSS Grid presets.
-pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32) -> taffy::Style {
+pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32, auto_rows: bool) -> taffy::Style {
     let gap_len = taffy::LengthPercentage::length(gap);
+    let grid_auto_rows = match auto_rows {
+        true => vec![minmax(
+            MinTrackSizingFunction::auto(),
+            MaxTrackSizingFunction::auto(),
+        )],
+        false => vec![fr(1.0)],
+    };
     taffy::Style {
         display: taffy::Display::Grid,
         size: taffy::Size {
@@ -142,7 +149,7 @@ pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32) -> taffy::Style 
             height: taffy::Dimension::percent(1.0),
         },
         grid_template_columns: columns_to_taffy(mode),
-        grid_auto_rows: vec![fr(1.0)],
+        grid_auto_rows,
         gap: taffy::Size {
             width: gap_len,
             height: gap_len,
@@ -166,7 +173,6 @@ macro_rules! impl_preset {
         super::impl_preset!($Type);
     };
     ($Type:ty) => {
-        #[allow(deprecated)]
         impl $Type {
             /// Build and resolve the preset at the given viewport size.
             pub fn resolve(
@@ -178,7 +184,6 @@ macro_rules! impl_preset {
             }
         }
 
-        #[allow(deprecated)]
         impl TryFrom<$Type> for $crate::Layout {
             type Error = $crate::PaneError;
 

@@ -132,7 +132,7 @@ fn apply_window_constraints_best_effort(
     start: usize,
     size: usize,
 ) {
-    debug_assert!(apply_window_constraints(tree, sequence, start, size).is_ok());
+    let _ = apply_window_constraints(tree, sequence, start, size);
 }
 
 fn window_start_for_index(index: usize, current_start: usize, size: usize) -> usize {

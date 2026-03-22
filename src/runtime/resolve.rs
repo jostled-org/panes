@@ -49,7 +49,7 @@ impl LayoutRuntime {
             (false, Some(cached)) => cached,
             (_, old) => {
                 self.tree.clear_dirty();
-                crate::compiler::compile_with(&self.tree, old)?
+                crate::compiler::compile_with_sizes(&self.tree, old, &self.panel_sizes)?
             }
         };
         let cached_kinds = match tree_dirty {

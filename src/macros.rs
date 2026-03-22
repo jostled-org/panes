@@ -50,7 +50,9 @@ pub(crate) use id_newtype;
 /// - Containers accept an optional `(gap: N)` parameter.
 /// - Bare `panel("kind")` defaults to `grow(1.0)`.
 /// - `panel("kind", grow: N)` and `panel("kind", fixed: N)` set constraints.
-/// - Panels accept optional `min:` and `max:` after the primary constraint.
+/// - Panels accept optional modifiers after the primary constraint:
+///   `min:`, `max:`, `min_width:`, `max_width:`, `min_height:`, `max_height:`, `align:`.
+/// - Align values: `start`, `center`, `end`, `stretch`.
 #[macro_export]
 macro_rules! layout {
     // -- Root: row/col with or without gap --
@@ -95,21 +97,9 @@ macro_rules! layout {
     // Base case: no more children
     (@children $ctx:ident) => {};
 
-    // -- Panel with grow + min + max --
-    (@children $ctx:ident panel($kind:expr, grow: $val:expr, min: $min:expr, max: $max:expr) $($rest:tt)*) => {
-        $ctx.panel_with($kind, $crate::grow($val).min($min).max($max));
-        $crate::layout!(@children $ctx $($rest)*);
-    };
-
-    // -- Panel with grow + min --
-    (@children $ctx:ident panel($kind:expr, grow: $val:expr, min: $min:expr) $($rest:tt)*) => {
-        $ctx.panel_with($kind, $crate::grow($val).min($min));
-        $crate::layout!(@children $ctx $($rest)*);
-    };
-
-    // -- Panel with grow + max --
-    (@children $ctx:ident panel($kind:expr, grow: $val:expr, max: $max:expr) $($rest:tt)*) => {
-        $ctx.panel_with($kind, $crate::grow($val).max($max));
+    // -- Panel with grow + modifiers --
+    (@children $ctx:ident panel($kind:expr, grow: $val:expr, $($mods:tt)+) $($rest:tt)*) => {
+        $ctx.panel_with($kind, $crate::layout!(@apply $crate::grow($val), $($mods)+));
         $crate::layout!(@children $ctx $($rest)*);
     };
 
@@ -119,21 +109,9 @@ macro_rules! layout {
         $crate::layout!(@children $ctx $($rest)*);
     };
 
-    // -- Panel with fixed + min + max --
-    (@children $ctx:ident panel($kind:expr, fixed: $val:expr, min: $min:expr, max: $max:expr) $($rest:tt)*) => {
-        $ctx.panel_with($kind, $crate::fixed($val).min($min).max($max));
-        $crate::layout!(@children $ctx $($rest)*);
-    };
-
-    // -- Panel with fixed + min --
-    (@children $ctx:ident panel($kind:expr, fixed: $val:expr, min: $min:expr) $($rest:tt)*) => {
-        $ctx.panel_with($kind, $crate::fixed($val).min($min));
-        $crate::layout!(@children $ctx $($rest)*);
-    };
-
-    // -- Panel with fixed + max --
-    (@children $ctx:ident panel($kind:expr, fixed: $val:expr, max: $max:expr) $($rest:tt)*) => {
-        $ctx.panel_with($kind, $crate::fixed($val).max($max));
+    // -- Panel with fixed + modifiers --
+    (@children $ctx:ident panel($kind:expr, fixed: $val:expr, $($mods:tt)+) $($rest:tt)*) => {
+        $ctx.panel_with($kind, $crate::layout!(@apply $crate::fixed($val), $($mods)+));
         $crate::layout!(@children $ctx $($rest)*);
     };
 
@@ -178,4 +156,48 @@ macro_rules! layout {
         });
         $crate::layout!(@children $ctx $($rest)*);
     };
+
+    // -- @apply: recursive modifier chaining --
+    // Each modifier peels off one key: value pair and chains the builder method.
+
+    (@apply $c:expr, min: $v:expr, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.min($v), $($rest)+)
+    };
+    (@apply $c:expr, min: $v:expr) => { $c.min($v) };
+
+    (@apply $c:expr, max: $v:expr, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.max($v), $($rest)+)
+    };
+    (@apply $c:expr, max: $v:expr) => { $c.max($v) };
+
+    (@apply $c:expr, min_width: $v:expr, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.min_width($v), $($rest)+)
+    };
+    (@apply $c:expr, min_width: $v:expr) => { $c.min_width($v) };
+
+    (@apply $c:expr, max_width: $v:expr, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.max_width($v), $($rest)+)
+    };
+    (@apply $c:expr, max_width: $v:expr) => { $c.max_width($v) };
+
+    (@apply $c:expr, min_height: $v:expr, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.min_height($v), $($rest)+)
+    };
+    (@apply $c:expr, min_height: $v:expr) => { $c.min_height($v) };
+
+    (@apply $c:expr, max_height: $v:expr, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.max_height($v), $($rest)+)
+    };
+    (@apply $c:expr, max_height: $v:expr) => { $c.max_height($v) };
+
+    (@apply $c:expr, align: $v:ident, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.align($crate::layout!(@align $v)), $($rest)+)
+    };
+    (@apply $c:expr, align: $v:ident) => { $c.align($crate::layout!(@align $v)) };
+
+    // -- @align: map bare identifiers to Align variants --
+    (@align start) => { $crate::Align::Start };
+    (@align center) => { $crate::Align::Center };
+    (@align end) => { $crate::Align::End };
+    (@align stretch) => { $crate::Align::Stretch };
 }

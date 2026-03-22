@@ -15,6 +15,7 @@ fn dashboard_runtime(n: usize, columns: usize) -> LayoutRuntime {
             columns: GridColumnMode::Fixed(columns),
             gap: 0.0,
             spans,
+            auto_rows: false,
         },
         &k,
     )
@@ -115,6 +116,7 @@ fn auto_fill_set_span() {
             columns: GridColumnMode::AutoFill { min_width: 100.0 },
             gap: 0.0,
             spans,
+            auto_rows: false,
         },
         &k,
     )
@@ -150,6 +152,7 @@ fn preserves_other_spans() {
             columns: GridColumnMode::Fixed(4),
             gap: 0.0,
             spans: initial_spans,
+            auto_rows: false,
         },
         &k,
     )

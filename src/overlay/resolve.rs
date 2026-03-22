@@ -70,20 +70,21 @@ fn resolve_extent(extent: &OverlayExtent, viewport: f32) -> f32 {
     }
 }
 
-/// Position the overlay along one axis given alignment, container origin, container size,
-/// overlay size, and margin/offset.
-fn align_axis(
-    align_start: bool,
-    align_center: bool,
-    origin: f32,
-    container: f32,
-    size: f32,
-    margin: f32,
-) -> f32 {
-    match (align_start, align_center) {
-        (true, _) => origin + margin,
-        (_, true) => origin + (container - size) / 2.0 + margin,
-        _ => origin + container - size - margin,
+/// Position along the horizontal axis.
+fn align_h(align: HAlign, origin: f32, container: f32, size: f32, margin: f32) -> f32 {
+    match align {
+        HAlign::Left => origin + margin,
+        HAlign::Center => origin + (container - size) / 2.0 + margin,
+        HAlign::Right => origin + container - size - margin,
+    }
+}
+
+/// Position along the vertical axis.
+fn align_v(align: VAlign, origin: f32, container: f32, size: f32, margin: f32) -> f32 {
+    match align {
+        VAlign::Top => origin + margin,
+        VAlign::Center => origin + (container - size) / 2.0 + margin,
+        VAlign::Bottom => origin + container - size - margin,
     }
 }
 
@@ -104,22 +105,8 @@ pub(crate) fn resolve_overlay(
             margin_x,
             margin_y,
         } => {
-            let x = align_axis(
-                *ha == HAlign::Left,
-                *ha == HAlign::Center,
-                0.0,
-                vp_w,
-                w,
-                *margin_x,
-            );
-            let y = align_axis(
-                *va == VAlign::Top,
-                *va == VAlign::Center,
-                0.0,
-                vp_h,
-                h,
-                *margin_y,
-            );
+            let x = align_h(*ha, 0.0, vp_w, w, *margin_x);
+            let y = align_v(*va, 0.0, vp_h, h, *margin_y);
             (x, y)
         }
         OverlayAnchor::Panel {
@@ -132,22 +119,8 @@ pub(crate) fn resolve_overlay(
             let panel_id = base.by_kind(kind).first()?;
             let panel_rect = base.get(*panel_id)?;
 
-            let x = align_axis(
-                *ha == HAlign::Left,
-                *ha == HAlign::Center,
-                panel_rect.x,
-                panel_rect.w,
-                w,
-                *offset_x,
-            );
-            let y = align_axis(
-                *va == VAlign::Top,
-                *va == VAlign::Center,
-                panel_rect.y,
-                panel_rect.h,
-                h,
-                *offset_y,
-            );
+            let x = align_h(*ha, panel_rect.x, panel_rect.w, w, *offset_x);
+            let y = align_v(*va, panel_rect.y, panel_rect.h, h, *offset_y);
             (x, y)
         }
     };

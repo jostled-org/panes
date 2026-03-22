@@ -1,4 +1,4 @@
-use panes::{LayoutBuilder, Rect, fixed, grow};
+use panes::{Align, LayoutBuilder, Rect, fixed, grow};
 
 // -- Step 1: Basic row/col/panel macro with grow and fixed --
 
@@ -306,4 +306,115 @@ fn equivalence_gap_with_builder() {
             "mismatch for panel kind '{kind}'"
         );
     }
+}
+
+// -- Step 6: Cross-axis constraints and alignment in macro --
+
+#[test]
+fn macro_cross_axis_constraints() {
+    let layout = panes::layout! {
+        col {
+            panel("a", grow: 1.0, max_height: 100.0)
+            panel("b", grow: 1.0)
+        }
+    }
+    .unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let a_rect = resolved.get(a).unwrap();
+    assert!(a_rect.h <= 100.0, "expected a.h <= 100, got {}", a_rect.h);
+
+    let b = resolved.by_kind("b")[0];
+    let b_rect = resolved.get(b).unwrap();
+    assert!(b_rect.h >= 300.0, "expected b.h >= 300, got {}", b_rect.h);
+}
+
+#[test]
+fn macro_align() {
+    let layout = panes::layout! {
+        row {
+            panel("a", fixed: 50.0, align: center)
+        }
+    }
+    .unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let a_rect = resolved.get(a).unwrap();
+    assert_eq!(a_rect.w, 50.0, "fixed width should be 50");
+    assert!(
+        a_rect.h < 400.0,
+        "aligned panel should not stretch to full height"
+    );
+}
+
+#[test]
+fn macro_multiple_cross_axis_fields() {
+    let layout = panes::layout! {
+        row {
+            panel("a", grow: 1.0, min_width: 50.0, max_height: 200.0)
+        }
+    }
+    .unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let a_rect = resolved.get(a).unwrap();
+    assert!(a_rect.w >= 50.0);
+    assert!(a_rect.h <= 200.0);
+}
+
+#[test]
+fn macro_equivalence_cross_axis_with_builder() {
+    let macro_layout = panes::layout! {
+        col {
+            panel("a", grow: 1.0, max_height: 100.0)
+            panel("b", grow: 1.0)
+        }
+    }
+    .unwrap();
+
+    let mut b = LayoutBuilder::new();
+    b.col(|c| {
+        c.panel_with("a", grow(1.0).max_height(100.0));
+        c.panel("b");
+    })
+    .unwrap();
+    let builder_layout = b.build().unwrap();
+
+    for kind in ["a", "b"] {
+        let mr = macro_layout.resolve(400.0, 400.0).unwrap();
+        let br = builder_layout.resolve(400.0, 400.0).unwrap();
+        let m = mr.by_kind(kind)[0];
+        let bi = br.by_kind(kind)[0];
+        assert_eq!(
+            *mr.get(m).unwrap(),
+            *br.get(bi).unwrap(),
+            "mismatch for panel kind '{kind}'"
+        );
+    }
+}
+
+#[test]
+fn macro_align_equivalence_with_builder() {
+    let macro_layout = panes::layout! {
+        row {
+            panel("a", fixed: 50.0, align: center)
+        }
+    }
+    .unwrap();
+
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel_with("a", fixed(50.0).align(Align::Center));
+    })
+    .unwrap();
+    let builder_layout = b.build().unwrap();
+
+    let mr = macro_layout.resolve(400.0, 400.0).unwrap();
+    let br = builder_layout.resolve(400.0, 400.0).unwrap();
+    let m = mr.by_kind("a")[0];
+    let bk = br.by_kind("a")[0];
+    assert_eq!(*mr.get(m).unwrap(), *br.get(bk).unwrap());
 }

@@ -6,8 +6,8 @@ description = "Renderer-agnostic layout engine with declarative ergonomics"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jostled-org/panes"
 homepage = "https://github.com/jostled-org/panes"
-keywords = ["layout", "flexbox", "grid", "tui", "ui"]
-categories = ["gui"]
+keywords = ["layout", "egui", "panels", "css", "tui"]
+categories = ["gui", "command-line-interface"]
 exclude = ["docs/", "logs/"]
 
 [features]

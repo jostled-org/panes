@@ -1,6 +1,6 @@
 #![cfg(feature = "toml")]
 
-use panes::{Layout, TomlError};
+use panes::{Layout, LayoutBuilder, TomlError};
 
 // -- Error cases --
 
@@ -1124,4 +1124,89 @@ second = "b"
 fn from_toml_file_missing_file_returns_io_error() {
     let err = Layout::from_toml_file("/tmp/panes_nonexistent_42.toml").unwrap_err();
     assert!(matches!(err, TomlError::Io(_)));
+}
+
+// -- Step 6: Cross-axis constraints and alignment in TOML --
+
+#[test]
+fn toml_cross_axis_constraints() {
+    let toml = r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "col"
+
+[[layout.root.children]]
+kind = "a"
+grow = 1.0
+max_height = 100.0
+
+[[layout.root.children]]
+kind = "b"
+grow = 1.0
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+    let a_ids = resolved.by_kind("a");
+    assert_eq!(a_ids.len(), 1);
+    let a_rect = resolved.get(a_ids[0]).unwrap();
+    assert!(a_rect.h <= 100.0, "expected a.h <= 100, got {}", a_rect.h);
+}
+
+#[test]
+fn toml_align_field() {
+    let toml = r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "row"
+
+[[layout.root.children]]
+kind = "a"
+fixed = 50.0
+align = "center"
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+    let a_ids = resolved.by_kind("a");
+    assert_eq!(a_ids.len(), 1);
+    let a_rect = resolved.get(a_ids[0]).unwrap();
+    assert_eq!(a_rect.w, 50.0);
+    assert!(a_rect.h < 400.0, "aligned panel should not stretch");
+}
+
+#[test]
+fn toml_cross_axis_equivalence_with_builder() {
+    let toml_layout = Layout::from_toml(
+        r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "col"
+
+[[layout.root.children]]
+kind = "a"
+grow = 1.0
+max_height = 100.0
+
+[[layout.root.children]]
+kind = "b"
+grow = 1.0
+"#,
+    )
+    .unwrap();
+
+    let mut builder = LayoutBuilder::new();
+    builder
+        .col(|c| {
+            c.panel_with("a", panes::grow(1.0).max_height(100.0));
+            c.panel("b");
+        })
+        .unwrap();
+    let api_layout = builder.build().unwrap();
+
+    assert_rects_equal(&toml_layout, &api_layout, &["a", "b"], 400.0, 400.0);
 }

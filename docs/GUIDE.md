@@ -254,7 +254,8 @@ Syntax:
 - Root is a single `row` or `col`, with optional `(gap: N)`
 - `panel("kind")` — defaults to `grow(1.0)`
 - `panel("kind", grow: N)` or `panel("kind", fixed: N)`
-- Optional `min:` and `max:` after the primary constraint
+- Optional modifiers after the primary constraint: `min:`, `max:`, `min_width:`, `max_width:`, `min_height:`, `max_height:`, `align:`
+- Align values: `start`, `center`, `end`, `stretch`
 - Nested `row { ... }` and `col { ... }` containers
 
 The macro returns `Result<Layout, PaneError>`.
@@ -636,6 +637,8 @@ gap = 8.0
 kind = "editor"
 grow = 2.0
 min = 40.0
+max_height = 200.0
+align = "center"
 
 [[layout.root.children]]
 type = "col"

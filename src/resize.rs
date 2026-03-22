@@ -114,9 +114,10 @@ fn apply_grow_weights(
             SiblingKind::Panel { pid, constraints } => {
                 let updated = Constraints {
                     grow: Some(new_grow),
+                    fixed: None,
                     min: constraints.min,
                     max: constraints.max,
-                    ..Constraints::default()
+                    ..*constraints
                 };
                 tree.set_constraints(*pid, updated)?;
             }
@@ -147,9 +148,10 @@ fn adjust_fixed(
             let new_fixed = clamp_fixed(constraints.fixed.unwrap_or(0.0) + delta, constraints);
             let updated = Constraints {
                 fixed: Some(new_fixed),
+                grow: None,
                 min: constraints.min,
                 max: constraints.max,
-                ..Constraints::default()
+                ..*constraints
             };
             tree.set_constraints(*pid, updated)
         }
@@ -161,9 +163,10 @@ fn adjust_fixed(
             let new_fixed = clamp_fixed(constraints.fixed.unwrap_or(0.0) - delta, constraints);
             let updated = Constraints {
                 fixed: Some(new_fixed),
+                grow: None,
                 min: constraints.min,
                 max: constraints.max,
-                ..Constraints::default()
+                ..*constraints
             };
             tree.set_constraints(*pid, updated)
         }

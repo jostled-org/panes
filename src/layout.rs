@@ -45,82 +45,83 @@ impl Layout {
 
     /// Build a row layout from a closure.
     pub fn build_row(f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
-        let mut b = LayoutBuilder::new();
-        b.row(f)?;
-        b.build()
+        Self::build_axis(true, 0.0, f)
     }
 
     /// Build a column layout from a closure.
     pub fn build_col(f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
-        let mut b = LayoutBuilder::new();
-        b.col(f)?;
-        b.build()
+        Self::build_axis(false, 0.0, f)
     }
 
     /// Build a row layout with gap from a closure.
     pub fn build_row_gap(gap: f32, f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
-        let mut b = LayoutBuilder::new();
-        b.row_gap(gap, f)?;
-        b.build()
+        Self::build_axis(true, gap, f)
     }
 
     /// Build a column layout with gap from a closure.
     pub fn build_col_gap(gap: f32, f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
-        let mut b = LayoutBuilder::new();
-        b.col_gap(gap, f)?;
-        b.build()
+        Self::build_axis(false, gap, f)
     }
 
     /// Equal-grow panels in a row, zero gap.
     pub fn row(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Result<Self, PaneError> {
-        let kinds: Box<[Arc<str>]> = kinds.into_iter().map(Into::into).collect();
-        let mut b = LayoutBuilder::new();
-        b.row(|r| {
-            for kind in &*kinds {
-                r.panel(Arc::clone(kind));
-            }
-        })?;
-        b.build()
+        Self::equal_grow_axis(true, kinds)
     }
 
     /// Equal-grow panels in a column, zero gap.
     pub fn col(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> Result<Self, PaneError> {
-        let kinds: Box<[Arc<str>]> = kinds.into_iter().map(Into::into).collect();
-        let mut b = LayoutBuilder::new();
-        b.col(|r| {
-            for kind in &*kinds {
-                r.panel(Arc::clone(kind));
-            }
-        })?;
-        b.build()
+        Self::equal_grow_axis(false, kinds)
     }
 
     /// Panels in a row with explicit constraints per panel.
     pub fn row_with(
         panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
     ) -> Result<Self, PaneError> {
-        let panels: Box<[_]> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
-        let mut b = LayoutBuilder::new();
-        b.row(|r| {
-            for (kind, constraints) in &*panels {
-                r.panel_with(Arc::clone(kind), *constraints);
-            }
-        })?;
-        b.build()
+        Self::constrained_axis(true, panels)
     }
 
     /// Panels in a column with explicit constraints per panel.
     pub fn col_with(
         panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
     ) -> Result<Self, PaneError> {
-        let panels: Box<[_]> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        Self::constrained_axis(false, panels)
+    }
+
+    fn build_axis(
+        is_row: bool,
+        gap: f32,
+        f: impl FnOnce(&mut ContainerCtx),
+    ) -> Result<Self, PaneError> {
         let mut b = LayoutBuilder::new();
-        b.col(|c| {
-            for (kind, constraints) in &*panels {
-                c.panel_with(Arc::clone(kind), *constraints);
-            }
-        })?;
+        match is_row {
+            true => b.row_gap(gap, f)?,
+            false => b.col_gap(gap, f)?,
+        }
         b.build()
+    }
+
+    fn equal_grow_axis(
+        is_row: bool,
+        kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
+    ) -> Result<Self, PaneError> {
+        let kinds: Box<[Arc<str>]> = kinds.into_iter().map(Into::into).collect();
+        Self::build_axis(is_row, 0.0, |ctx| {
+            for kind in &*kinds {
+                ctx.panel(Arc::clone(kind));
+            }
+        })
+    }
+
+    fn constrained_axis(
+        is_row: bool,
+        panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
+    ) -> Result<Self, PaneError> {
+        let panels: Box<[_]> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        Self::build_axis(is_row, 0.0, |ctx| {
+            for (kind, constraints) in &*panels {
+                ctx.panel_with(Arc::clone(kind), *constraints);
+            }
+        })
     }
 
     /// Return metadata for all built-in presets, sorted alphabetically by name.

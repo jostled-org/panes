@@ -7,6 +7,7 @@ mod mutate;
 mod overlay;
 mod placement;
 mod resolve;
+mod sizing;
 mod types;
 
 pub use frame::Frame;

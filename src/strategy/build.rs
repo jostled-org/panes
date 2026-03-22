@@ -154,6 +154,7 @@ pub(super) fn build_dashboard_for_mode(
     columns: GridColumnMode,
     gap_px: f32,
     spans: &[CardSpan],
+    auto_rows: bool,
 ) -> Result<LayoutTree, PaneError> {
     let cards = build_cards(kinds, spans);
     let mut preset = crate::preset::Dashboard::new(cards);
@@ -162,6 +163,10 @@ pub(super) fn build_dashboard_for_mode(
         GridColumnMode::Fixed(n) => preset.columns(n),
         GridColumnMode::AutoFill { min_width } => preset.auto_fill(min_width),
         GridColumnMode::AutoFit { min_width } => preset.auto_fit(min_width),
+    };
+    preset = match auto_rows {
+        true => preset.auto_rows(),
+        false => preset,
     };
     let layout = preset.gap(gap_px).build()?;
     Ok(LayoutTree::from(layout))
@@ -244,7 +249,8 @@ pub(crate) fn build_tree_for_strategy(
             columns,
             gap,
             spans,
-        } => build_dashboard_for_mode(kinds, *columns, *gap, spans),
+            auto_rows,
+        } => build_dashboard_for_mode(kinds, *columns, *gap, spans, *auto_rows),
         StrategyKind::ActivePanel {
             variant,
             bar_height,

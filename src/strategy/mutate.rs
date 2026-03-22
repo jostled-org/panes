@@ -26,7 +26,7 @@ fn focus_after_rebuild(
     target: PanelId,
 ) {
     viewport.focus = sequence.get(0);
-    try_apply_focus(strategy, tree, sequence, viewport, target);
+    let _ = try_apply_focus(strategy, tree, sequence, viewport, target);
 }
 
 // ---------------------------------------------------------------------------
@@ -295,10 +295,12 @@ fn build_updated_strategy(
             columns,
             gap,
             spans,
+            auto_rows,
         } => Ok(StrategyKind::Dashboard {
             columns: *columns,
             gap: *gap,
             spans: update_spans(spans, index, span),
+            auto_rows: *auto_rows,
         }),
         _ => Err(PaneError::InvalidMutation(MutationError::SpanNotSupported)),
     }

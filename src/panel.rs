@@ -2,6 +2,21 @@ use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::node::PanelId;
 use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
+/// Cross-axis alignment for a panel within its container.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum Align {
+    /// Align to the start of the cross axis.
+    Start,
+    /// Center along the cross axis.
+    Center,
+    /// Align to the end of the cross axis.
+    End,
+    /// Stretch to fill the cross axis (default behavior).
+    Stretch,
+}
+
 /// Generates sequential, unique `PanelId` values.
 #[derive(Default)]
 pub struct PanelIdGenerator {
@@ -44,6 +59,16 @@ pub struct Constraints {
     pub min: Option<f32>,
     /// Maximum size along the parent axis.
     pub max: Option<f32>,
+    /// Minimum width regardless of parent axis.
+    pub min_width: Option<f32>,
+    /// Maximum width regardless of parent axis.
+    pub max_width: Option<f32>,
+    /// Minimum height regardless of parent axis.
+    pub min_height: Option<f32>,
+    /// Maximum height regardless of parent axis.
+    pub max_height: Option<f32>,
+    /// Cross-axis alignment. None means Stretch (default).
+    pub align: Option<Align>,
 }
 
 impl Constraints {
@@ -59,18 +84,66 @@ impl Constraints {
         self
     }
 
+    /// Set the minimum width constraint (cross-axis, absolute).
+    pub fn min_width(mut self, value: f32) -> Self {
+        self.min_width = Some(value);
+        self
+    }
+
+    /// Set the maximum width constraint (cross-axis, absolute).
+    pub fn max_width(mut self, value: f32) -> Self {
+        self.max_width = Some(value);
+        self
+    }
+
+    /// Set the minimum height constraint (cross-axis, absolute).
+    pub fn min_height(mut self, value: f32) -> Self {
+        self.min_height = Some(value);
+        self
+    }
+
+    /// Set the maximum height constraint (cross-axis, absolute).
+    pub fn max_height(mut self, value: f32) -> Self {
+        self.max_height = Some(value);
+        self
+    }
+
+    /// Set cross-axis alignment.
+    pub fn align(mut self, value: Align) -> Self {
+        self.align = Some(value);
+        self
+    }
+
     /// Reject invalid constraint combinations.
     pub fn validate(&self) -> Result<(), PaneError> {
         Self::reject_bad_f32("grow", self.grow)?;
         Self::reject_bad_f32("fixed", self.fixed)?;
         Self::reject_bad_f32("min", self.min)?;
         Self::reject_bad_f32("max", self.max)?;
+        Self::reject_bad_f32("min_width", self.min_width)?;
+        Self::reject_bad_f32("max_width", self.max_width)?;
+        Self::reject_bad_f32("min_height", self.min_height)?;
+        Self::reject_bad_f32("max_height", self.max_height)?;
 
         match (self.grow, self.fixed, self.min, self.max) {
             (Some(_), Some(_), _, _) => Err(PaneError::InvalidConstraint(
                 ConstraintError::GrowFixedExclusive,
             )),
             (_, _, Some(lo), Some(hi)) if lo > hi => {
+                Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
+            }
+            _ => Ok(()),
+        }?;
+
+        match (self.min_width, self.max_width) {
+            (Some(lo), Some(hi)) if lo > hi => {
+                Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
+            }
+            _ => Ok(()),
+        }?;
+
+        match (self.min_height, self.max_height) {
+            (Some(lo), Some(hi)) if lo > hi => {
                 Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
             }
             _ => Ok(()),

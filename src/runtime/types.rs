@@ -74,6 +74,7 @@ pub struct LayoutRuntime {
     pub(crate) prev_overlay_rects: Vec<(OverlayId, Rect)>,
     pub(crate) overlay_rects_buf: Vec<(OverlayId, Arc<str>, Rect)>,
     pub(crate) overlay_rects_buf_alt: Vec<(OverlayId, Arc<str>, Rect)>,
+    pub(crate) panel_sizes: Vec<Option<(f32, f32)>>,
     pub(crate) breakpoints: Option<Box<[BreakpointEntry]>>,
     pub(crate) active_bp_idx: usize,
 }
@@ -104,6 +105,7 @@ pub(crate) fn base(
         prev_overlay_rects: Vec::new(),
         overlay_rects_buf: Vec::new(),
         overlay_rects_buf_alt: Vec::new(),
+        panel_sizes: Vec::new(),
         breakpoints: None,
         active_bp_idx: 0,
     }

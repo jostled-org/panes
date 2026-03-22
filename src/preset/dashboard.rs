@@ -12,6 +12,7 @@ pub struct Dashboard {
     cards: Arc<[(Arc<str>, CardSpan)]>,
     columns: GridColumnMode,
     gap: f32,
+    auto_rows: bool,
 }
 
 impl Dashboard {
@@ -25,6 +26,7 @@ impl Dashboard {
                 .collect(),
             columns: GridColumnMode::Fixed(4),
             gap: 0.0,
+            auto_rows: false,
         }
     }
 
@@ -52,6 +54,12 @@ impl Dashboard {
         self
     }
 
+    /// Use `grid-auto-rows: auto` so rows size to their tallest card.
+    pub fn auto_rows(mut self) -> Self {
+        self.auto_rows = true;
+        self
+    }
+
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         match self.cards.is_empty() {
@@ -61,7 +69,7 @@ impl Dashboard {
         validate_dashboard_columns(self.columns)?;
 
         let mut b = LayoutBuilder::new();
-        let grid_style = super::simple_grid_style(self.columns, self.gap);
+        let grid_style = super::simple_grid_style(self.columns, self.gap, self.auto_rows);
 
         b.row(|r| {
             r.taffy_node(grid_style, |grid| add_cards(grid, &self.cards));
@@ -126,7 +134,9 @@ impl Dashboard {
     pub fn into_runtime(self) -> Result<crate::runtime::LayoutRuntime, PaneError> {
         let spans: Arc<[CardSpan]> = self.cards.iter().map(|(_, s)| *s).collect();
         let kinds: Vec<Arc<str>> = self.cards.iter().map(|(k, _)| Arc::clone(k)).collect();
-        let strategy = self.columns.to_dashboard_strategy(self.gap, spans);
+        let strategy = self
+            .columns
+            .to_dashboard_strategy(self.gap, spans, self.auto_rows);
         crate::runtime::LayoutRuntime::from_strategy(strategy, &kinds)
     }
 }

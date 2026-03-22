@@ -200,6 +200,7 @@ impl Strategy {
         DashboardStrategy {
             columns: GridColumnMode::Fixed(4),
             gap: 0.0,
+            auto_rows: false,
         }
     }
 

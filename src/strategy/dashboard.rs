@@ -8,6 +8,7 @@ use super::{CardSpan, GridColumnMode, StrategyKind};
 pub struct DashboardStrategy {
     pub(crate) columns: GridColumnMode,
     pub(crate) gap: f32,
+    pub(crate) auto_rows: bool,
 }
 
 impl DashboardStrategy {
@@ -32,6 +33,12 @@ impl DashboardStrategy {
     /// Set the gap between panels.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
+        self
+    }
+
+    /// Use `grid-auto-rows: auto` so rows size to their tallest card.
+    pub fn auto_rows(mut self) -> Self {
+        self.auto_rows = true;
         self
     }
 
@@ -70,7 +77,8 @@ impl DashboardStrategy {
     }
 
     pub(crate) fn to_strategy_kind(&self, spans: Arc<[CardSpan]>) -> StrategyKind {
-        self.columns.to_dashboard_strategy(self.gap, spans)
+        self.columns
+            .to_dashboard_strategy(self.gap, spans, self.auto_rows)
     }
 }
 

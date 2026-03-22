@@ -738,6 +738,7 @@ fn dashboard_resize_boundary_error() {
             columns: GridColumnMode::Fixed(2),
             gap: 0.0,
             spans,
+            auto_rows: false,
         },
         &kinds,
     )

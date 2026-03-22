@@ -271,6 +271,54 @@ fn dashboard_auto_fill_round_trips() {
     assert_eq!(frame.layout().panels().count(), 3);
 }
 
+#[test]
+fn snapshot_preserves_cross_axis_constraints() {
+    let layout = panes::layout! {
+        col(gap: 2.0) {
+            panel("top", grow: 1.0, max_height: 100.0)
+            panel("bottom", grow: 1.0)
+        }
+    }
+    .unwrap();
+
+    let rt = LayoutRuntime::from(layout);
+    let snap = rt.snapshot().unwrap();
+
+    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
+    let frame = rt2.resolve(400.0, 400.0).unwrap();
+
+    let top = frame.layout().panels().find(|e| e.kind == "top").unwrap();
+    assert!(
+        top.rect.h <= 100.0 + 0.5,
+        "max_height constraint lost after snapshot: h={}",
+        top.rect.h
+    );
+}
+
+#[test]
+fn snapshot_preserves_alignment() {
+    let layout = panes::layout! {
+        row {
+            panel("a", fixed: 100.0, align: center)
+        }
+    }
+    .unwrap();
+
+    let rt = LayoutRuntime::from(layout);
+    let snap = rt.snapshot().unwrap();
+
+    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
+    let frame = rt2.resolve(400.0, 400.0).unwrap();
+
+    let a = frame.layout().panels().find(|e| e.kind == "a").unwrap();
+    // With align: center, the panel should not stretch to fill the 400px height
+    assert!(
+        a.rect.h < 400.0,
+        "alignment lost after snapshot: panel stretched to h={}",
+        a.rect.h
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Serde round-trip tests (JSON serialize → deserialize → restore)
 // ---------------------------------------------------------------------------
@@ -381,6 +429,55 @@ mod serde_tests {
             .find(|&pid| rt2.tree().panel_kind(pid).ok() == Some("b"))
             .unwrap();
         assert!(rt2.viewport().collapsed.contains(&b_pid2));
+    }
+
+    #[test]
+    fn cross_axis_constraints_json_round_trip() {
+        let layout = panes::layout! {
+            col(gap: 2.0) {
+                panel("top", grow: 1.0, max_height: 100.0)
+                panel("bottom", grow: 1.0)
+            }
+        }
+        .unwrap();
+
+        let rt = LayoutRuntime::from(layout);
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+
+        let mut rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let frame = rt2.resolve(400.0, 400.0).unwrap();
+
+        let top = frame.layout().panels().find(|e| e.kind == "top").unwrap();
+        assert!(
+            top.rect.h <= 100.0 + 0.5,
+            "max_height lost after JSON round-trip: h={}",
+            top.rect.h
+        );
+    }
+
+    #[test]
+    fn alignment_json_round_trip() {
+        let layout = panes::layout! {
+            row {
+                panel("a", fixed: 100.0, align: center)
+            }
+        }
+        .unwrap();
+
+        let rt = LayoutRuntime::from(layout);
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+
+        let mut rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let frame = rt2.resolve(400.0, 400.0).unwrap();
+
+        let a = frame.layout().panels().find(|e| e.kind == "a").unwrap();
+        assert!(
+            a.rect.h < 400.0,
+            "alignment lost after JSON round-trip: panel stretched to h={}",
+            a.rect.h
+        );
     }
 
     #[test]

@@ -242,6 +242,7 @@ fn swap_next_after_add_on_all_strategies() {
             columns: panes::GridColumnMode::Fixed(2),
             gap: 0.0,
             spans: std::sync::Arc::from([]),
+            auto_rows: false,
         },
     ];
 
