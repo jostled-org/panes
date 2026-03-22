@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/jostled-org/panes/compare/panes-css-v0.5.0...panes-css-v0.6.0) - 2026-03-22
+
+### Added
+
+- [**breaking**] content-driven sizing and hit-testing primitives
+
 ## [0.5.0](https://github.com/jostled-org/panes/compare/panes-css-v0.4.1...panes-css-v0.5.0) - 2026-03-21
 
 ### Other
