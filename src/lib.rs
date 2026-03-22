@@ -48,7 +48,7 @@ pub use overlay::{
     ExtentValue, HAlign, Overlay, OverlayAnchor, OverlayDef, OverlayEntry, OverlayExtent,
     OverlayId, SnapshotOverlay, VAlign,
 };
-pub use panel::{Align, Constraints, PanelIdGenerator, fixed, grow};
+pub use panel::{Align, Constraints, PanelIdGenerator, SizeMode, fixed, grow};
 pub use preset::{
     CenteredMaster, Dashboard, Deck, Dwindle, HolyGrail, MasterStack, Monocle, PanelInputKind,
     PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,

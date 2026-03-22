@@ -195,9 +195,25 @@ macro_rules! layout {
     };
     (@apply $c:expr, align: $v:ident) => { $c.align($crate::layout!(@align $v)) };
 
+    // size_mode: simple variants (min_content, max_content)
+    (@apply $c:expr, size_mode: $v:ident, $($rest:tt)+) => {
+        $crate::layout!(@apply $c.size_mode($crate::layout!(@size_mode $v)), $($rest)+)
+    };
+    (@apply $c:expr, size_mode: $v:ident) => { $c.size_mode($crate::layout!(@size_mode $v)) };
+
+    // size_mode: fit_content(N)
+    (@apply $c:expr, size_mode: fit_content($v:expr), $($rest:tt)+) => {
+        $crate::layout!(@apply $c.size_mode($crate::SizeMode::FitContent($v)), $($rest)+)
+    };
+    (@apply $c:expr, size_mode: fit_content($v:expr)) => { $c.size_mode($crate::SizeMode::FitContent($v)) };
+
     // -- @align: map bare identifiers to Align variants --
     (@align start) => { $crate::Align::Start };
     (@align center) => { $crate::Align::Center };
     (@align end) => { $crate::Align::End };
     (@align stretch) => { $crate::Align::Stretch };
+
+    // -- @size_mode: map bare identifiers to SizeMode variants --
+    (@size_mode min_content) => { $crate::SizeMode::MinContent };
+    (@size_mode max_content) => { $crate::SizeMode::MaxContent };
 }

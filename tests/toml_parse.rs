@@ -1210,3 +1210,49 @@ grow = 1.0
 
     assert_rects_equal(&toml_layout, &api_layout, &["a", "b"], 400.0, 400.0);
 }
+
+#[test]
+fn toml_size_mode() {
+    let toml = r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "row"
+
+[[layout.root.children]]
+kind = "a"
+grow = 1.0
+size_mode = "min-content"
+
+[[layout.root.children]]
+kind = "b"
+grow = 1.0
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+    assert_eq!(resolved.panel_ids().count(), 2);
+}
+
+#[test]
+fn toml_size_mode_fit_content() {
+    let toml = r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "row"
+
+[[layout.root.children]]
+kind = "a"
+grow = 1.0
+size_mode = { fit-content = 300.0 }
+
+[[layout.root.children]]
+kind = "b"
+grow = 1.0
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+    assert_eq!(resolved.panel_ids().count(), 2);
+}

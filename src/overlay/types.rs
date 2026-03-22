@@ -139,6 +139,21 @@ impl OverlayDef {
     pub fn visible(&self) -> bool {
         self.visible
     }
+
+    /// The overlay's anchor position.
+    pub fn anchor(&self) -> &OverlayAnchor {
+        &self.anchor
+    }
+
+    /// The overlay's width extent.
+    pub fn width(&self) -> &OverlayExtent {
+        &self.width
+    }
+
+    /// The overlay's height extent.
+    pub fn height(&self) -> &OverlayExtent {
+        &self.height
+    }
 }
 
 /// A resolved overlay for adapter consumption.

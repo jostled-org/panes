@@ -1,4 +1,25 @@
-use panes::{Align, CardSpan, Layout, LayoutBuilder, fixed, grow};
+use panes::{Align, CardSpan, Layout, LayoutBuilder, Overlay, SizeMode, fixed, grow};
+
+/// Build a scrollable-pattern layout: a root row containing a TaffyPassthrough
+/// with row direction, nowrap, and fixed-width panel children.
+fn scrollable_layout(kinds: &[&str], width: f32) -> Layout {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        let style = taffy::Style {
+            display: taffy::Display::Flex,
+            flex_direction: taffy::FlexDirection::Row,
+            flex_wrap: taffy::FlexWrap::NoWrap,
+            ..Default::default()
+        };
+        r.taffy_node(style, |c| {
+            for &kind in kinds {
+                c.panel_with(kind, fixed(width));
+            }
+        });
+    })
+    .unwrap();
+    b.build().unwrap()
+}
 
 #[test]
 fn simple_row_emits_flex_row() {
@@ -459,5 +480,288 @@ fn css_omits_defaults() {
     assert!(
         !css.contains("align-self"),
         "should not contain align-self, got: {css}"
+    );
+}
+
+#[test]
+fn css_emits_min_content() {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel_with("a", grow(1.0).size_mode(SizeMode::MinContent));
+        r.panel("b");
+    })
+    .unwrap();
+    let layout = b.build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("min-content"),
+        "should contain min-content, got: {css}"
+    );
+    // size_mode emits flex-basis override
+    assert!(
+        css.contains("flex-basis: min-content"),
+        "should contain flex-basis: min-content, got: {css}"
+    );
+}
+
+#[test]
+fn css_emits_fit_content() {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel_with("a", grow(1.0).size_mode(SizeMode::FitContent(300.0)));
+    })
+    .unwrap();
+    let layout = b.build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("fit-content(300px)"),
+        "should contain fit-content(300px), got: {css}"
+    );
+}
+
+#[test]
+fn css_omits_size_mode_when_none() {
+    let mut b = LayoutBuilder::new();
+    b.row(|r| {
+        r.panel("a");
+    })
+    .unwrap();
+    let layout = b.build().unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        !css.contains("min-content"),
+        "should not contain min-content, got: {css}"
+    );
+    assert!(
+        !css.contains("max-content"),
+        "should not contain max-content, got: {css}"
+    );
+    assert!(
+        !css.contains("fit-content"),
+        "should not contain fit-content, got: {css}"
+    );
+}
+
+#[test]
+fn css_scrollable_emits_overflow() {
+    let layout = scrollable_layout(&["a", "b", "c"], 80.0);
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("overflow-x: auto"),
+        "scrollable container should emit overflow-x: auto, got: {css}"
+    );
+}
+
+#[test]
+fn css_scrollable_emits_snap() {
+    let layout = scrollable_layout(&["a", "b", "c"], 80.0);
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("scroll-snap-type: x mandatory"),
+        "scrollable container should emit scroll-snap-type, got: {css}"
+    );
+    assert!(
+        css.contains("overscroll-behavior: contain"),
+        "scrollable container should emit overscroll-behavior, got: {css}"
+    );
+    // Each panel should get scroll-snap-align
+    for kind in &["a", "b", "c"] {
+        let panel_css = css
+            .lines()
+            .find(|l| l.contains(&format!("[data-pane=\"{kind}\"]")))
+            .unwrap_or("");
+        assert!(
+            panel_css.contains("scroll-snap-align: start"),
+            "panel {kind} should have scroll-snap-align: start, got: {panel_css}"
+        );
+    }
+}
+
+#[test]
+fn css_non_scrollable_omits_scroll() {
+    let layout = Layout::row(["a", "b", "c"]).unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        !css.contains("overflow"),
+        "non-scrollable layout should not contain overflow, got: {css}"
+    );
+    assert!(
+        !css.contains("scroll-snap"),
+        "non-scrollable layout should not contain scroll-snap, got: {css}"
+    );
+}
+
+/// Helper: build a runtime with overlays, return the layout and overlay defs.
+fn layout_with_overlays(overlays: Vec<(&str, Overlay)>) -> (Layout, Vec<panes::OverlayDef>) {
+    let mut rt = Layout::master_stack(["a", "b"]).into_runtime().unwrap();
+    for (kind, builder) in overlays {
+        rt.add_overlay(kind, builder).unwrap();
+    }
+    let defs: Vec<panes::OverlayDef> = rt.overlays().to_vec();
+    let layout = Layout::row(["a", "b"]).unwrap();
+    (layout, defs)
+}
+
+#[test]
+fn css_overlay_center_positioning() {
+    let (layout, overlays) =
+        layout_with_overlays(vec![("picker", Overlay::center().fixed(400.0, 300.0))]);
+    let css = panes_css::emit_with_overlays(&layout, &overlays);
+
+    assert!(
+        css.contains(r#"[data-pane-overlay="picker"]"#),
+        "missing overlay selector, got: {css}"
+    );
+    assert!(
+        css.contains("position: absolute"),
+        "missing position: absolute, got: {css}"
+    );
+    assert!(
+        css.contains("width: 400px"),
+        "missing width: 400px, got: {css}"
+    );
+    assert!(
+        css.contains("height: 300px"),
+        "missing height: 300px, got: {css}"
+    );
+    // Center positioning uses transform
+    assert!(css.contains("top: 50%"), "missing top: 50%, got: {css}");
+    assert!(css.contains("left: 50%"), "missing left: 50%, got: {css}");
+    assert!(
+        css.contains("translate(-50%, -50%)"),
+        "missing centering transform, got: {css}"
+    );
+}
+
+#[test]
+fn css_overlay_bottom_anchor() {
+    let (layout, overlays) = layout_with_overlays(vec![(
+        "bar",
+        Overlay::bottom(10.0).full_width().height(50.0),
+    )]);
+    let css = panes_css::emit_with_overlays(&layout, &overlays);
+
+    assert!(
+        css.contains("bottom: 10px"),
+        "missing bottom: 10px, got: {css}"
+    );
+}
+
+#[test]
+fn css_overlay_z_order() {
+    let (layout, overlays) = layout_with_overlays(vec![
+        ("first", Overlay::center().fixed(100.0, 100.0)),
+        ("second", Overlay::top(0.0).fixed(200.0, 50.0)),
+    ]);
+    let css = panes_css::emit_with_overlays(&layout, &overlays);
+
+    // Extract lines for each overlay
+    let first_line = css
+        .lines()
+        .find(|l| l.contains(r#"[data-pane-overlay="first"]"#))
+        .unwrap_or("");
+    let second_line = css
+        .lines()
+        .find(|l| l.contains(r#"[data-pane-overlay="second"]"#))
+        .unwrap_or("");
+
+    assert!(
+        first_line.contains("z-index: 1"),
+        "first overlay should have z-index: 1, got: {first_line}"
+    );
+    assert!(
+        second_line.contains("z-index: 2"),
+        "second overlay should have z-index: 2, got: {second_line}"
+    );
+}
+
+#[test]
+fn css_root_gets_position_relative() {
+    let (layout, overlays) =
+        layout_with_overlays(vec![("picker", Overlay::center().fixed(100.0, 100.0))]);
+    let css = panes_css::emit_with_overlays(&layout, &overlays);
+
+    // Root selector should include position: relative
+    let root_line = css
+        .lines()
+        .find(|l| l.contains("[data-pane-root]"))
+        .unwrap_or("");
+    assert!(
+        root_line.contains("position: relative"),
+        "root should have position: relative when overlays present, got: {root_line}"
+    );
+}
+
+#[test]
+fn css_emit_without_overlays_unchanged() {
+    let layout = Layout::row(["a", "b"]).unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        !css.contains("position: relative"),
+        "emit() without overlays should not include position: relative, got: {css}"
+    );
+    assert!(
+        !css.contains("data-pane-overlay"),
+        "emit() without overlays should not include overlay selectors, got: {css}"
+    );
+}
+
+#[test]
+fn css_transitions_on_panels() {
+    let layout = Layout::row(["editor", "terminal"]).unwrap();
+    let css = panes_css::emit_with_transitions(&layout);
+
+    // Each panel should have transition properties
+    for kind in &["editor", "terminal"] {
+        let panel_line = css
+            .lines()
+            .find(|l| l.contains(&format!("[data-pane=\"{kind}\"]")))
+            .unwrap_or("");
+        assert!(
+            panel_line.contains("transition:"),
+            "panel {kind} should have transition property, got: {panel_line}"
+        );
+        // Transition should cover position and size
+        assert!(
+            panel_line.contains("var(--pane-transition)"),
+            "panel {kind} transition should use custom property, got: {panel_line}"
+        );
+    }
+}
+
+#[test]
+fn css_transitions_custom_property() {
+    let layout = Layout::row(["a", "b"]).unwrap();
+    let css = panes_css::emit_with_transitions(&layout);
+
+    let root_line = css
+        .lines()
+        .find(|l| l.contains("[data-pane-root]"))
+        .unwrap_or("");
+    assert!(
+        root_line.contains("--pane-transition:"),
+        "root should have --pane-transition custom property, got: {root_line}"
+    );
+}
+
+#[test]
+fn css_emit_no_transitions_by_default() {
+    let layout = Layout::row(["a", "b"]).unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        !css.contains("transition:"),
+        "emit() should not include transition properties by default, got: {css}"
+    );
+    assert!(
+        !css.contains("--pane-transition"),
+        "emit() should not include --pane-transition by default, got: {css}"
     );
 }

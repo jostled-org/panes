@@ -22,8 +22,14 @@ impl LayoutRuntime {
         if idx >= self.panel_sizes.len() {
             self.panel_sizes.resize(idx + 1, None);
         }
-        self.panel_sizes[idx] = Some((width, height));
-        self.cached_compile = None;
+        let new_val = Some((width, height));
+        match self.panel_sizes[idx] == new_val {
+            true => {}
+            false => {
+                self.panel_sizes[idx] = new_val;
+                self.cached_compile = None;
+            }
+        }
         Ok(())
     }
 
@@ -34,10 +40,13 @@ impl LayoutRuntime {
             .ok_or(PaneError::PanelNotFound(pid))?;
 
         let idx = pid.raw() as usize;
-        if idx < self.panel_sizes.len() {
-            self.panel_sizes[idx] = None;
+        match self.panel_sizes.get_mut(idx) {
+            Some(slot @ Some(_)) => {
+                *slot = None;
+                self.cached_compile = None;
+            }
+            _ => {}
         }
-        self.cached_compile = None;
         Ok(())
     }
 }

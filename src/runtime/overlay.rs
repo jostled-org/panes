@@ -59,6 +59,11 @@ impl LayoutRuntime {
     pub fn overlay(&self, kind: &str) -> Option<&OverlayDef> {
         self.overlay_index.get(kind).map(|&idx| &self.overlays[idx])
     }
+
+    /// All overlay definitions.
+    pub fn overlays(&self) -> &[OverlayDef] {
+        &self.overlays
+    }
 }
 
 fn validate_overlay_dimension(name: &'static str, value: f32) -> Result<(), PaneError> {

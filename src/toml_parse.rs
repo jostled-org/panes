@@ -139,6 +139,7 @@ struct TreeNodeDef {
     min_height: Option<f32>,
     max_height: Option<f32>,
     align: Option<crate::panel::Align>,
+    size_mode: Option<crate::panel::SizeMode>,
     gap: Option<f32>,
     #[serde(default)]
     children: Vec<TreeNodeDef>,
@@ -433,6 +434,9 @@ fn node_constraints(node: &TreeNodeDef) -> crate::panel::Constraints {
     }
     if let Some(a) = node.align {
         c = c.align(a);
+    }
+    if let Some(sm) = node.size_mode {
+        c = c.size_mode(sm);
     }
     c
 }

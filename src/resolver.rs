@@ -79,7 +79,7 @@ pub struct ResolvedLayout {
     rects: Vec<Option<Rect>>,
     kinds: KindIndex,
     overlay_rects: Vec<(OverlayId, Arc<str>, Rect)>,
-    boundaries: Vec<BoundarySegment>,
+    boundaries: Box<[BoundarySegment]>,
 }
 
 impl ResolvedLayout {
@@ -291,7 +291,7 @@ impl ResolvedLayout {
             rects,
             kinds,
             overlay_rects: Vec::new(),
-            boundaries: Vec::new(),
+            boundaries: Box::default(),
         }
     }
 }
@@ -548,7 +548,7 @@ pub(crate) fn resolve_with_cached_kinds(
         rects,
         kinds,
         overlay_rects: Vec::new(),
-        boundaries: scratch.boundary_buf.clone(),
+        boundaries: scratch.boundary_buf.as_slice().into(),
     })
 }
 
@@ -608,6 +608,6 @@ pub(crate) fn resolve_dirty(
         rects,
         kinds,
         overlay_rects: Vec::new(),
-        boundaries: scratch.boundary_buf.clone(),
+        boundaries: scratch.boundary_buf.as_slice().into(),
     })
 }

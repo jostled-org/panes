@@ -1,6 +1,6 @@
 use panes::compiler::{compile, compute_layout, panel_layout};
 use panes::runtime::LayoutRuntime;
-use panes::{Align, Layout, LayoutTree, PaneError, fixed, grow};
+use panes::{Align, Layout, LayoutTree, PaneError, SizeMode, fixed, grow};
 
 // --- Step 1: Cross-axis min/max constraints ---
 
@@ -227,4 +227,24 @@ fn set_panel_size_not_found_returns_error() {
         matches!(result, Err(PaneError::PanelNotFound(_))),
         "expected PanelNotFound, got {result:?}"
     );
+}
+
+// --- Step 4: SizeMode constraints ---
+
+#[test]
+fn size_mode_min_content_resolves() {
+    let mut tree = LayoutTree::new();
+    let (_pa, a) = tree
+        .add_panel("a", grow(1.0).size_mode(SizeMode::MinContent))
+        .unwrap();
+    let (_, b) = tree.add_panel("b", grow(1.0)).unwrap();
+    let root = tree.add_col(0.0, vec![a, b]).unwrap();
+    tree.set_root(root);
+
+    let mut result = compile(&tree).unwrap();
+    compute_layout(&mut result, 400.0, 400.0).unwrap();
+
+    // Panel resolves without error — that's the assertion
+    let la = panel_layout(&result, &tree, _pa).unwrap();
+    assert!(la.size.width > 0.0 || la.size.height > 0.0);
 }

@@ -397,6 +397,57 @@ fn macro_equivalence_cross_axis_with_builder() {
 }
 
 #[test]
+fn macro_size_mode() {
+    let layout = panes::layout! {
+        row {
+            panel("a", grow: 1.0, size_mode: min_content)
+        }
+    }
+    .unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let a_rect = resolved.get(a).unwrap();
+    assert!(a_rect.w > 0.0, "panel should resolve with size_mode");
+}
+
+#[test]
+fn macro_size_mode_fit_content() {
+    let layout = panes::layout! {
+        row {
+            panel("a", grow: 1.0, size_mode: fit_content(300.0))
+        }
+    }
+    .unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let a_rect = resolved.get(a).unwrap();
+    assert!(
+        a_rect.w > 0.0,
+        "panel should resolve with fit_content size_mode"
+    );
+}
+
+#[test]
+fn macro_size_mode_max_content() {
+    let layout = panes::layout! {
+        row {
+            panel("a", grow: 1.0, size_mode: max_content)
+        }
+    }
+    .unwrap();
+    let resolved = layout.resolve(400.0, 400.0).unwrap();
+
+    let a = resolved.by_kind("a")[0];
+    let a_rect = resolved.get(a).unwrap();
+    assert!(
+        a_rect.w > 0.0,
+        "panel should resolve with max_content size_mode"
+    );
+}
+
+#[test]
 fn macro_align_equivalence_with_builder() {
     let macro_layout = panes::layout! {
         row {

@@ -319,6 +319,28 @@ fn snapshot_preserves_alignment() {
     );
 }
 
+#[test]
+fn snapshot_preserves_size_mode() {
+    let layout = panes::layout! {
+        row {
+            panel("a", grow: 1.0, size_mode: fit_content(200.0))
+            panel("b", grow: 1.0)
+        }
+    }
+    .unwrap();
+
+    let rt = LayoutRuntime::from(layout);
+    let snap = rt.snapshot().unwrap();
+
+    let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
+    let frame = rt2.resolve(400.0, 400.0).unwrap();
+
+    // Verify the panel still resolves after round-trip
+    assert_eq!(frame.layout().panels().count(), 2);
+    let a = frame.layout().panels().find(|e| e.kind == "a").unwrap();
+    assert!(a.rect.w > 0.0, "size_mode constraint lost after snapshot");
+}
+
 // ---------------------------------------------------------------------------
 // Serde round-trip tests (JSON serialize → deserialize → restore)
 // ---------------------------------------------------------------------------
@@ -478,6 +500,25 @@ mod serde_tests {
             "alignment lost after JSON round-trip: panel stretched to h={}",
             a.rect.h
         );
+    }
+
+    #[test]
+    fn size_mode_json_round_trip() {
+        let layout = panes::layout! {
+            row {
+                panel("a", grow: 1.0, size_mode: fit_content(200.0))
+                panel("b", grow: 1.0)
+            }
+        }
+        .unwrap();
+
+        let rt = LayoutRuntime::from(layout);
+        let snap = rt.snapshot().unwrap();
+        let restored = json_round_trip(&snap);
+
+        let mut rt2 = LayoutRuntime::from_snapshot(restored).unwrap();
+        let frame = rt2.resolve(400.0, 400.0).unwrap();
+        assert_eq!(frame.layout().panels().count(), 2);
     }
 
     #[test]

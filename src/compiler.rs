@@ -39,6 +39,13 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Direction) -> taffy
         (None, None) => (1.0, taffy::Dimension::length(0.0), 1.0),
     };
 
+    // SizeMode overrides flex_basis: Taffy 0.9 lacks intrinsic-sizing variants,
+    // so we approximate with auto. The CSS emitter outputs the real keyword.
+    let flex_basis = match constraints.size_mode {
+        Some(_) => taffy::Dimension::auto(),
+        None => flex_basis,
+    };
+
     let min_dim = constraints
         .min
         .map_or(taffy::Dimension::auto(), taffy::Dimension::length);

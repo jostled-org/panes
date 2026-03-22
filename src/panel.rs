@@ -2,6 +2,21 @@ use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::node::PanelId;
 use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
+/// Content-based sizing mode for a panel.
+///
+/// Overrides `flex-basis` when set, emitting CSS intrinsic-sizing keywords.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+pub enum SizeMode {
+    /// Size to the smallest content width/height.
+    MinContent,
+    /// Size to the largest content width/height.
+    MaxContent,
+    /// Size to content, clamped to the given maximum.
+    FitContent(f32),
+}
+
 /// Cross-axis alignment for a panel within its container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -69,6 +84,8 @@ pub struct Constraints {
     pub max_height: Option<f32>,
     /// Cross-axis alignment. None means Stretch (default).
     pub align: Option<Align>,
+    /// Content-based sizing mode. Overrides flex-basis in CSS emission.
+    pub size_mode: Option<SizeMode>,
 }
 
 impl Constraints {
@@ -114,6 +131,12 @@ impl Constraints {
         self
     }
 
+    /// Set content-based sizing mode.
+    pub fn size_mode(mut self, value: SizeMode) -> Self {
+        self.size_mode = Some(value);
+        self
+    }
+
     /// Reject invalid constraint combinations.
     pub fn validate(&self) -> Result<(), PaneError> {
         Self::reject_bad_f32("grow", self.grow)?;
@@ -124,6 +147,11 @@ impl Constraints {
         Self::reject_bad_f32("max_width", self.max_width)?;
         Self::reject_bad_f32("min_height", self.min_height)?;
         Self::reject_bad_f32("max_height", self.max_height)?;
+
+        match self.size_mode {
+            Some(SizeMode::FitContent(v)) => Self::reject_bad_f32("fit_content", Some(v))?,
+            _ => {}
+        }
 
         match (self.grow, self.fixed, self.min, self.max) {
             (Some(_), Some(_), _, _) => Err(PaneError::InvalidConstraint(
