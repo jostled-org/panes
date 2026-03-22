@@ -1056,7 +1056,13 @@ panes-css = "0.4"
 let css: String = panes_css::emit(&layout);
 ```
 
-Transpiles the layout tree into CSS flexbox/grid declarations. The browser acts as the solver — Taffy is not invoked. Panels use `[data-pane="kind"]` selectors, containers use `[data-pane-node="N"]`, and the root uses `[data-pane-root]`.
+Include overlay positioning rules by passing `OverlayDef` slices:
+
+```rust
+let css: String = panes_css::emit_with_overlays(&layout, rt.overlays());
+```
+
+Transpiles the layout tree into CSS flexbox/grid declarations. The browser acts as the solver — Taffy is not invoked. Panels use `[data-pane="kind"]` selectors, containers use `[data-pane-node="N"]`, and the root uses `[data-pane-root]`. Overlays use `[data-pane-overlay="kind"]` with absolute positioning relative to the root.
 
 Grid-based presets (`dashboard`) emit `display: grid` with `grid-template-columns`. `CardSpan::FullWidth` emits `grid-column: 1 / -1`. When using `auto_fill` or `auto_fit`, the output uses `repeat(auto-fill, minmax(...))` or `repeat(auto-fit, minmax(...))` for responsive reflow. Flexbox-based presets emit `display: flex` with `flex-direction`.
 

@@ -627,6 +627,8 @@ version = "0.4.8"
 dependencies = [
  "panes",
  "rustc-hash",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
 ]
 
