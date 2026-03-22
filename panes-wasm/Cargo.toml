@@ -1,6 +1,6 @@
 [package]
 name = "panes-wasm"
-version = "0.4.8"
+version = "0.4.9"
 edition = "2024"
 description = "WASM/canvas adapter for the panes layout engine"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ keywords = ["layout", "wasm", "canvas", "webassembly"]
 categories = ["gui", "wasm"]
 
 [dependencies]
-panes = { version = "0.16", path = ".." }
+panes = { version = "0.17", path = ".." }
 rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -21,7 +21,7 @@ default = []
 js = ["wasm-bindgen"]
 
 [dev-dependencies]
-panes = { version = "0.16", path = ".." }
+panes = { version = "0.17", path = ".." }
 rustc-hash = "2"
 serde_json = "1"
 

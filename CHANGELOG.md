@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/jostled-org/panes/compare/panes-v0.16.0...panes-v0.17.0) - 2026-03-22
+
+### Added
+
+- *(panes-wasm)* WasmRuntime/WasmLayout with diffs, scroll, hit-testing
+- [**breaking**] content-sizing keywords, overlay/scroll/transition CSS emission
+
 ## [0.16.0](https://github.com/jostled-org/panes/compare/panes-v0.15.0...panes-v0.16.0) - 2026-03-22
 
 ### Added
