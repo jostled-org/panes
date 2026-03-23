@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10](https://github.com/jostled-org/panes/compare/panes-wasm-v0.4.9...panes-wasm-v0.4.10) - 2026-03-23
+
+### Other
+
+- cache kind sort in resolver, replace serde Value with Serialize derives
+
 ## [0.4.9](https://github.com/jostled-org/panes/compare/panes-wasm-v0.4.8...panes-wasm-v0.4.9) - 2026-03-22
 
 ### Added
