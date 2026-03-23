@@ -4,7 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::{fixed, grow};
-use crate::preset::{collect_kinds, validate_active, validate_kinds};
+use crate::preset::{collect_kinds, validate_active, validate_f32_param, validate_kinds};
 
 /// Builder for the scrollable preset layout.
 ///
@@ -26,22 +26,18 @@ impl Scrollable {
         }
     }
 
-    /// Set the focused panel index. The visible window is derived from focus.
-    pub fn active(mut self, index: usize) -> Self {
-        self.active = index;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the focused panel index. The visible window is derived from focus.
+        active(index: usize);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_active(self.active, self.kinds.len())?;
+        validate_f32_param("gap", self.gap)?;
 
         match self.kinds.len() {
             1 => super::build_single(Arc::clone(&self.kinds[0])),

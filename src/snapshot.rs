@@ -278,10 +278,6 @@ macro_rules! strategy_convert {
     };
 }
 
-fn spans_to_boxed(spans: &[CardSpan]) -> Box<[CardSpan]> {
-    Box::from(spans)
-}
-
 strategy_convert! {
     copy: [
         Sequence { direction, gap, ratio },
@@ -294,7 +290,7 @@ strategy_convert! {
     ],
     custom_to_config: [
         StrategyKind::Dashboard { columns, gap, spans, auto_rows } => StrategyConfig::Dashboard {
-            columns: *columns, gap: *gap, spans: spans_to_boxed(spans), auto_rows: *auto_rows,
+            columns: *columns, gap: *gap, spans: Box::from(&**spans), auto_rows: *auto_rows,
         },
         StrategyKind::Slotted { slots, gap, direction } => StrategyConfig::Slotted {
             slots: slots.iter().map(|s| SnapshotSlotDef {
@@ -356,7 +352,7 @@ fn node_to_snapshot(tree: &LayoutTree, nid: NodeId, depth: usize) -> Option<Snap
                 .iter()
                 .filter_map(|&c| node_to_snapshot(tree, c, depth + 1))
                 .collect();
-            Some(container_snapshot(is_row, *gap, kids))
+            (!kids.is_empty()).then(|| container_snapshot(is_row, *gap, kids))
         }
     }
 }
@@ -370,18 +366,10 @@ pub(crate) fn snapshot_to_tree(root: &SnapshotNode) -> Result<LayoutTree, PaneEr
     let mut builder = crate::builder::LayoutBuilder::new();
     match root {
         SnapshotNode::Row { gap, children } => {
-            builder.row_gap(*gap, |ctx| {
-                for child in children {
-                    add_snapshot_node(ctx, child, 1);
-                }
-            })?;
+            build_root_container(&mut builder, true, *gap, children)?;
         }
         SnapshotNode::Col { gap, children } => {
-            builder.col_gap(*gap, |ctx| {
-                for child in children {
-                    add_snapshot_node(ctx, child, 1);
-                }
-            })?;
+            build_root_container(&mut builder, false, *gap, children)?;
         }
         SnapshotNode::Panel { kind, constraints } => {
             builder.row(|ctx| {
@@ -390,6 +378,23 @@ pub(crate) fn snapshot_to_tree(root: &SnapshotNode) -> Result<LayoutTree, PaneEr
         }
     }
     Ok(LayoutTree::from(builder.build()?))
+}
+
+fn build_root_container(
+    builder: &mut crate::builder::LayoutBuilder,
+    is_row: bool,
+    gap: f32,
+    children: &[SnapshotNode],
+) -> Result<(), PaneError> {
+    let populate = |ctx: &mut crate::ContainerCtx| {
+        for child in children {
+            add_snapshot_node(ctx, child, 1);
+        }
+    };
+    match is_row {
+        true => builder.row_gap(gap, populate),
+        false => builder.col_gap(gap, populate),
+    }
 }
 
 fn add_snapshot_node(ctx: &mut crate::ContainerCtx, node: &SnapshotNode, depth: usize) {

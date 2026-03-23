@@ -231,10 +231,6 @@ fn build_grid_or_columns(def: LayoutDef) -> Result<Layout, TomlError> {
         (false, false) => return Err(TomlError::MissingField("columns".into())),
         _ => {}
     }
-    // Validate panels exist before delegating; build_dashboard handles
-    // PanelsList::Strings directly with span-1 cards.
-    require_panels_strings(&def)?;
-    // Mutual-exclusivity of columns/min_column_width is validated in build_dashboard.
     build_dashboard(def)
 }
 

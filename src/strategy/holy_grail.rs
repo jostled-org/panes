@@ -30,29 +30,16 @@ impl HolyGrailStrategy {
         }
     }
 
-    /// Set the sidebar width.
-    pub fn sidebar_width(mut self, width: f32) -> Self {
-        self.sidebar_width = width;
-        self
-    }
-
-    /// Set the header height.
-    pub fn header_height(mut self, height: f32) -> Self {
-        self.header_height = height;
-        self
-    }
-
-    /// Set the footer height.
-    pub fn footer_height(mut self, height: f32) -> Self {
-        self.footer_height = height;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the sidebar width.
+        sidebar_width(width: f32);
+        /// Set the header height.
+        header_height(height: f32);
+        /// Set the footer height.
+        footer_height(height: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
     /// Bind holy-grail panels: header, footer, left sidebar, main, right sidebar.
     pub fn with_panels(

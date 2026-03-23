@@ -91,6 +91,14 @@ impl LayoutRuntime {
         self.tree.panel_kind_arc(pid).ok()
     }
 
+    /// Control whether resolve collects boundary segments for hit-testing.
+    ///
+    /// When `false`, `boundary_at_point` on the resulting layout always returns `None`,
+    /// but resolve runs faster by skipping per-sibling layout lookups.
+    pub fn set_collect_boundaries(&mut self, collect: bool) {
+        self.resolve_scratch.collect_boundaries = collect;
+    }
+
     /// Whether `pid` is a decorative panel (tab bar, title bar) for `content_pid`.
     pub fn is_decoration_for(&self, pid: PanelId, content_pid: PanelId) -> bool {
         let (Ok(dec_kind), Ok(content_kind)) =

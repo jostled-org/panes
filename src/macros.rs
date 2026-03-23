@@ -28,6 +28,77 @@ macro_rules! id_newtype {
 
 pub(crate) use id_newtype;
 
+/// Generates simple builder setter methods: `self.field = param; self`.
+///
+/// Each item is separated by `;`:
+/// ```ignore
+/// builder_setters!(
+///     /// doc
+///     sidebar_width(width: f32);
+///     /// doc
+///     gap(gap: f32)
+/// );
+/// ```
+macro_rules! builder_setters {
+    ($( $(#[$doc:meta])* $field:ident ($param:ident : $ty:ty) );+ $(;)?) => {
+        $(
+            $(#[$doc])*
+            pub fn $field(mut self, $param: $ty) -> Self {
+                self.$field = $param;
+                self
+            }
+        )+
+    };
+}
+
+/// Generates mapped builder setter methods: `self.field = expr; self`.
+///
+/// Method name may differ from field name. Each item is separated by `;`:
+/// ```ignore
+/// builder_mapped_setters!(
+///     /// doc
+///     columns(columns: usize) -> columns = GridColumnMode::Fixed(columns);
+///     /// doc
+///     auto_fill(min_width: f32) -> columns = GridColumnMode::AutoFill { min_width }
+/// );
+/// ```
+macro_rules! builder_mapped_setters {
+    ($( $(#[$doc:meta])* $method:ident ($param:ident : $ty:ty) -> $field:ident = $val:expr );+ $(;)?) => {
+        $(
+            $(#[$doc])*
+            pub fn $method(mut self, $param: $ty) -> Self {
+                self.$field = $val;
+                self
+            }
+        )+
+    };
+}
+
+/// Generates no-arg builder setter methods: `self.field = expr; self`.
+///
+/// Each item is separated by `;`:
+/// ```ignore
+/// builder_flag_setters!(
+///     /// doc
+///     auto_rows -> auto_rows = true
+/// );
+/// ```
+macro_rules! builder_flag_setters {
+    ($( $(#[$doc:meta])* $method:ident -> $field:ident = $val:expr );+ $(;)?) => {
+        $(
+            $(#[$doc])*
+            pub fn $method(mut self) -> Self {
+                self.$field = $val;
+                self
+            }
+        )+
+    };
+}
+
+pub(crate) use builder_flag_setters;
+pub(crate) use builder_mapped_setters;
+pub(crate) use builder_setters;
+
 /// Declarative macro for building layouts from a concise DSL.
 ///
 /// Returns `Result<Layout, PaneError>`.

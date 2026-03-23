@@ -566,12 +566,23 @@ fn write_transition(transitions: bool, css: &mut String) {
 
 fn write_overlay_rule(def: &OverlayDef, z_index: usize, css: &mut String) {
     let kind = def.kind();
+    write_panel_anchor_container(def.anchor(), css);
     let _ = write!(css, "[data-pane-overlay=\"{kind}\"] {{ position: absolute;");
     let _ = write!(css, " z-index: {z_index};");
     write_overlay_anchor(def.anchor(), css);
     write_overlay_extent("width", def.width(), css);
     write_overlay_extent("height", def.height(), css);
     css.push_str(" }\n");
+}
+
+/// Emit `position: relative` on the anchor panel when anchored to a panel.
+fn write_panel_anchor_container(anchor: &OverlayAnchor, css: &mut String) {
+    match anchor {
+        OverlayAnchor::Panel { kind, .. } => {
+            let _ = writeln!(css, "[data-pane=\"{kind}\"] {{ position: relative; }}");
+        }
+        OverlayAnchor::Viewport { .. } => {}
+    }
 }
 
 fn write_overlay_anchor(anchor: &OverlayAnchor, css: &mut String) {

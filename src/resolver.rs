@@ -127,10 +127,13 @@ impl ResolvedLayout {
     /// Iterate all panels in kind-grouped order, yielding identity and rect together.
     ///
     /// All panels of one kind appear contiguously, then the next kind, etc.
-    /// No allocation — this is a lazy iterator over the internal index.
+    /// Kind groups are sorted lexicographically so `kind_index` is stable
+    /// across runs regardless of hash-map iteration order.
     pub fn panels(&self) -> impl Iterator<Item = PanelEntry<'_, &Rect>> + '_ {
-        self.kinds
-            .iter()
+        let mut sorted_kinds: Vec<_> = self.kinds.iter().collect();
+        sorted_kinds.sort_by(|(a, _), (b, _)| a.as_ref().cmp(b.as_ref()));
+        sorted_kinds
+            .into_iter()
             .enumerate()
             .flat_map(move |(kind_index, (kind, pids))| {
                 pids.iter().filter_map(move |&pid| {
@@ -302,13 +305,13 @@ fn resolve_iterative_with_kinds(
     result: &CompileResult,
     root_id: NodeId,
     rects: &mut [Option<Rect>],
-    stack: &mut Vec<(NodeId, f32, f32)>,
-    kinds: &mut FxHashMap<Arc<str>, Vec<PanelId>>,
+    scratch: &mut ResolveScratch,
 ) -> Result<(), PaneError> {
-    stack.clear();
-    stack.push((root_id, 0.0, 0.0));
+    scratch.stack.clear();
+    scratch.boundary_buf.clear();
+    scratch.stack.push((root_id, 0.0, 0.0));
 
-    while let Some((node_id, parent_x, parent_y)) = stack.pop() {
+    while let Some((node_id, parent_x, parent_y)) = scratch.stack.pop() {
         let taffy_id = result
             .node_map
             .get(node_id.raw() as usize)
@@ -331,16 +334,43 @@ fn resolve_iterative_with_kinds(
                     w: layout.size.width,
                     h: layout.size.height,
                 });
-                kinds.entry(Arc::clone(kind)).or_default().push(*id);
+                scratch
+                    .kinds_buf
+                    .entry(Arc::clone(kind))
+                    .or_default()
+                    .push(*id);
             }
-            Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
+            Some(Node::Row { children, .. }) => {
+                emit_boundaries(
+                    scratch.collect_boundaries,
+                    result,
+                    children,
+                    BoundaryAxis::Vertical,
+                    (abs_x, abs_y),
+                    &layout.size,
+                    &mut scratch.boundary_buf,
+                );
                 for &child_id in children.iter().rev() {
-                    stack.push((child_id, abs_x, abs_y));
+                    scratch.stack.push((child_id, abs_x, abs_y));
+                }
+            }
+            Some(Node::Col { children, .. }) => {
+                emit_boundaries(
+                    scratch.collect_boundaries,
+                    result,
+                    children,
+                    BoundaryAxis::Horizontal,
+                    (abs_x, abs_y),
+                    &layout.size,
+                    &mut scratch.boundary_buf,
+                );
+                for &child_id in children.iter().rev() {
+                    scratch.stack.push((child_id, abs_x, abs_y));
                 }
             }
             Some(Node::TaffyPassthrough { children, .. }) => {
                 for &child_id in children.iter().rev() {
-                    stack.push((child_id, abs_x, abs_y));
+                    scratch.stack.push((child_id, abs_x, abs_y));
                 }
             }
             None => {}
@@ -350,12 +380,23 @@ fn resolve_iterative_with_kinds(
 }
 
 /// Reusable scratch state for DFS resolution.
-#[derive(Default)]
 pub(crate) struct ResolveScratch {
     stack: Vec<(NodeId, f32, f32)>,
     kinds_buf: FxHashMap<Arc<str>, Vec<PanelId>>,
-    boundary_stack: Vec<NodeId>,
     boundary_buf: Vec<BoundarySegment>,
+    /// When false, skip boundary collection during resolve.
+    pub(crate) collect_boundaries: bool,
+}
+
+impl Default for ResolveScratch {
+    fn default() -> Self {
+        Self {
+            stack: Vec::new(),
+            kinds_buf: FxHashMap::default(),
+            boundary_buf: Vec::new(),
+            collect_boundaries: true,
+        }
+    }
 }
 
 /// Iterative DFS that only populates rects. Reuses the stack across frames.
@@ -364,12 +405,13 @@ fn resolve_iterative(
     result: &CompileResult,
     root_id: NodeId,
     rects: &mut [Option<Rect>],
-    stack: &mut Vec<(NodeId, f32, f32)>,
+    scratch: &mut ResolveScratch,
 ) -> Result<(), PaneError> {
-    stack.clear();
-    stack.push((root_id, 0.0, 0.0));
+    scratch.stack.clear();
+    scratch.boundary_buf.clear();
+    scratch.stack.push((root_id, 0.0, 0.0));
 
-    while let Some((node_id, parent_x, parent_y)) = stack.pop() {
+    while let Some((node_id, parent_x, parent_y)) = scratch.stack.pop() {
         let taffy_id = result
             .node_map
             .get(node_id.raw() as usize)
@@ -393,14 +435,37 @@ fn resolve_iterative(
                     h: layout.size.height,
                 });
             }
-            Some(Node::Row { children, .. } | Node::Col { children, .. }) => {
+            Some(Node::Row { children, .. }) => {
+                emit_boundaries(
+                    scratch.collect_boundaries,
+                    result,
+                    children,
+                    BoundaryAxis::Vertical,
+                    (abs_x, abs_y),
+                    &layout.size,
+                    &mut scratch.boundary_buf,
+                );
                 for &child_id in children.iter().rev() {
-                    stack.push((child_id, abs_x, abs_y));
+                    scratch.stack.push((child_id, abs_x, abs_y));
+                }
+            }
+            Some(Node::Col { children, .. }) => {
+                emit_boundaries(
+                    scratch.collect_boundaries,
+                    result,
+                    children,
+                    BoundaryAxis::Horizontal,
+                    (abs_x, abs_y),
+                    &layout.size,
+                    &mut scratch.boundary_buf,
+                );
+                for &child_id in children.iter().rev() {
+                    scratch.stack.push((child_id, abs_x, abs_y));
                 }
             }
             Some(Node::TaffyPassthrough { children, .. }) => {
                 for &child_id in children.iter().rev() {
-                    stack.push((child_id, abs_x, abs_y));
+                    scratch.stack.push((child_id, abs_x, abs_y));
                 }
             }
             None => {}
@@ -409,102 +474,67 @@ fn resolve_iterative(
     Ok(())
 }
 
-/// Look up a node's absolute rect from the compiled Taffy tree.
-fn taffy_node_rect(result: &CompileResult, node_id: NodeId, tree: &LayoutTree) -> Option<Rect> {
-    let taffy_id = result.node_map.get(node_id.raw() as usize)?.as_ref()?;
-    let layout = result.taffy_tree.layout(*taffy_id).ok()?;
-
-    // Walk ancestors to accumulate absolute position.
-    let mut abs_x = layout.location.x;
-    let mut abs_y = layout.location.y;
-    let mut current = node_id;
-    while let Ok(Some(parent_id)) = tree.parent(current) {
-        let parent_taffy = result.node_map.get(parent_id.raw() as usize)?.as_ref()?;
-        let parent_layout = result.taffy_tree.layout(*parent_taffy).ok()?;
-        abs_x += parent_layout.location.x;
-        abs_y += parent_layout.location.y;
-        current = parent_id;
+/// Emit boundary segments between adjacent children of a container.
+///
+/// Called during the main DFS where the container's absolute position and
+/// layout size are already known, avoiding a separate ancestor walk.
+/// No-op when `collect` is false.
+fn emit_boundaries(
+    collect: bool,
+    result: &CompileResult,
+    children: &[NodeId],
+    axis: BoundaryAxis,
+    abs: (f32, f32),
+    container_size: &taffy::Size<f32>,
+    boundaries: &mut Vec<BoundarySegment>,
+) {
+    if !collect || children.len() < 2 {
+        return;
     }
+    let (container_abs_x, container_abs_y) = abs;
 
-    Some(Rect {
-        x: abs_x,
-        y: abs_y,
-        w: layout.size.width,
-        h: layout.size.height,
-    })
+    for pair in children.windows(2) {
+        let (a_id, b_id) = (pair[0], pair[1]);
+        let (Some(a_layout), Some(b_layout)) =
+            (child_layout(result, a_id), child_layout(result, b_id))
+        else {
+            continue;
+        };
+
+        let (position, span_start, span_end) = match axis {
+            BoundaryAxis::Vertical => {
+                let a_abs_x = container_abs_x + a_layout.location.x;
+                let b_abs_x = container_abs_x + b_layout.location.x;
+                let pos = (a_abs_x + a_layout.size.width + b_abs_x) / 2.0;
+                (
+                    pos,
+                    container_abs_y,
+                    container_abs_y + container_size.height,
+                )
+            }
+            BoundaryAxis::Horizontal => {
+                let a_abs_y = container_abs_y + a_layout.location.y;
+                let b_abs_y = container_abs_y + b_layout.location.y;
+                let pos = (a_abs_y + a_layout.size.height + b_abs_y) / 2.0;
+                (pos, container_abs_x, container_abs_x + container_size.width)
+            }
+        };
+
+        boundaries.push(BoundarySegment {
+            axis,
+            position,
+            span_start,
+            span_end,
+            before: a_id,
+            after: b_id,
+        });
+    }
 }
 
-/// Collect boundary segments between adjacent siblings in Row/Col containers.
-fn collect_boundaries(
-    tree: &LayoutTree,
-    result: &CompileResult,
-    root_id: NodeId,
-    boundaries: &mut Vec<BoundarySegment>,
-    stack: &mut Vec<NodeId>,
-) {
-    boundaries.clear();
-    stack.clear();
-    stack.push(root_id);
-
-    while let Some(node_id) = stack.pop() {
-        let Some(node) = tree.node(node_id) else {
-            continue;
-        };
-
-        let axis = match node {
-            Node::Row { .. } => Some(BoundaryAxis::Vertical),
-            Node::Col { .. } => Some(BoundaryAxis::Horizontal),
-            _ => None,
-        };
-
-        let children = node.children();
-
-        // Push children for further traversal.
-        for &child_id in children {
-            stack.push(child_id);
-        }
-
-        let Some(axis) = axis else { continue };
-        if children.len() < 2 {
-            continue;
-        }
-
-        // Get the container's absolute rect for the perpendicular span.
-        let Some(container_rect) = taffy_node_rect(result, node_id, tree) else {
-            continue;
-        };
-
-        // Compute boundaries between each pair of adjacent children.
-        for pair in children.windows(2) {
-            let (a_id, b_id) = (pair[0], pair[1]);
-            let (Some(a_rect), Some(b_rect)) = (
-                taffy_node_rect(result, a_id, tree),
-                taffy_node_rect(result, b_id, tree),
-            ) else {
-                continue;
-            };
-
-            let (position, span_start, span_end) = match axis {
-                BoundaryAxis::Vertical => {
-                    let pos = (a_rect.x + a_rect.w + b_rect.x) / 2.0;
-                    (pos, container_rect.y, container_rect.y + container_rect.h)
-                }
-                BoundaryAxis::Horizontal => {
-                    let pos = (a_rect.y + a_rect.h + b_rect.y) / 2.0;
-                    (pos, container_rect.x, container_rect.x + container_rect.w)
-                }
-            };
-
-            boundaries.push(BoundarySegment {
-                axis,
-                position,
-                span_start,
-                span_end,
-                before: a_id,
-                after: b_id,
-            });
-        }
-    }
+/// Look up a node's taffy layout (relative to its parent).
+fn child_layout(result: &CompileResult, node_id: NodeId) -> Option<&taffy::Layout> {
+    let taffy_id = result.node_map.get(node_id.raw() as usize)?.as_ref()?;
+    result.taffy_tree.layout(*taffy_id).ok()
 }
 
 /// Prepare a rects buffer: clear existing slots and resize to `capacity`,
@@ -535,20 +565,17 @@ pub(crate) fn resolve_with_cached_kinds(
 
     let capacity = tree.panel_id_high_water() as usize;
     let mut rects = prepare_rects_buf(rects_buf, capacity);
-    resolve_iterative(tree, result, root_id, &mut rects, &mut scratch.stack)?;
-    collect_boundaries(
-        tree,
-        result,
-        root_id,
-        &mut scratch.boundary_buf,
-        &mut scratch.boundary_stack,
-    );
+    resolve_iterative(tree, result, root_id, &mut rects, scratch)?;
 
+    let boundaries = match scratch.collect_boundaries {
+        true => scratch.boundary_buf.as_slice().into(),
+        false => Box::default(),
+    };
     Ok(ResolvedLayout {
         rects,
         kinds,
         overlay_rects: Vec::new(),
-        boundaries: scratch.boundary_buf.as_slice().into(),
+        boundaries,
     })
 }
 
@@ -572,42 +599,31 @@ pub(crate) fn resolve_dirty(
     let mut rects = prepare_rects_buf(rects_buf, capacity);
 
     // Reuse kinds buffer: clear values but retain map capacity.
-    let kinds_buf = &mut scratch.kinds_buf;
-    for v in kinds_buf.values_mut() {
+    for v in scratch.kinds_buf.values_mut() {
         v.clear();
     }
 
-    resolve_iterative_with_kinds(
-        tree,
-        result,
-        root_id,
-        &mut rects,
-        &mut scratch.stack,
-        kinds_buf,
-    )?;
+    resolve_iterative_with_kinds(tree, result, root_id, &mut rects, scratch)?;
 
     // Remove stale entries for panel kinds no longer present in the tree.
-    kinds_buf.retain(|_, v| !v.is_empty());
+    scratch.kinds_buf.retain(|_, v| !v.is_empty());
 
     let kinds = Arc::new(
-        kinds_buf
+        scratch
+            .kinds_buf
             .iter()
             .map(|(k, v)| (Arc::clone(k), v.as_slice().into()))
             .collect(),
     );
 
-    collect_boundaries(
-        tree,
-        result,
-        root_id,
-        &mut scratch.boundary_buf,
-        &mut scratch.boundary_stack,
-    );
-
+    let boundaries = match scratch.collect_boundaries {
+        true => scratch.boundary_buf.as_slice().into(),
+        false => Box::default(),
+    };
     Ok(ResolvedLayout {
         rects,
         kinds,
         overlay_rects: Vec::new(),
-        boundaries: scratch.boundary_buf.as_slice().into(),
+        boundaries,
     })
 }

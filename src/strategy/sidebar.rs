@@ -16,17 +16,12 @@ impl SidebarStrategy {
         Self { gap, sidebar_width }
     }
 
-    /// Set the sidebar width.
-    pub fn sidebar_width(mut self, width: f32) -> Self {
-        self.sidebar_width = width;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the sidebar width.
+        sidebar_width(width: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
     /// Bind sidebar panels: fixed-width sidebar + grow content.
     pub fn with_panels(

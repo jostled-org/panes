@@ -64,6 +64,17 @@ enabled = false
 [overrides."tests/**".forbid_macros]
 enabled = false
 
+# Relax rules for benchmarks (same rationale as tests)
+[overrides."benches/**"]
+max_depth = 5
+forbid_unsafe = false
+
+[overrides."benches/**".forbid_calls]
+enabled = false
+
+[overrides."benches/**".forbid_macros]
+enabled = false
+
 # Project-specific overrides
 
 # PanelIdGenerator generates PanelId; Constraints configures panels.

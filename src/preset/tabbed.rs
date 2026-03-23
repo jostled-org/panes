@@ -25,29 +25,21 @@ impl Tabbed {
         }
     }
 
-    /// Set which panel index is active (visible).
-    pub fn active(mut self, index: usize) -> Self {
-        self.active = index;
-        self
-    }
-
-    /// Set the tab bar height.
-    pub fn bar_height(mut self, height: f32) -> Self {
-        self.bar_height = height;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set which panel index is active (visible).
+        active(index: usize);
+        /// Set the tab bar height.
+        bar_height(height: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_active(self.active, self.kinds.len())?;
         validate_f32_param("bar_height", self.bar_height)?;
+        validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();
         let gap_px = self.gap;

@@ -217,7 +217,7 @@ impl Layout {
     pub fn adaptive(
         panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> crate::breakpoint::AdaptiveBuilder {
-        let panels: Vec<Arc<str>> = panels.into_iter().map(Into::into).collect();
+        let panels: Box<[Arc<str>]> = panels.into_iter().map(Into::into).collect();
         crate::breakpoint::AdaptiveBuilder::new(panels)
     }
 }

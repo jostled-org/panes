@@ -15,10 +15,7 @@ pub fn build_initial(
     sequence: &mut PanelSequence,
     viewport: &mut crate::viewport::ViewportState,
 ) -> Result<LayoutTree, PaneError> {
-    match kinds.is_empty() {
-        true => return Err(PaneError::InvalidTree(crate::error::TreeError::NoKinds)),
-        false => {}
-    }
+    crate::preset::validate_kinds(kinds)?;
 
     let tree = build_tree_for_strategy(strategy, kinds)?;
 

@@ -28,21 +28,17 @@ impl Sidebar {
         }
     }
 
-    /// Set the sidebar width.
-    pub fn sidebar_width(mut self, width: f32) -> Self {
-        self.sidebar_width = width;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the sidebar width.
+        sidebar_width(width: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_f32_param("sidebar_width", self.sidebar_width)?;
+        validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();
         let sidebar_kind = Arc::clone(&self.sidebar_kind);

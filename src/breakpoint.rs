@@ -37,9 +37,9 @@ pub struct AdaptiveBuilder {
 }
 
 impl AdaptiveBuilder {
-    pub(crate) fn new(panels: Vec<Arc<str>>) -> Self {
+    pub(crate) fn new(panels: Box<[Arc<str>]>) -> Self {
         Self {
-            panels: panels.into_boxed_slice(),
+            panels,
             breakpoints: Vec::new(),
         }
     }

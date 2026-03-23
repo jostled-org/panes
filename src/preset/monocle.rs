@@ -19,11 +19,10 @@ impl Monocle {
         }
     }
 
-    /// Set which panel index is active (visible).
-    pub fn active(mut self, index: usize) -> Self {
-        self.active = index;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set which panel index is active (visible).
+        active(index: usize)
+    );
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {

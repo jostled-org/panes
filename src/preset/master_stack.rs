@@ -22,22 +22,18 @@ impl MasterStack {
         }
     }
 
-    /// Set the master panel's share of the viewport.
-    pub fn master_ratio(mut self, ratio: f32) -> Self {
-        self.master_ratio = ratio;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the master panel's share of the viewport.
+        master_ratio(ratio: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
         validate_f32_param("master_ratio", self.master_ratio)?;
+        validate_f32_param("gap", self.gap)?;
         match self.kinds.len() {
             1 => super::build_single(Arc::clone(&self.kinds[0])),
             _ => self.build_master_stack(),

@@ -12,35 +12,24 @@ pub struct DashboardStrategy {
 }
 
 impl DashboardStrategy {
-    /// Set a fixed number of columns.
-    pub fn columns(mut self, columns: usize) -> Self {
-        self.columns = GridColumnMode::Fixed(columns);
-        self
-    }
+    crate::macros::builder_mapped_setters!(
+        /// Set a fixed number of columns.
+        columns(columns: usize) -> columns = GridColumnMode::Fixed(columns);
+        /// Use responsive `repeat(auto-fill, minmax(min_width, 1fr))` columns.
+        auto_fill(min_width: f32) -> columns = GridColumnMode::AutoFill { min_width };
+        /// Use responsive `repeat(auto-fit, minmax(min_width, 1fr))` columns.
+        auto_fit(min_width: f32) -> columns = GridColumnMode::AutoFit { min_width }
+    );
 
-    /// Use responsive `repeat(auto-fill, minmax(min_width, 1fr))` columns.
-    pub fn auto_fill(mut self, min_width: f32) -> Self {
-        self.columns = GridColumnMode::AutoFill { min_width };
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
-    /// Use responsive `repeat(auto-fit, minmax(min_width, 1fr))` columns.
-    pub fn auto_fit(mut self, min_width: f32) -> Self {
-        self.columns = GridColumnMode::AutoFit { min_width };
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
-
-    /// Use `grid-auto-rows: auto` so rows size to their tallest card.
-    pub fn auto_rows(mut self) -> Self {
-        self.auto_rows = true;
-        self
-    }
+    crate::macros::builder_flag_setters!(
+        /// Use `grid-auto-rows: auto` so rows size to their tallest card.
+        auto_rows -> auto_rows = true
+    );
 
     /// Bind cards with explicit column spans.
     pub fn with_cards(

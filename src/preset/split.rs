@@ -26,27 +26,22 @@ impl Split {
         }
     }
 
-    /// Set the split ratio.
-    pub fn ratio(mut self, ratio: f32) -> Self {
-        self.ratio = ratio;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the split ratio.
+        ratio(ratio: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
-
-    /// Use vertical split direction.
-    pub fn vertical(mut self) -> Self {
-        self.is_vertical = true;
-        self
-    }
+    crate::macros::builder_flag_setters!(
+        /// Use vertical split direction.
+        vertical -> is_vertical = true
+    );
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_f32_param("ratio", self.ratio)?;
+        validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();
         let first = Arc::clone(&self.first);
