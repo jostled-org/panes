@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1](https://github.com/jostled-org/panes/compare/panes-v0.17.0...panes-v0.17.1) - 2026-03-23
+
+### Other
+
+- add hit-testing, sizing, diff cost, and CSS emit benchmarks
+- audit fixes — boundary DFS, deterministic ordering, builder macros
+
 ## [0.17.0](https://github.com/jostled-org/panes/compare/panes-v0.16.0...panes-v0.17.0) - 2026-03-22
 
 ### Added
