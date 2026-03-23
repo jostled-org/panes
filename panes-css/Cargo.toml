@@ -13,5 +13,12 @@ categories = ["gui", "web-programming"]
 panes = { version = "0.17", path = ".." }
 taffy = "0.9"
 
+[dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "emit"
+harness = false
+
 [lints]
 workspace = true

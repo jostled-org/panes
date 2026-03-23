@@ -32,6 +32,7 @@ mod flat_row {
                 let panels: Vec<String> = (0..n).map(|i| format!("p{i}")).collect();
                 let layout = panes::Layout::row(panels.iter().map(String::as_str)).unwrap();
                 let mut rt = LayoutRuntime::from(layout);
+                rt.set_collect_boundaries(false);
                 rt.resolve(1920.0, 1080.0).unwrap();
                 b.iter(|| rt.resolve(1920.0, 1080.0).unwrap());
             });
