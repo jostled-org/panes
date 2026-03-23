@@ -24,6 +24,11 @@ js = ["wasm-bindgen"]
 panes = { version = "0.17", path = ".." }
 rustc-hash = "2"
 serde_json = "1"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "convert"
+harness = false
 
 [lints]
 workspace = true

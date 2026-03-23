@@ -1,5 +1,6 @@
 //! Convert panes layouts into f64 rects for WASM/JavaScript consumption.
 
+mod json_types;
 mod layout;
 mod runtime;
 

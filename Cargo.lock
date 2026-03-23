@@ -608,6 +608,7 @@ dependencies = [
 name = "panes-egui"
 version = "0.4.8"
 dependencies = [
+ "criterion",
  "egui",
  "panes",
  "rustc-hash",
@@ -617,6 +618,7 @@ dependencies = [
 name = "panes-ratatui"
 version = "0.4.8"
 dependencies = [
+ "criterion",
  "panes",
  "ratatui",
  "rustc-hash",
@@ -626,6 +628,7 @@ dependencies = [
 name = "panes-wasm"
 version = "0.4.9"
 dependencies = [
+ "criterion",
  "panes",
  "rustc-hash",
  "serde",

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{Layout, PanelId, Rect};
+use panes::{Layout, PanelId};
 #[cfg(feature = "js")]
 use wasm_bindgen::prelude::*;
 
+use crate::json_types::{DiffJson, RectChangeJson, RectJson};
 use crate::layout::WasmLayout;
 
 /// Stateful layout runtime for JavaScript consumers.
@@ -20,20 +21,7 @@ fn err_string(e: panes::PaneError) -> String {
     e.to_string()
 }
 
-/// Serialize a rect change (id + from/to rects) to a JSON value with f64 fields.
-fn rect_change_json(id: u32, from: Rect, to: Rect) -> serde_json::Value {
-    let f = crate::WasmRect::from(from);
-    let t = crate::WasmRect::from(to);
-    serde_json::json!({
-        "id": id,
-        "from": { "x": f.x, "y": f.y, "w": f.w, "h": f.h },
-        "to": { "x": t.x, "y": t.y, "w": t.w, "h": t.h },
-    })
-}
-
-/// Serialize a diff (layout or overlay) to a JSON string.
-///
-/// Generic over the ID type (PanelId or OverlayId) and rect-change type.
+/// Serialize a diff to JSON via the typed DiffJson struct.
 fn diff_to_json<I: Copy, C>(
     ids_added: &[I],
     ids_removed: &[I],
@@ -41,21 +29,24 @@ fn diff_to_json<I: Copy, C>(
     resized: &[C],
     ids_unchanged: &[I],
     raw_id: fn(I) -> u32,
-    change_json: fn(&C) -> serde_json::Value,
+    change_json: fn(&C) -> RectChangeJson,
 ) -> String {
-    let added: Vec<u32> = ids_added.iter().map(|id| raw_id(*id)).collect();
-    let removed: Vec<u32> = ids_removed.iter().map(|id| raw_id(*id)).collect();
-    let moved: Vec<serde_json::Value> = moved.iter().map(change_json).collect();
-    let resized: Vec<serde_json::Value> = resized.iter().map(change_json).collect();
-    let unchanged: Vec<u32> = ids_unchanged.iter().map(|id| raw_id(*id)).collect();
-    serde_json::json!({
-        "added": added,
-        "removed": removed,
-        "moved": moved,
-        "resized": resized,
-        "unchanged": unchanged,
-    })
-    .to_string()
+    let diff = DiffJson {
+        added: ids_added.iter().map(|id| raw_id(*id)).collect(),
+        removed: ids_removed.iter().map(|id| raw_id(*id)).collect(),
+        moved: moved.iter().map(change_json).collect(),
+        resized: resized.iter().map(change_json).collect(),
+        unchanged: ids_unchanged.iter().map(|id| raw_id(*id)).collect(),
+    };
+    serde_json::to_string(&diff).unwrap_or_default()
+}
+
+fn rect_change(id: u32, from: panes::Rect, to: panes::Rect) -> RectChangeJson {
+    RectChangeJson {
+        id,
+        from: RectJson::from(from),
+        to: RectJson::from(to),
+    }
 }
 
 impl WasmRuntime {
@@ -148,7 +139,7 @@ impl WasmRuntime {
             diff.resized,
             diff.unchanged,
             PanelId::raw,
-            |c| rect_change_json(c.id.raw(), c.from, c.to),
+            |c| rect_change(c.id.raw(), c.from, c.to),
         )
     }
 
@@ -164,7 +155,7 @@ impl WasmRuntime {
             diff.resized,
             diff.unchanged,
             panes::OverlayId::raw,
-            |c| rect_change_json(c.id.raw(), c.from, c.to),
+            |c| rect_change(c.id.raw(), c.from, c.to),
         )
     }
 }

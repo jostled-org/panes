@@ -74,10 +74,17 @@ impl<'a, R> PanelEntry<'a, R> {
 /// Shared index mapping panel kind strings to their panel IDs.
 pub(crate) type KindIndex = Arc<FxHashMap<Arc<str>, Box<[PanelId]>>>;
 
+fn sorted_keys(kinds: &KindIndex) -> Box<[Arc<str>]> {
+    let mut keys: Vec<_> = kinds.keys().map(Arc::clone).collect();
+    keys.sort_by(|a, b| a.as_ref().cmp(b.as_ref()));
+    keys.into_boxed_slice()
+}
+
 /// Resolved layout mapping each panel to its computed screen rectangle.
 pub struct ResolvedLayout {
     rects: Vec<Option<Rect>>,
     kinds: KindIndex,
+    sorted_kind_keys: Box<[Arc<str>]>,
     overlay_rects: Vec<(OverlayId, Arc<str>, Rect)>,
     boundaries: Box<[BoundarySegment]>,
 }
@@ -130,12 +137,11 @@ impl ResolvedLayout {
     /// Kind groups are sorted lexicographically so `kind_index` is stable
     /// across runs regardless of hash-map iteration order.
     pub fn panels(&self) -> impl Iterator<Item = PanelEntry<'_, &Rect>> + '_ {
-        let mut sorted_kinds: Vec<_> = self.kinds.iter().collect();
-        sorted_kinds.sort_by(|(a, _), (b, _)| a.as_ref().cmp(b.as_ref()));
-        sorted_kinds
-            .into_iter()
+        self.sorted_kind_keys
+            .iter()
             .enumerate()
-            .flat_map(move |(kind_index, (kind, pids))| {
+            .flat_map(move |(kind_index, kind)| {
+                let pids = self.kinds.get(kind).map(|b| b.as_ref()).unwrap_or(&[]);
                 pids.iter().filter_map(move |&pid| {
                     self.get(pid).map(|rect| PanelEntry {
                         id: pid,
@@ -290,9 +296,11 @@ impl ResolvedLayout {
         }
 
         let kinds = Arc::clone(&self.kinds);
+        let sorted_kind_keys = self.sorted_kind_keys.clone();
         ResolvedLayout {
             rects,
             kinds,
+            sorted_kind_keys,
             overlay_rects: Vec::new(),
             boundaries: Box::default(),
         }
@@ -571,9 +579,11 @@ pub(crate) fn resolve_with_cached_kinds(
         true => scratch.boundary_buf.as_slice().into(),
         false => Box::default(),
     };
+    let sorted_kind_keys = sorted_keys(&kinds);
     Ok(ResolvedLayout {
         rects,
         kinds,
+        sorted_kind_keys,
         overlay_rects: Vec::new(),
         boundaries,
     })
@@ -620,9 +630,11 @@ pub(crate) fn resolve_dirty(
         true => scratch.boundary_buf.as_slice().into(),
         false => Box::default(),
     };
+    let sorted_kind_keys = sorted_keys(&kinds);
     Ok(ResolvedLayout {
         rects,
         kinds,
+        sorted_kind_keys,
         overlay_rects: Vec::new(),
         boundaries,
     })

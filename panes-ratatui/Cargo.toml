@@ -17,6 +17,11 @@ rustc-hash = "2"
 [dev-dependencies]
 panes = { version = "0.17", path = ".." }
 rustc-hash = "2"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "convert"
+harness = false
 
 [lints]
 workspace = true

@@ -5,6 +5,7 @@ use panes::{BoundaryAxis, ResolvedLayout};
 use wasm_bindgen::prelude::*;
 
 use crate::WasmRect;
+use crate::json_types::{PanelJson, RectJson};
 
 /// Resolved layout snapshot for JavaScript consumers.
 ///
@@ -23,17 +24,17 @@ impl WasmLayout {
     ///
     /// Each entry has `id`, `kind`, `rect` (with f64 fields), and `kindIndex`.
     pub fn panels(&self) -> Result<String, String> {
-        let entries: Vec<serde_json::Value> = self
+        let entries: Vec<PanelJson> = self
             .inner
             .panels()
             .map(|e| {
                 let wr = WasmRect::from(*e.rect);
-                serde_json::json!({
-                    "id": e.id.raw(),
-                    "kind": e.kind,
-                    "rect": { "x": wr.x, "y": wr.y, "w": wr.w, "h": wr.h },
-                    "kindIndex": e.kind_index,
-                })
+                PanelJson {
+                    id: e.id.raw(),
+                    kind: e.kind.to_owned(),
+                    rect: RectJson::from(wr),
+                    kind_index: e.kind_index,
+                }
             })
             .collect();
         serde_json::to_string(&entries).map_err(|e| e.to_string())
@@ -74,13 +75,18 @@ impl WasmLayout {
             BoundaryAxis::Vertical => "vertical",
             BoundaryAxis::Horizontal => "horizontal",
         };
-        Some(
-            serde_json::json!({
-                "axis": axis,
-                "sides": [hit.sides.0.raw(), hit.sides.1.raw()],
-                "position": f64::from(hit.position),
-            })
-            .to_string(),
-        )
+        // Inline serialization — BoundaryJson is structurally disconnected
+        // from the panel/diff types and used only here.
+        use std::fmt::Write;
+        let mut buf = String::with_capacity(80);
+        let _ = write!(
+            buf,
+            r#"{{"axis":"{}","sides":[{},{}],"position":{}}}"#,
+            axis,
+            hit.sides.0.raw(),
+            hit.sides.1.raw(),
+            f64::from(hit.position),
+        );
+        Some(buf)
     }
 }
