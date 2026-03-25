@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.4.9...panes-ratatui-v0.4.10) - 2026-03-25
+
+### Other
+
+- strip redundant docs, merge DFS, reduce duplication
+
 ## [0.4.9](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.4.8...panes-ratatui-v0.4.9) - 2026-03-23
 
 ### Other

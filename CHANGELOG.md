@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/jostled-org/panes/compare/panes-v0.17.2...panes-v0.18.0) - 2026-03-25
+
+### Other
+
+- strip redundant docs, merge DFS, reduce duplication
+
 ## [0.17.2](https://github.com/jostled-org/panes/compare/panes-v0.17.1...panes-v0.17.2) - 2026-03-23
 
 ### Other
