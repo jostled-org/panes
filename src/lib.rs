@@ -39,7 +39,10 @@ mod viewport;
 
 pub use breakpoint::{AdaptiveBuilder, BreakpointEntry};
 pub use builder::{ContainerCtx, LayoutBuilder};
-pub use diff::{DiffScratch, LayoutDiff, OverlayDiff, OverlayRectChange, RectChange};
+pub use diff::{
+    DiffResult, LayoutDiff, OverlayDiff, OverlayDiffScratch, OverlayRectChange, PanelDiffScratch,
+    PanelRectChange, PanelScratch, RectChange,
+};
 pub use error::{ConstraintError, MutationError, PaneError, TreeError, ViewportError};
 pub use focus::FocusDirection;
 pub use layout::Layout;
@@ -71,3 +74,6 @@ pub use strategy::{
 pub use toml_parse::TomlError;
 pub use tree::{LayoutTree, Position};
 pub use viewport::ViewportState;
+
+#[doc(hidden)]
+pub use rustc_hash::FxHashMap as __FxHashMap;

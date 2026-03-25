@@ -84,7 +84,7 @@ fn wasm_layout_diff_first_frame_all_added() {
     let mut rt = WasmRuntime::from_preset("master-stack", &["a", "b", "c"]).unwrap();
     let _ = rt.resolve(800.0, 600.0).unwrap();
 
-    let diff_json = rt.layout_diff();
+    let diff_json = rt.layout_diff().unwrap();
     let diff: serde_json::Value = serde_json::from_str(&diff_json).unwrap();
 
     // First frame: all panels are "added"
@@ -105,7 +105,7 @@ fn wasm_layout_diff_after_add_panel() {
     rt.add_panel("d").unwrap();
     let _ = rt.resolve(800.0, 600.0).unwrap();
 
-    let diff_json = rt.layout_diff();
+    let diff_json = rt.layout_diff().unwrap();
     let diff: serde_json::Value = serde_json::from_str(&diff_json).unwrap();
 
     // New panel is in "added"
@@ -133,7 +133,7 @@ fn wasm_overlay_diff_returns_json() {
     let mut rt = WasmRuntime::from_preset("master-stack", &["a", "b", "c"]).unwrap();
     let _ = rt.resolve(800.0, 600.0).unwrap();
 
-    let diff_json = rt.overlay_diff();
+    let diff_json = rt.overlay_diff().unwrap();
     let diff: serde_json::Value = serde_json::from_str(&diff_json).unwrap();
 
     // Valid JSON with expected structure

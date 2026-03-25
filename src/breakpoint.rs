@@ -91,6 +91,7 @@ pub(crate) fn rebuild_for_breakpoint(
     sequence: &mut PanelSequence,
     cached_compile: &mut Option<CompileResult>,
     cached_kinds: &mut Option<resolver::KindIndex>,
+    cached_sorted_kind_keys: &mut Option<Arc<[Arc<str>]>>,
 ) -> Result<Box<[Arc<str>]>, PaneError> {
     let kinds = crate::strategy::collect_kinds_from_sequence(tree, sequence);
 
@@ -104,6 +105,7 @@ pub(crate) fn rebuild_for_breakpoint(
     *sequence = new_seq;
     *cached_compile = None;
     *cached_kinds = None;
+    *cached_sorted_kind_keys = None;
 
     Ok(kinds)
 }

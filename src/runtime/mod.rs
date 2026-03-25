@@ -47,6 +47,7 @@ impl LayoutRuntime {
     pub fn tree_mut(&mut self) -> &mut LayoutTree {
         self.cached_compile = None;
         self.cached_kinds = None;
+        self.cached_sorted_kind_keys = None;
         &mut self.tree
     }
 

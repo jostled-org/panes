@@ -320,11 +320,10 @@ pub struct ActivePanelStrategy {
 }
 
 impl ActivePanelStrategy {
-    /// Set the bar height (tab bar or title bar height).
-    pub fn bar_height(mut self, height: f32) -> Self {
-        self.bar_height = height;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the bar height (tab bar or title bar height).
+        bar_height(height: f32)
+    );
 }
 
 /// Builder for [`StrategyKind::Window`] (scrollable).
@@ -335,17 +334,12 @@ pub struct WindowStrategy {
 }
 
 impl WindowStrategy {
-    /// Set how many panels the window shows at once.
-    pub fn size(mut self, size: usize) -> Self {
-        self.size = size;
-        self
-    }
-
-    /// Set the gap between visible panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set how many panels the window shows at once.
+        size(size: usize);
+        /// Set the gap between visible panels.
+        gap(gap: f32)
+    );
 }
 
 /// Builder for [`StrategyKind::BinarySplit`] (dwindle, spiral).
@@ -357,17 +351,12 @@ pub struct BinarySplitStrategy {
 }
 
 impl BinarySplitStrategy {
-    /// Set the split ratio at each level.
-    pub fn ratio(mut self, ratio: f32) -> Self {
-        self.ratio = ratio;
-        self
-    }
-
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the split ratio at each level.
+        ratio(ratio: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 }
 
 /// Builder for split (two panels with configurable ratio and direction).
@@ -379,23 +368,17 @@ pub struct SplitStrategy {
 }
 
 impl SplitStrategy {
-    /// Set the split ratio.
-    pub fn ratio(mut self, ratio: f32) -> Self {
-        self.ratio = ratio;
-        self
-    }
+    crate::macros::builder_setters!(
+        /// Set the split ratio.
+        ratio(ratio: f32);
+        /// Set the gap between panels.
+        gap(gap: f32)
+    );
 
-    /// Set the gap between panels.
-    pub fn gap(mut self, gap: f32) -> Self {
-        self.gap = gap;
-        self
-    }
-
-    /// Use vertical split direction.
-    pub fn vertical(mut self) -> Self {
-        self.is_vertical = true;
-        self
-    }
+    crate::macros::builder_flag_setters!(
+        /// Use vertical split direction.
+        vertical -> is_vertical = true
+    );
 
     /// Convert to a generic [`Strategy`].
     pub fn build(self) -> Strategy {

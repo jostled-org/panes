@@ -12,7 +12,6 @@ categories = ["gui"]
 [dependencies]
 panes = { version = "0.17", path = ".." }
 egui = { version = "0.33", default-features = false }
-rustc-hash = "2"
 
 [dev-dependencies]
 panes = { version = "0.17", path = ".." }

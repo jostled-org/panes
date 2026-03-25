@@ -3,18 +3,77 @@ use panes::LayoutSnapshot;
 use panes::runtime::LayoutRuntime;
 use panes::{GridColumnMode, Layout, SnapshotSource, StrategyConfig};
 
-#[test]
-fn strategy_snapshot_round_trip() {
+// ---------------------------------------------------------------------------
+// Shared setup helpers
+// ---------------------------------------------------------------------------
+
+fn strategy_runtime_with_focus() -> LayoutRuntime {
     let mut rt = Layout::master_stack(["editor", "chat", "status"])
         .master_ratio(0.6)
         .gap(1.0)
         .into_runtime()
         .unwrap();
     rt.focus_next(); // focus "chat"
+    rt
+}
 
+fn tabbed_runtime() -> LayoutRuntime {
+    Layout::tabbed(["a", "b", "c"]).into_runtime().unwrap()
+}
+
+fn collapsed_runtime() -> LayoutRuntime {
+    let mut rt = Layout::master_stack(["a", "b", "c"])
+        .gap(1.0)
+        .into_runtime()
+        .unwrap();
+
+    let b_pid = rt
+        .sequence()
+        .iter()
+        .find(|&pid| rt.tree().panel_kind(pid).ok() == Some("b"))
+        .unwrap();
+    rt.toggle_collapsed(b_pid).unwrap();
+    rt
+}
+
+fn cross_axis_layout() -> Layout {
+    panes::layout! {
+        col(gap: 2.0) {
+            panel("top", grow: 1.0, max_height: 100.0)
+            panel("bottom", grow: 1.0)
+        }
+    }
+    .unwrap()
+}
+
+fn alignment_layout() -> Layout {
+    panes::layout! {
+        row {
+            panel("a", fixed: 100.0, align: center)
+        }
+    }
+    .unwrap()
+}
+
+fn size_mode_layout() -> Layout {
+    panes::layout! {
+        row {
+            panel("a", grow: 1.0, size_mode: fit_content(200.0))
+            panel("b", grow: 1.0)
+        }
+    }
+    .unwrap()
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot round-trip tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn strategy_snapshot_round_trip() {
+    let rt = strategy_runtime_with_focus();
     let snap = rt.snapshot().unwrap();
 
-    // Verify snapshot contents
     assert_eq!(snap.focused(), Some("chat"));
     match snap.source() {
         SnapshotSource::Strategy { strategy, panels } => {
@@ -25,7 +84,6 @@ fn strategy_snapshot_round_trip() {
         SnapshotSource::Tree { .. } | _ => panic!("expected Strategy source"),
     }
 
-    // Restore and verify
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     assert_eq!(rt2.focused_kind(), Some("chat"));
     let frame = rt2.resolve(800.0, 600.0).unwrap();
@@ -71,7 +129,6 @@ fn tree_snapshot_round_trip() {
 
     match snap.source() {
         SnapshotSource::Tree { root } => {
-            // Root is a row
             assert!(matches!(root, panes::SnapshotNode::Row { .. }));
         }
         _ => panic!("expected Tree source"),
@@ -98,7 +155,6 @@ fn tree_snapshot_preserves_constraints() {
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(800.0, 600.0).unwrap();
 
-    // The left panel should be fixed at 100px
     let left = frame.layout().panels().find(|e| e.kind == "left").unwrap();
     assert!((left.rect.w - 100.0).abs() < 1.0);
 }
@@ -109,7 +165,6 @@ fn snapshot_restores_focus() {
         .gap(1.0)
         .into_runtime()
         .unwrap();
-    // Focus "c"
     rt.focus_next();
     rt.focus_next();
 
@@ -122,34 +177,23 @@ fn snapshot_restores_focus() {
 
 #[test]
 fn snapshot_restores_collapsed() {
-    let mut rt = Layout::master_stack(["editor", "chat", "status"])
-        .gap(1.0)
-        .into_runtime()
-        .unwrap();
-
-    // Collapse "chat"
-    let chat_pid = rt
-        .sequence()
-        .iter()
-        .find(|&pid| rt.tree().panel_kind(pid).ok() == Some("chat"))
-        .unwrap();
-    rt.toggle_collapsed(chat_pid).unwrap();
+    let rt = collapsed_runtime();
 
     let snap = rt.snapshot().unwrap();
-    assert!(snap.collapsed().iter().any(|s| &**s == "chat"));
+    assert!(snap.collapsed().iter().any(|s| &**s == "b"));
 
     let rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
-    let chat_pid2 = rt2
+    let b_pid2 = rt2
         .sequence()
         .iter()
-        .find(|&pid| rt2.tree().panel_kind(pid).ok() == Some("chat"))
+        .find(|&pid| rt2.tree().panel_kind(pid).ok() == Some("b"))
         .unwrap();
-    assert!(rt2.viewport().collapsed.contains(&chat_pid2));
+    assert!(rt2.viewport().collapsed.contains(&b_pid2));
 }
 
 #[test]
 fn tabbed_snapshot_round_trip() {
-    let rt = Layout::tabbed(["a", "b", "c"]).into_runtime().unwrap();
+    let rt = tabbed_runtime();
 
     let snap = rt.snapshot().unwrap();
     match snap.source() {
@@ -163,7 +207,6 @@ fn tabbed_snapshot_round_trip() {
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(800.0, 600.0).unwrap();
-    // Tabbed creates decoration panels (_tab) in addition to content
     assert!(frame.layout().panels().count() > 3);
 }
 
@@ -207,7 +250,6 @@ fn spiral_snapshot_round_trip() {
 
 #[test]
 fn empty_tree_snapshot_errors() {
-    // A runtime from an empty tree has no serializable root
     let tree = panes::LayoutTree::new();
     let rt = LayoutRuntime::new(tree);
     assert!(rt.snapshot().is_err());
@@ -239,7 +281,6 @@ fn nested_tree_snapshot_round_trip() {
     let frame = rt2.resolve(800.0, 600.0).unwrap();
     assert_eq!(frame.layout().panels().count(), 5);
 
-    // Verify the fixed panel preserved its constraint
     let c = frame.layout().panels().find(|e| e.kind == "c").unwrap();
     assert!((c.rect.w - 50.0).abs() < 1.0);
 }
@@ -273,15 +314,7 @@ fn dashboard_auto_fill_round_trips() {
 
 #[test]
 fn snapshot_preserves_cross_axis_constraints() {
-    let layout = panes::layout! {
-        col(gap: 2.0) {
-            panel("top", grow: 1.0, max_height: 100.0)
-            panel("bottom", grow: 1.0)
-        }
-    }
-    .unwrap();
-
-    let rt = LayoutRuntime::from(layout);
+    let rt = LayoutRuntime::from(cross_axis_layout());
     let snap = rt.snapshot().unwrap();
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
@@ -297,21 +330,13 @@ fn snapshot_preserves_cross_axis_constraints() {
 
 #[test]
 fn snapshot_preserves_alignment() {
-    let layout = panes::layout! {
-        row {
-            panel("a", fixed: 100.0, align: center)
-        }
-    }
-    .unwrap();
-
-    let rt = LayoutRuntime::from(layout);
+    let rt = LayoutRuntime::from(alignment_layout());
     let snap = rt.snapshot().unwrap();
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(400.0, 400.0).unwrap();
 
     let a = frame.layout().panels().find(|e| e.kind == "a").unwrap();
-    // With align: center, the panel should not stretch to fill the 400px height
     assert!(
         a.rect.h < 400.0,
         "alignment lost after snapshot: panel stretched to h={}",
@@ -321,21 +346,12 @@ fn snapshot_preserves_alignment() {
 
 #[test]
 fn snapshot_preserves_size_mode() {
-    let layout = panes::layout! {
-        row {
-            panel("a", grow: 1.0, size_mode: fit_content(200.0))
-            panel("b", grow: 1.0)
-        }
-    }
-    .unwrap();
-
-    let rt = LayoutRuntime::from(layout);
+    let rt = LayoutRuntime::from(size_mode_layout());
     let snap = rt.snapshot().unwrap();
 
     let mut rt2 = LayoutRuntime::from_snapshot(snap).unwrap();
     let frame = rt2.resolve(400.0, 400.0).unwrap();
 
-    // Verify the panel still resolves after round-trip
     assert_eq!(frame.layout().panels().count(), 2);
     let a = frame.layout().panels().find(|e| e.kind == "a").unwrap();
     assert!(a.rect.w > 0.0, "size_mode constraint lost after snapshot");
@@ -356,13 +372,7 @@ mod serde_tests {
 
     #[test]
     fn strategy_json_round_trip() {
-        let mut rt = Layout::master_stack(["editor", "chat", "status"])
-            .master_ratio(0.6)
-            .gap(1.0)
-            .into_runtime()
-            .unwrap();
-        rt.focus_next();
-
+        let rt = strategy_runtime_with_focus();
         let snap = rt.snapshot().unwrap();
         let restored = json_round_trip(&snap);
 
@@ -408,7 +418,7 @@ mod serde_tests {
 
     #[test]
     fn tabbed_json_round_trip() {
-        let rt = Layout::tabbed(["a", "b", "c"]).into_runtime().unwrap();
+        let rt = tabbed_runtime();
         let snap = rt.snapshot().unwrap();
         let restored = json_round_trip(&snap);
 
@@ -428,17 +438,7 @@ mod serde_tests {
 
     #[test]
     fn collapsed_json_round_trip() {
-        let mut rt = Layout::master_stack(["a", "b", "c"])
-            .gap(1.0)
-            .into_runtime()
-            .unwrap();
-
-        let b_pid = rt
-            .sequence()
-            .iter()
-            .find(|&pid| rt.tree().panel_kind(pid).ok() == Some("b"))
-            .unwrap();
-        rt.toggle_collapsed(b_pid).unwrap();
+        let rt = collapsed_runtime();
 
         let snap = rt.snapshot().unwrap();
         let restored = json_round_trip(&snap);
@@ -455,15 +455,7 @@ mod serde_tests {
 
     #[test]
     fn cross_axis_constraints_json_round_trip() {
-        let layout = panes::layout! {
-            col(gap: 2.0) {
-                panel("top", grow: 1.0, max_height: 100.0)
-                panel("bottom", grow: 1.0)
-            }
-        }
-        .unwrap();
-
-        let rt = LayoutRuntime::from(layout);
+        let rt = LayoutRuntime::from(cross_axis_layout());
         let snap = rt.snapshot().unwrap();
         let restored = json_round_trip(&snap);
 
@@ -480,14 +472,7 @@ mod serde_tests {
 
     #[test]
     fn alignment_json_round_trip() {
-        let layout = panes::layout! {
-            row {
-                panel("a", fixed: 100.0, align: center)
-            }
-        }
-        .unwrap();
-
-        let rt = LayoutRuntime::from(layout);
+        let rt = LayoutRuntime::from(alignment_layout());
         let snap = rt.snapshot().unwrap();
         let restored = json_round_trip(&snap);
 
@@ -504,15 +489,7 @@ mod serde_tests {
 
     #[test]
     fn size_mode_json_round_trip() {
-        let layout = panes::layout! {
-            row {
-                panel("a", grow: 1.0, size_mode: fit_content(200.0))
-                panel("b", grow: 1.0)
-            }
-        }
-        .unwrap();
-
-        let rt = LayoutRuntime::from(layout);
+        let rt = LayoutRuntime::from(size_mode_layout());
         let snap = rt.snapshot().unwrap();
         let restored = json_round_trip(&snap);
 
@@ -531,7 +508,6 @@ mod serde_tests {
         let snap = rt.snapshot().unwrap();
         let json = serde_json::to_string_pretty(&snap).unwrap();
 
-        // Verify key fields appear in the JSON
         assert!(json.contains("MasterStack"));
         assert!(json.contains("editor"));
         assert!(json.contains("chat"));

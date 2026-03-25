@@ -5,7 +5,7 @@ use crate::WasmRect;
 #[derive(Serialize)]
 pub(crate) struct PanelJson {
     pub id: u32,
-    pub kind: String,
+    pub kind: Box<str>,
     pub rect: RectJson,
     #[serde(rename = "kindIndex")]
     pub kind_index: usize,
@@ -28,11 +28,11 @@ pub(crate) struct RectChangeJson {
 
 #[derive(Serialize)]
 pub(crate) struct DiffJson {
-    pub added: Vec<u32>,
-    pub removed: Vec<u32>,
-    pub moved: Vec<RectChangeJson>,
-    pub resized: Vec<RectChangeJson>,
-    pub unchanged: Vec<u32>,
+    pub added: Box<[u32]>,
+    pub removed: Box<[u32]>,
+    pub moved: Box<[RectChangeJson]>,
+    pub resized: Box<[RectChangeJson]>,
+    pub unchanged: Box<[u32]>,
 }
 
 impl From<WasmRect> for RectJson {

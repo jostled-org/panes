@@ -9,34 +9,46 @@ use crate::resolver::ResolvedLayout;
 
 const EPSILON: f32 = 1e-4;
 
-/// A panel whose rect changed between two frames.
+/// A rect change for a single element between two frames.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RectChange {
-    /// The panel that changed.
-    pub id: PanelId,
+pub struct RectChange<Id> {
+    /// The element that changed.
+    pub id: Id,
     /// The rect in the previous frame.
     pub from: Rect,
     /// The rect in the current frame.
     pub to: Rect,
 }
 
-/// Categorized differences between two resolved layouts.
+/// Panel rect change between frames.
+pub type PanelRectChange = RectChange<PanelId>;
+
+/// Overlay rect change between frames.
+pub type OverlayRectChange = RectChange<OverlayId>;
+
+/// Categorized differences between two frames.
 ///
 /// Borrows its data from [`DiffScratch`] buffers owned by the runtime.
 /// Valid until the next `resolve()` call.
 #[derive(Debug)]
-pub struct LayoutDiff<'a> {
-    /// Panels present in the new frame but not the old.
-    pub added: &'a [PanelId],
-    /// Panels present in the old frame but not the new.
-    pub removed: &'a [PanelId],
-    /// Panels whose position changed.
-    pub moved: &'a [RectChange],
-    /// Panels whose size changed.
-    pub resized: &'a [RectChange],
-    /// Panels whose rect is identical across frames.
-    pub unchanged: &'a [PanelId],
+pub struct DiffResult<'a, Id> {
+    /// Elements present in the new frame but not the old.
+    pub added: &'a [Id],
+    /// Elements present in the old frame but not the new.
+    pub removed: &'a [Id],
+    /// Elements whose position changed.
+    pub moved: &'a [RectChange<Id>],
+    /// Elements whose size changed.
+    pub resized: &'a [RectChange<Id>],
+    /// Elements whose rect is identical across frames.
+    pub unchanged: &'a [Id],
 }
+
+/// Panel layout diff between frames.
+pub type LayoutDiff<'a> = DiffResult<'a, PanelId>;
+
+/// Overlay diff between frames.
+pub type OverlayDiff<'a> = DiffResult<'a, OverlayId>;
 
 fn position_changed(a: &Rect, b: &Rect) -> bool {
     (a.x - b.x).abs() > EPSILON || (a.y - b.y).abs() > EPSILON
@@ -47,55 +59,63 @@ fn size_changed(a: &Rect, b: &Rect) -> bool {
 }
 
 /// Classify a single element's rect change and push to the appropriate output Vec.
-fn classify<Id: Copy, C>(
+fn classify<Id: Copy>(
     id: Id,
     old_rect: &Rect,
     new_rect: &Rect,
-    make_change: impl FnOnce(Id, Rect, Rect) -> C,
-    moved: &mut Vec<C>,
-    resized: &mut Vec<C>,
+    moved: &mut Vec<RectChange<Id>>,
+    resized: &mut Vec<RectChange<Id>>,
     unchanged: &mut Vec<Id>,
-) where
-    C: Copy,
-{
+) {
     let pos = position_changed(old_rect, new_rect);
     let size = size_changed(old_rect, new_rect);
 
     match (pos, size) {
         (false, false) => unchanged.push(id),
         (true, true) => {
-            let change = make_change(id, *old_rect, *new_rect);
+            let change = RectChange {
+                id,
+                from: *old_rect,
+                to: *new_rect,
+            };
             moved.push(change);
             resized.push(change);
         }
-        (true, false) => moved.push(make_change(id, *old_rect, *new_rect)),
-        (false, true) => resized.push(make_change(id, *old_rect, *new_rect)),
+        (true, false) => moved.push(RectChange {
+            id,
+            from: *old_rect,
+            to: *new_rect,
+        }),
+        (false, true) => resized.push(RectChange {
+            id,
+            from: *old_rect,
+            to: *new_rect,
+        }),
     }
 }
 
-/// Compare two resolved layouts and categorize every panel.
-///
-/// Standalone version that allocates its own scratch. For per-frame use,
-/// prefer the runtime's `last_diff()` which reuses buffers.
-pub fn diff(old: &ResolvedLayout, new: &ResolvedLayout) -> DiffScratch {
-    let mut scratch = DiffScratch::default();
-    diff_reuse(old, new, &mut scratch);
-    scratch
-}
-
 /// Reusable scratch buffers for diffing without per-frame allocation.
-#[derive(Default)]
-pub struct DiffScratch {
-    pub(crate) old_ids: FxHashSet<PanelId>,
-    pub(crate) new_ids: FxHashSet<PanelId>,
-    pub(crate) added: Vec<PanelId>,
-    pub(crate) removed: Vec<PanelId>,
-    pub(crate) moved: Vec<RectChange>,
-    pub(crate) resized: Vec<RectChange>,
-    pub(crate) unchanged: Vec<PanelId>,
+pub struct DiffScratch<Id> {
+    pub(crate) added: Vec<Id>,
+    pub(crate) removed: Vec<Id>,
+    pub(crate) moved: Vec<RectChange<Id>>,
+    pub(crate) resized: Vec<RectChange<Id>>,
+    pub(crate) unchanged: Vec<Id>,
 }
 
-impl DiffScratch {
+impl<Id> Default for DiffScratch<Id> {
+    fn default() -> Self {
+        Self {
+            added: Vec::new(),
+            removed: Vec::new(),
+            moved: Vec::new(),
+            resized: Vec::new(),
+            unchanged: Vec::new(),
+        }
+    }
+}
+
+impl<Id> DiffScratch<Id> {
     /// Clear all output buffers, retaining allocated capacity.
     fn clear(&mut self) {
         self.added.clear();
@@ -106,8 +126,8 @@ impl DiffScratch {
     }
 
     /// Borrow the diff result from this scratch buffer.
-    pub fn as_diff(&self) -> LayoutDiff<'_> {
-        LayoutDiff {
+    pub fn as_diff(&self) -> DiffResult<'_, Id> {
+        DiffResult {
             added: &self.added,
             removed: &self.removed,
             moved: &self.moved,
@@ -117,22 +137,55 @@ impl DiffScratch {
     }
 }
 
+/// Panel diff scratch buffers.
+pub type PanelDiffScratch = DiffScratch<PanelId>;
+
+/// Overlay diff scratch buffers.
+pub type OverlayDiffScratch = DiffScratch<OverlayId>;
+
+/// Panel scratch with hash-set bookkeeping for add/remove detection.
+#[derive(Default)]
+pub struct PanelScratch {
+    pub(crate) old_ids: FxHashSet<PanelId>,
+    pub(crate) new_ids: FxHashSet<PanelId>,
+    pub(crate) inner: PanelDiffScratch,
+}
+
+impl PanelScratch {
+    /// Borrow the diff result from this scratch buffer.
+    pub fn as_diff(&self) -> LayoutDiff<'_> {
+        self.inner.as_diff()
+    }
+}
+
+/// Compare two resolved layouts and categorize every panel.
+///
+/// Standalone version that allocates its own scratch. For per-frame use,
+/// prefer the runtime's `last_diff()` which reuses buffers.
+pub fn diff(old: &ResolvedLayout, new: &ResolvedLayout) -> PanelScratch {
+    let mut scratch = PanelScratch::default();
+    diff_reuse(old, new, &mut scratch);
+    scratch
+}
+
 /// Compare two resolved layouts, reusing scratch buffers across frames.
 pub(crate) fn diff_reuse<'a>(
     old: &ResolvedLayout,
     new: &ResolvedLayout,
-    scratch: &'a mut DiffScratch,
+    scratch: &'a mut PanelScratch,
 ) -> LayoutDiff<'a> {
     scratch.old_ids.clear();
     scratch.old_ids.extend(old.panel_ids());
     scratch.new_ids.clear();
     scratch.new_ids.extend(new.panel_ids());
 
-    scratch.clear();
+    scratch.inner.clear();
     scratch
+        .inner
         .removed
         .extend(scratch.old_ids.difference(&scratch.new_ids).copied());
     scratch
+        .inner
         .added
         .extend(scratch.new_ids.difference(&scratch.old_ids).copied());
 
@@ -144,23 +197,22 @@ pub(crate) fn diff_reuse<'a>(
             pid,
             old_rect,
             new_rect,
-            |id, from, to| RectChange { id, from, to },
-            &mut scratch.moved,
-            &mut scratch.resized,
-            &mut scratch.unchanged,
+            &mut scratch.inner.moved,
+            &mut scratch.inner.resized,
+            &mut scratch.inner.unchanged,
         );
     }
 
-    scratch.as_diff()
+    scratch.inner.as_diff()
 }
 
 /// Diff when the panel set is identical, reusing scratch Vecs across frames.
 pub(crate) fn diff_same_panels_reuse<'a>(
     old: &ResolvedLayout,
     new: &ResolvedLayout,
-    scratch: &'a mut DiffScratch,
+    scratch: &'a mut PanelScratch,
 ) -> LayoutDiff<'a> {
-    scratch.clear();
+    scratch.inner.clear();
 
     for (pid, new_rect) in new.iter() {
         let Some(old_rect) = old.get(pid) else {
@@ -170,84 +222,23 @@ pub(crate) fn diff_same_panels_reuse<'a>(
             pid,
             old_rect,
             new_rect,
-            |id, from, to| RectChange { id, from, to },
-            &mut scratch.moved,
-            &mut scratch.resized,
-            &mut scratch.unchanged,
+            &mut scratch.inner.moved,
+            &mut scratch.inner.resized,
+            &mut scratch.inner.unchanged,
         );
     }
 
-    scratch.as_diff()
+    scratch.inner.as_diff()
 }
 
 /// Produce a diff representing the first frame — all panels are added.
 pub(crate) fn first_frame<'a>(
     layout: &ResolvedLayout,
-    scratch: &'a mut DiffScratch,
+    scratch: &'a mut PanelScratch,
 ) -> LayoutDiff<'a> {
-    scratch.clear();
-    scratch.added.extend(layout.panel_ids());
-    scratch.as_diff()
-}
-
-/// A change in an overlay's rect between frames.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct OverlayRectChange {
-    /// The overlay that changed.
-    pub id: OverlayId,
-    /// Rect in the previous frame.
-    pub from: Rect,
-    /// Rect in the current frame.
-    pub to: Rect,
-}
-
-/// Categorized differences between overlay sets across two frames.
-///
-/// Borrows its data from internal scratch buffers owned by the runtime.
-/// Valid until the next `resolve()` call.
-#[derive(Debug)]
-pub struct OverlayDiff<'a> {
-    /// Overlays present in the new frame but not the old.
-    pub added: &'a [OverlayId],
-    /// Overlays present in the old frame but not the new.
-    pub removed: &'a [OverlayId],
-    /// Overlays whose position changed.
-    pub moved: &'a [OverlayRectChange],
-    /// Overlays whose size changed.
-    pub resized: &'a [OverlayRectChange],
-    /// Overlays whose rect is identical across frames.
-    pub unchanged: &'a [OverlayId],
-}
-
-/// Reusable scratch buffers for overlay diffing.
-#[derive(Default)]
-pub(crate) struct OverlayDiffScratch {
-    added: Vec<OverlayId>,
-    removed: Vec<OverlayId>,
-    moved: Vec<OverlayRectChange>,
-    resized: Vec<OverlayRectChange>,
-    unchanged: Vec<OverlayId>,
-}
-
-impl OverlayDiffScratch {
-    /// Clear all output buffers, retaining allocated capacity.
-    fn clear(&mut self) {
-        self.added.clear();
-        self.removed.clear();
-        self.moved.clear();
-        self.resized.clear();
-        self.unchanged.clear();
-    }
-
-    pub(crate) fn as_diff(&self) -> OverlayDiff<'_> {
-        OverlayDiff {
-            added: &self.added,
-            removed: &self.removed,
-            moved: &self.moved,
-            resized: &self.resized,
-            unchanged: &self.unchanged,
-        }
-    }
+    scratch.inner.clear();
+    scratch.inner.added.extend(layout.panel_ids());
+    scratch.inner.as_diff()
 }
 
 /// Diff overlay rects between frames, reusing scratch buffers.
@@ -267,7 +258,6 @@ pub(crate) fn diff_overlays<'a>(
                 *old_id,
                 old_rect,
                 new_rect,
-                |id, from, to| OverlayRectChange { id, from, to },
                 &mut scratch.moved,
                 &mut scratch.resized,
                 &mut scratch.unchanged,

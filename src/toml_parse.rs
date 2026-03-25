@@ -165,16 +165,12 @@ pub(crate) fn parse(input: &str) -> Result<Layout, TomlError> {
     build_from_def(doc.layout)
 }
 
-fn into_toml_error(err: crate::error::PaneError) -> TomlError {
-    TomlError::LayoutError(err)
-}
-
 macro_rules! build_preset {
     ($def:expr, $ctor:expr $(, $field:ident)*) => {{
         let panels = require_panels_strings(&$def)?;
         let mut preset = $ctor(panels.iter().map(Box::as_ref));
         apply_opt!(preset, $def, $($field),*);
-        preset.build().map_err(into_toml_error)
+        Ok(preset.build()?)
     }};
 }
 
@@ -239,7 +235,7 @@ fn build_sidebar(def: LayoutDef) -> Result<Layout, TomlError> {
     let content = require_field(&def.content, "content")?;
     let mut preset = Layout::sidebar(sidebar, content);
     apply_opt!(preset, def, sidebar_width, gap);
-    preset.build().map_err(into_toml_error)
+    Ok(preset.build()?)
 }
 
 fn build_split(def: LayoutDef) -> Result<Layout, TomlError> {
@@ -259,7 +255,7 @@ fn build_split(def: LayoutDef) -> Result<Layout, TomlError> {
             });
         }
     }
-    preset.build().map_err(into_toml_error)
+    Ok(preset.build()?)
 }
 
 fn build_holy_grail(def: LayoutDef) -> Result<Layout, TomlError> {
@@ -277,7 +273,7 @@ fn build_holy_grail(def: LayoutDef) -> Result<Layout, TomlError> {
         sidebar_width,
         gap
     );
-    preset.build().map_err(into_toml_error)
+    Ok(preset.build()?)
 }
 
 fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
@@ -329,7 +325,7 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
         (None, None) => preset,
     };
     apply_opt!(preset, def, columns, gap);
-    preset.build().map_err(into_toml_error)
+    Ok(preset.build()?)
 }
 
 // -- Custom tree builder (Step 4) --
@@ -354,9 +350,8 @@ fn build_custom(def: LayoutDef) -> Result<Layout, TomlError> {
                 reason: "root node must have a 'type' field ('row' or 'col')".into(),
             });
         }
-    }
-    .map_err(into_toml_error)?;
-    builder.build().map_err(into_toml_error)
+    }?;
+    Ok(builder.build()?)
 }
 
 fn add_tree_children(ctx: &mut crate::ContainerCtx, children: Vec<TreeNodeDef>) {
@@ -466,7 +461,7 @@ fn build_adaptive(def: LayoutDef) -> Result<LayoutRuntime, TomlError> {
         let strategy = breakpoint_def_to_strategy(&bp)?;
         builder = builder.at(bp.min_width, strategy);
     }
-    builder.into_runtime().map_err(into_toml_error)
+    Ok(builder.into_runtime()?)
 }
 
 macro_rules! build_bp_strategy {

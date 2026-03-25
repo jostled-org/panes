@@ -1,124 +1,133 @@
 use std::sync::Arc;
 
 use panes::Strategy;
+use panes::runtime::LayoutRuntime;
 
 // ---------------------------------------------------------------------------
 // Factory → with_panels → into_runtime → resolve
 // ---------------------------------------------------------------------------
 
-#[test]
-fn master_stack_runtime() {
-    let mut rt = Strategy::master_stack()
-        .master_ratio(0.6)
-        .gap(1.0)
-        .with_panels(["editor", "chat", "status"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 24.0).unwrap();
-    assert_eq!(frame.layout().by_kind("editor").len(), 1);
-    assert_eq!(frame.layout().by_kind("chat").len(), 1);
-    assert_eq!(frame.layout().by_kind("status").len(), 1);
+fn assert_all_panels_resolve(name: &str, mut rt: LayoutRuntime, w: f32, h: f32, kinds: &[&str]) {
+    let frame = rt.resolve(w, h).unwrap();
+    for kind in kinds {
+        assert_eq!(
+            frame.layout().by_kind(kind).len(),
+            1,
+            "{name}: expected exactly one panel of kind \"{kind}\""
+        );
+    }
 }
 
 #[test]
-fn centered_master_runtime() {
-    let mut rt = Strategy::centered_master()
-        .master_ratio(0.5)
-        .with_panels(["a", "b", "c", "d", "e"])
-        .into_runtime()
-        .unwrap();
+fn preset_smoke_tests() {
+    let cases: Vec<(&str, LayoutRuntime, f32, f32, Vec<&str>)> = vec![
+        (
+            "master_stack",
+            Strategy::master_stack()
+                .master_ratio(0.6)
+                .gap(1.0)
+                .with_panels(["editor", "chat", "status"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            24.0,
+            vec!["editor", "chat", "status"],
+        ),
+        (
+            "centered_master",
+            Strategy::centered_master()
+                .master_ratio(0.5)
+                .with_panels(["a", "b", "c", "d", "e"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["a", "b", "c", "d", "e"],
+        ),
+        (
+            "deck",
+            Strategy::deck()
+                .master_ratio(0.5)
+                .gap(2.0)
+                .with_panels(["master", "s1", "s2"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["master", "s1", "s2"],
+        ),
+        (
+            "monocle",
+            Strategy::monocle()
+                .with_panels(["a", "b", "c"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["a", "b", "c"],
+        ),
+        (
+            "tabbed",
+            Strategy::tabbed()
+                .bar_height(2.0)
+                .with_panels(["t1", "t2", "t3"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["t1", "t2", "t3"],
+        ),
+        (
+            "stacked",
+            Strategy::stacked()
+                .bar_height(1.5)
+                .with_panels(["s1", "s2"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["s1", "s2"],
+        ),
+        (
+            "scrollable",
+            Strategy::scrollable()
+                .size(3)
+                .gap(1.0)
+                .with_panels(["p1", "p2", "p3", "p4", "p5"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["p1", "p2", "p3", "p4", "p5"],
+        ),
+        (
+            "dwindle",
+            Strategy::dwindle()
+                .ratio(0.6)
+                .gap(1.0)
+                .with_panels(["a", "b", "c", "d"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["a", "b", "c", "d"],
+        ),
+        (
+            "spiral",
+            Strategy::spiral()
+                .ratio(0.5)
+                .with_panels(["a", "b", "c"])
+                .into_runtime()
+                .unwrap(),
+            100.0,
+            100.0,
+            vec!["a", "b", "c"],
+        ),
+    ];
 
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("a").len(), 1);
-    assert_eq!(frame.layout().by_kind("e").len(), 1);
-}
-
-#[test]
-fn deck_runtime() {
-    let mut rt = Strategy::deck()
-        .master_ratio(0.5)
-        .gap(2.0)
-        .with_panels(["master", "s1", "s2"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("master").len(), 1);
-}
-
-#[test]
-fn monocle_runtime() {
-    let mut rt = Strategy::monocle()
-        .with_panels(["a", "b", "c"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("a").len(), 1);
-}
-
-#[test]
-fn tabbed_runtime() {
-    let mut rt = Strategy::tabbed()
-        .bar_height(2.0)
-        .with_panels(["t1", "t2", "t3"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("t1").len(), 1);
-}
-
-#[test]
-fn stacked_runtime() {
-    let mut rt = Strategy::stacked()
-        .bar_height(1.5)
-        .with_panels(["s1", "s2"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("s1").len(), 1);
-}
-
-#[test]
-fn scrollable_runtime() {
-    let mut rt = Strategy::scrollable()
-        .size(3)
-        .gap(1.0)
-        .with_panels(["p1", "p2", "p3", "p4", "p5"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("p1").len(), 1);
-}
-
-#[test]
-fn dwindle_runtime() {
-    let mut rt = Strategy::dwindle()
-        .ratio(0.6)
-        .gap(1.0)
-        .with_panels(["a", "b", "c", "d"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("a").len(), 1);
-    assert_eq!(frame.layout().by_kind("d").len(), 1);
-}
-
-#[test]
-fn spiral_runtime() {
-    let mut rt = Strategy::spiral()
-        .ratio(0.5)
-        .with_panels(["a", "b", "c"])
-        .into_runtime()
-        .unwrap();
-
-    let frame = rt.resolve(100.0, 100.0).unwrap();
-    assert_eq!(frame.layout().by_kind("c").len(), 1);
+    for (name, rt, w, h, kinds) in cases {
+        assert_all_panels_resolve(name, rt, w, h, &kinds);
+    }
 }
 
 // ---------------------------------------------------------------------------

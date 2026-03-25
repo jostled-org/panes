@@ -234,17 +234,34 @@ fn set_panel_size_not_found_returns_error() {
 #[test]
 fn size_mode_min_content_resolves() {
     let mut tree = LayoutTree::new();
-    let (_pa, a) = tree
+    let (pa, a) = tree
         .add_panel("a", grow(1.0).size_mode(SizeMode::MinContent))
         .unwrap();
-    let (_, b) = tree.add_panel("b", grow(1.0)).unwrap();
+    let (pb, b) = tree.add_panel("b", grow(1.0)).unwrap();
     let root = tree.add_col(0.0, vec![a, b]).unwrap();
     tree.set_root(root);
 
     let mut result = compile(&tree).unwrap();
     compute_layout(&mut result, 400.0, 400.0).unwrap();
 
-    // Panel resolves without error — that's the assertion
-    let la = panel_layout(&result, &tree, _pa).unwrap();
-    assert!(la.size.width > 0.0 || la.size.height > 0.0);
+    let la = panel_layout(&result, &tree, pa).unwrap();
+    let lb = panel_layout(&result, &tree, pb).unwrap();
+
+    // Taffy 0.9 maps MinContent to auto sizing. Without a measure function
+    // there is no intrinsic content, so Taffy treats the panel identically
+    // to a grow panel — both split the container evenly.
+    // We verify concrete geometry (not just "nonzero") to catch regressions.
+    assert_eq!(
+        la.size.width, 400.0,
+        "cross-axis should stretch to container width"
+    );
+    assert_eq!(
+        la.size.height, 200.0,
+        "min-content panel splits container evenly without measure fn"
+    );
+    assert_eq!(
+        la.size.height + lb.size.height,
+        400.0,
+        "panels should fill the container height"
+    );
 }

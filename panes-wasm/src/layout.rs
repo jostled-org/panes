@@ -31,7 +31,7 @@ impl WasmLayout {
                 let wr = WasmRect::from(*e.rect);
                 PanelJson {
                     id: e.id.raw(),
-                    kind: e.kind.to_owned(),
+                    kind: Box::from(e.kind),
                     rect: RectJson::from(wr),
                     kind_index: e.kind_index,
                 }

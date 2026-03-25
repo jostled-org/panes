@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::breakpoint::BreakpointEntry;
 use crate::compiler::CompileResult;
-use crate::diff::{self, OverlayDiffScratch};
+use crate::diff;
 use crate::overlay::{OverlayDef, OverlayId, OverlayIdGenerator};
 use crate::rect::Rect;
 use crate::resolver::{self, ResolveScratch, ResolvedLayout};
@@ -61,10 +61,11 @@ pub struct LayoutRuntime {
     pub(crate) previous: Option<Arc<ResolvedLayout>>,
     pub(crate) cached_compile: Option<CompileResult>,
     pub(crate) cached_kinds: Option<resolver::KindIndex>,
+    pub(crate) cached_sorted_kind_keys: Option<Arc<[Arc<str>]>>,
     pub(crate) rects_buf: Option<Vec<Option<Rect>>>,
     pub(crate) rects_buf_alt: Option<Vec<Option<Rect>>>,
-    pub(crate) diff_scratch: diff::DiffScratch,
-    pub(crate) overlay_diff_scratch: OverlayDiffScratch,
+    pub(crate) diff_scratch: diff::PanelScratch,
+    pub(crate) overlay_diff_scratch: diff::OverlayDiffScratch,
     pub(crate) resolve_scratch: ResolveScratch,
     pub(crate) strategy_source: StrategySource,
     pub(crate) sequence: PanelSequence,
@@ -92,10 +93,11 @@ pub(crate) fn base(
         previous: None,
         cached_compile: None,
         cached_kinds: None,
+        cached_sorted_kind_keys: None,
         rects_buf: None,
         rects_buf_alt: None,
-        diff_scratch: diff::DiffScratch::default(),
-        overlay_diff_scratch: OverlayDiffScratch::default(),
+        diff_scratch: diff::PanelScratch::default(),
+        overlay_diff_scratch: diff::OverlayDiffScratch::default(),
         resolve_scratch: ResolveScratch::default(),
         strategy_source,
         sequence,

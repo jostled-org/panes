@@ -288,3 +288,64 @@ macro_rules! layout {
     (@size_mode min_content) => { $crate::SizeMode::MinContent };
     (@size_mode max_content) => { $crate::SizeMode::MaxContent };
 }
+
+/// Generates the 5 standard adapter functions for a renderer backend.
+///
+/// Each adapter converts `panes::Rect` into a renderer-specific rect type.
+/// The macro eliminates the duplicated `convert`, `panels`, `panels_at`,
+/// `overlays`, `overlays_at` pattern across adapter crates.
+///
+/// # Parameters
+///
+/// - `rect`: target rect type (e.g. `ratatui::layout::Rect`, `egui::Rect`)
+/// - `origin`: origin type for `_at` offset variants (must be `Copy`)
+/// - `convert_fn`: expression `&panes::Rect -> TargetRect`
+/// - `convert_at_fn`: expression `(&panes::Rect, Origin) -> TargetRect`
+#[macro_export]
+macro_rules! impl_adapter {
+    (
+        rect: $target_rect:ty,
+        origin: $origin_ty:ty,
+        convert_fn: $convert:expr,
+        convert_at_fn: $convert_at:expr $(,)?
+    ) => {
+        pub fn convert(
+            resolved: &$crate::ResolvedLayout,
+        ) -> $crate::__FxHashMap<$crate::PanelId, $target_rect> {
+            resolved
+                .iter()
+                .map(|(pid, r)| (pid, ($convert)(r)))
+                .collect()
+        }
+
+        pub fn panels(
+            resolved: &$crate::ResolvedLayout,
+        ) -> impl Iterator<Item = $crate::PanelEntry<'_, $target_rect>> {
+            resolved.panels().map(|e| e.map_rect($convert))
+        }
+
+        pub fn panels_at(
+            resolved: &$crate::ResolvedLayout,
+            origin: $origin_ty,
+        ) -> impl Iterator<Item = $crate::PanelEntry<'_, $target_rect>> {
+            resolved
+                .panels()
+                .map(move |e| e.map_rect(|r| ($convert_at)(r, origin)))
+        }
+
+        pub fn overlays(
+            resolved: &$crate::ResolvedLayout,
+        ) -> impl Iterator<Item = $crate::OverlayEntry<'_, $target_rect>> {
+            resolved.overlays().map(|e| e.map_rect($convert))
+        }
+
+        pub fn overlays_at(
+            resolved: &$crate::ResolvedLayout,
+            origin: $origin_ty,
+        ) -> impl Iterator<Item = $crate::OverlayEntry<'_, $target_rect>> {
+            resolved
+                .overlays()
+                .map(move |e| e.map_rect(|r| ($convert_at)(r, origin)))
+        }
+    };
+}

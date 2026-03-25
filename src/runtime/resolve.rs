@@ -9,15 +9,17 @@ use crate::overlay::OverlayId;
 use crate::rect::Rect;
 use crate::resolver::{self, ResolvedLayout};
 
+type SortedKindKeys = Arc<[Arc<str>]>;
+
 impl LayoutRuntime {
     /// Resolve the layout at the given dimensions, producing a Frame with layout and diff.
     pub fn resolve(&mut self, width: f32, height: f32) -> Result<Frame, PaneError> {
         self.maybe_switch_breakpoint(width)?;
         let tree_dirty = self.tree.is_dirty();
-        let (mut result, cached_kinds) = self.compile_tree(tree_dirty)?;
+        let (mut result, cached_kinds, cached_sorted_kind_keys) = self.compile_tree(tree_dirty)?;
         crate::compiler::compute_layout(&mut result, width, height)?;
 
-        let mut layout = self.resolve_layout(&result, cached_kinds)?;
+        let mut layout = self.resolve_layout(&result, cached_kinds, cached_sorted_kind_keys)?;
         self.cached_compile = Some(result);
 
         apply_scroll_offset(&mut layout, self.viewport.scroll_offset);
@@ -44,7 +46,14 @@ impl LayoutRuntime {
     pub(crate) fn compile_tree(
         &mut self,
         tree_dirty: bool,
-    ) -> Result<(CompileResult, Option<resolver::KindIndex>), PaneError> {
+    ) -> Result<
+        (
+            CompileResult,
+            Option<resolver::KindIndex>,
+            Option<SortedKindKeys>,
+        ),
+        PaneError,
+    > {
         let result = match (tree_dirty, self.cached_compile.take()) {
             (false, Some(cached)) => cached,
             (_, old) => {
@@ -52,27 +61,32 @@ impl LayoutRuntime {
                 crate::compiler::compile_with_sizes(&self.tree, old, &self.panel_sizes)?
             }
         };
-        let cached_kinds = match tree_dirty {
-            false => self.cached_kinds.take(),
-            true => None,
+        let (cached_kinds, cached_sorted_kind_keys) = match tree_dirty {
+            false => (
+                self.cached_kinds.take(),
+                self.cached_sorted_kind_keys.take(),
+            ),
+            true => (None, None),
         };
-        Ok((result, cached_kinds))
+        Ok((result, cached_kinds, cached_sorted_kind_keys))
     }
 
     pub(crate) fn resolve_layout(
         &mut self,
         result: &CompileResult,
         cached_kinds: Option<resolver::KindIndex>,
+        cached_sorted_kind_keys: Option<SortedKindKeys>,
     ) -> Result<ResolvedLayout, PaneError> {
-        let layout = match cached_kinds {
-            Some(kinds) => resolver::resolve_with_cached_kinds(
+        let layout = match (cached_kinds, cached_sorted_kind_keys) {
+            (Some(kinds), Some(sorted_keys)) => resolver::resolve_with_cached_kinds(
                 result,
                 &self.tree,
                 kinds,
+                sorted_keys,
                 &mut self.resolve_scratch,
                 self.rects_buf.take(),
             )?,
-            None => resolver::resolve_dirty(
+            _ => resolver::resolve_dirty(
                 result,
                 &self.tree,
                 &mut self.resolve_scratch,
@@ -80,6 +94,7 @@ impl LayoutRuntime {
             )?,
         };
         self.cached_kinds = Some(Arc::clone(layout.kinds_arc()));
+        self.cached_sorted_kind_keys = Some(Arc::clone(layout.sorted_kind_keys_arc()));
         Ok(layout)
     }
 
@@ -115,32 +130,26 @@ impl LayoutRuntime {
             &mut self.diff_scratch,
         );
 
+        let curr = layout.overlay_rects_raw();
         match self.prev_overlay_rects.is_empty() {
             true => {
-                diff::first_frame_overlays(
-                    layout.overlay_rects_raw(),
-                    &mut self.overlay_diff_scratch,
-                );
+                diff::first_frame_overlays(curr, &mut self.overlay_diff_scratch);
             }
             false => {
                 diff::diff_overlays(
                     &self.prev_overlay_rects,
-                    layout.overlay_rects_raw(),
+                    curr,
                     &mut self.overlay_diff_scratch,
                 );
             }
         };
 
-        let new_overlay_rects = layout.overlay_rects_raw();
-        match (
-            self.prev_overlay_rects.is_empty(),
-            new_overlay_rects.is_empty(),
-        ) {
+        match (self.prev_overlay_rects.is_empty(), curr.is_empty()) {
             (true, true) => {}
             _ => {
                 self.prev_overlay_rects.clear();
                 self.prev_overlay_rects
-                    .extend(new_overlay_rects.iter().map(|(id, _, rect)| (*id, *rect)));
+                    .extend(curr.iter().map(|(id, _, rect)| (*id, *rect)));
             }
         }
     }
@@ -185,7 +194,7 @@ fn select_diff(
     tree_dirty: bool,
     prev: Option<&ResolvedLayout>,
     new: &ResolvedLayout,
-    scratch: &mut diff::DiffScratch,
+    scratch: &mut diff::PanelScratch,
 ) {
     match (tree_dirty, prev) {
         (_, None) => {

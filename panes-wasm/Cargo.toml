@@ -11,7 +11,6 @@ categories = ["gui", "wasm"]
 
 [dependencies]
 panes = { version = "0.17", path = ".." }
-rustc-hash = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen = { version = "0.2", optional = true }

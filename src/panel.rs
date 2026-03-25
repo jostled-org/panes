@@ -9,11 +9,8 @@ use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum SizeMode {
-    /// Size to the smallest content width/height.
     MinContent,
-    /// Size to the largest content width/height.
     MaxContent,
-    /// Size to content, clamped to the given maximum.
     FitContent(f32),
 }
 
@@ -22,13 +19,9 @@ pub enum SizeMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum Align {
-    /// Align to the start of the cross axis.
     Start,
-    /// Center along the cross axis.
     Center,
-    /// Align to the end of the cross axis.
     End,
-    /// Stretch to fill the cross axis (default behavior).
     Stretch,
 }
 
@@ -39,19 +32,14 @@ pub struct PanelIdGenerator {
 }
 
 impl PanelIdGenerator {
-    /// Create a generator starting at zero.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// The number of IDs generated so far (one past the last issued ID).
     pub fn high_water(&self) -> u32 {
         self.counter
     }
 
-    /// Produce the next unique `PanelId`.
-    ///
-    /// Returns an error if the counter reaches `u32::MAX`.
     pub fn next_id(&mut self) -> Result<PanelId, PaneError> {
         let id = PanelId::from_raw(self.counter);
         self.counter = self
@@ -66,78 +54,33 @@ impl PanelIdGenerator {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Constraints {
-    /// Flex grow factor. Mutually exclusive with `fixed`.
+    /// Mutually exclusive with `fixed`.
     pub grow: Option<f32>,
-    /// Fixed size in layout units. Mutually exclusive with `grow`.
+    /// Mutually exclusive with `grow`.
     pub fixed: Option<f32>,
-    /// Minimum size along the parent axis.
     pub min: Option<f32>,
-    /// Maximum size along the parent axis.
     pub max: Option<f32>,
-    /// Minimum width regardless of parent axis.
     pub min_width: Option<f32>,
-    /// Maximum width regardless of parent axis.
     pub max_width: Option<f32>,
-    /// Minimum height regardless of parent axis.
     pub min_height: Option<f32>,
-    /// Maximum height regardless of parent axis.
     pub max_height: Option<f32>,
-    /// Cross-axis alignment. None means Stretch (default).
     pub align: Option<Align>,
-    /// Content-based sizing mode. Overrides flex-basis in CSS emission.
+    /// Overrides flex-basis in CSS emission.
     pub size_mode: Option<SizeMode>,
 }
 
 impl Constraints {
-    /// Set the minimum size constraint.
-    pub fn min(mut self, value: f32) -> Self {
-        self.min = Some(value);
-        self
-    }
+    crate::macros::builder_mapped_setters!(
+        min(value: f32) -> min = Some(value);
+        max(value: f32) -> max = Some(value);
+        min_width(value: f32) -> min_width = Some(value);
+        max_width(value: f32) -> max_width = Some(value);
+        min_height(value: f32) -> min_height = Some(value);
+        max_height(value: f32) -> max_height = Some(value);
+        align(value: Align) -> align = Some(value);
+        size_mode(value: SizeMode) -> size_mode = Some(value)
+    );
 
-    /// Set the maximum size constraint.
-    pub fn max(mut self, value: f32) -> Self {
-        self.max = Some(value);
-        self
-    }
-
-    /// Set the minimum width constraint (cross-axis, absolute).
-    pub fn min_width(mut self, value: f32) -> Self {
-        self.min_width = Some(value);
-        self
-    }
-
-    /// Set the maximum width constraint (cross-axis, absolute).
-    pub fn max_width(mut self, value: f32) -> Self {
-        self.max_width = Some(value);
-        self
-    }
-
-    /// Set the minimum height constraint (cross-axis, absolute).
-    pub fn min_height(mut self, value: f32) -> Self {
-        self.min_height = Some(value);
-        self
-    }
-
-    /// Set the maximum height constraint (cross-axis, absolute).
-    pub fn max_height(mut self, value: f32) -> Self {
-        self.max_height = Some(value);
-        self
-    }
-
-    /// Set cross-axis alignment.
-    pub fn align(mut self, value: Align) -> Self {
-        self.align = Some(value);
-        self
-    }
-
-    /// Set content-based sizing mode.
-    pub fn size_mode(mut self, value: SizeMode) -> Self {
-        self.size_mode = Some(value);
-        self
-    }
-
-    /// Reject invalid constraint combinations.
     pub fn validate(&self) -> Result<(), PaneError> {
         Self::reject_bad_f32("grow", self.grow)?;
         Self::reject_bad_f32("fixed", self.fixed)?;
@@ -153,24 +96,22 @@ impl Constraints {
             _ => {}
         }
 
-        match (self.grow, self.fixed, self.min, self.max) {
-            (Some(_), Some(_), _, _) => Err(PaneError::InvalidConstraint(
-                ConstraintError::GrowFixedExclusive,
-            )),
-            (_, _, Some(lo), Some(hi)) if lo > hi => {
-                Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
+        match (self.grow, self.fixed) {
+            (Some(_), Some(_)) => {
+                return Err(PaneError::InvalidConstraint(
+                    ConstraintError::GrowFixedExclusive,
+                ));
             }
-            _ => Ok(()),
-        }?;
+            _ => {}
+        }
 
-        match (self.min_width, self.max_width) {
-            (Some(lo), Some(hi)) if lo > hi => {
-                Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
-            }
-            _ => Ok(()),
-        }?;
+        Self::check_range(self.min, self.max)?;
+        Self::check_range(self.min_width, self.max_width)?;
+        Self::check_range(self.min_height, self.max_height)
+    }
 
-        match (self.min_height, self.max_height) {
+    fn check_range(lo: Option<f32>, hi: Option<f32>) -> Result<(), PaneError> {
+        match (lo, hi) {
             (Some(lo), Some(hi)) if lo > hi => {
                 Err(PaneError::InvalidConstraint(ConstraintError::MinExceedsMax))
             }
@@ -185,7 +126,6 @@ impl Constraints {
     }
 }
 
-/// Create constraints with a grow factor.
 pub fn grow(value: f32) -> Constraints {
     Constraints {
         grow: Some(value),
@@ -193,7 +133,6 @@ pub fn grow(value: f32) -> Constraints {
     }
 }
 
-/// Create constraints with a fixed size.
 pub fn fixed(value: f32) -> Constraints {
     Constraints {
         fixed: Some(value),

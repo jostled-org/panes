@@ -22,11 +22,8 @@ id_newtype!(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HAlign {
-    /// Left edge.
     Left,
-    /// Horizontal center.
     Center,
-    /// Right edge.
     Right,
 }
 
@@ -34,11 +31,8 @@ pub enum HAlign {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VAlign {
-    /// Top edge.
     Top,
-    /// Vertical center.
     Center,
-    /// Bottom edge.
     Bottom,
 }
 
@@ -48,18 +42,13 @@ pub enum VAlign {
 pub enum OverlayAnchor {
     /// Relative to viewport edges.
     Viewport {
-        /// Horizontal alignment.
         h: HAlign,
-        /// Vertical alignment.
         v: VAlign,
-        /// Horizontal margin from edge.
         margin_x: f32,
-        /// Vertical margin from edge.
         margin_y: f32,
     },
     /// Relative to a base panel's rect (looked up by kind).
     Panel {
-        /// Kind of the anchor panel.
         #[cfg_attr(
             feature = "serde",
             serde(
@@ -68,13 +57,9 @@ pub enum OverlayAnchor {
             )
         )]
         kind: Arc<str>,
-        /// Horizontal alignment relative to panel.
         h: HAlign,
-        /// Vertical alignment relative to panel.
         v: VAlign,
-        /// Horizontal offset from anchor.
         offset_x: f32,
-        /// Vertical offset from anchor.
         offset_y: f32,
     },
 }
@@ -83,11 +68,8 @@ pub enum OverlayAnchor {
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OverlayExtent {
-    /// The base size value.
     pub value: ExtentValue,
-    /// Minimum size.
     pub min: Option<f32>,
-    /// Maximum size.
     pub max: Option<f32>,
 }
 
@@ -105,11 +87,9 @@ impl Default for OverlayExtent {
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExtentValue {
-    /// Fixed pixel size.
     Fixed(f32),
     /// Percentage of viewport (0.0–100.0).
     Percent(f32),
-    /// 100% of viewport on this axis.
     Full,
 }
 
@@ -125,32 +105,26 @@ pub struct OverlayDef {
 }
 
 impl OverlayDef {
-    /// The overlay's unique identifier.
     pub fn id(&self) -> OverlayId {
         self.id
     }
 
-    /// The overlay's kind string.
     pub fn kind(&self) -> &str {
         &self.kind
     }
 
-    /// Whether the overlay is visible.
     pub fn visible(&self) -> bool {
         self.visible
     }
 
-    /// The overlay's anchor position.
     pub fn anchor(&self) -> &OverlayAnchor {
         &self.anchor
     }
 
-    /// The overlay's width extent.
     pub fn width(&self) -> &OverlayExtent {
         &self.width
     }
 
-    /// The overlay's height extent.
     pub fn height(&self) -> &OverlayExtent {
         &self.height
     }
@@ -158,16 +132,12 @@ impl OverlayDef {
 
 /// A resolved overlay for adapter consumption.
 pub struct OverlayEntry<'a, R> {
-    /// Overlay identifier.
     pub id: OverlayId,
-    /// Overlay kind string.
     pub kind: &'a str,
-    /// Computed rectangle.
     pub rect: R,
 }
 
 impl<'a, R> OverlayEntry<'a, R> {
-    /// Transform the rect while preserving identity fields.
     pub fn map_rect<R2>(self, f: impl FnOnce(R) -> R2) -> OverlayEntry<'a, R2> {
         OverlayEntry {
             id: self.id,
@@ -181,14 +151,9 @@ impl<'a, R> OverlayEntry<'a, R> {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SnapshotOverlay {
-    /// Overlay kind string.
     pub kind: Box<str>,
-    /// Overlay anchor.
     pub anchor: OverlayAnchor,
-    /// Width extent.
     pub width: OverlayExtent,
-    /// Height extent.
     pub height: OverlayExtent,
-    /// Visibility state.
     pub visible: bool,
 }

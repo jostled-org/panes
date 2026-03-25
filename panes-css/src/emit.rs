@@ -1,14 +1,11 @@
 use std::fmt::Write as _;
 
-// `fmt::Write` for `String` is infallible. `let _ =` discards the unused `Result`.
-
 use panes::Direction;
 use panes::{
     Align, Constraints, ExtentValue, HAlign, Layout, LayoutTree, Node, NodeId, OverlayAnchor,
     OverlayDef, SizeMode, VAlign,
 };
 
-/// Mutable state threaded through recursive CSS emission.
 struct EmitCtx {
     css: String,
     counter: u32,

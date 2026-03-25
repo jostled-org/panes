@@ -4,22 +4,20 @@ use panes::{OverlayEntry, PanelEntry, PanelId, ResolvedLayout};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::Clear;
-use rustc_hash::FxHashMap;
 
-/// Convert a resolved panes layout into ratatui rects.
-///
-/// Uses edge-rounding quantization: each edge is rounded independently,
-/// so adjacent panels sharing a float edge produce the same integer —
-/// no gaps, no overlaps.
-pub fn convert(resolved: &ResolvedLayout) -> FxHashMap<PanelId, Rect> {
-    resolved.iter().map(|(pid, r)| (pid, quantize(r))).collect()
+panes::impl_adapter! {
+    rect: Rect,
+    origin: Rect,
+    convert_fn: quantize,
+    convert_at_fn: |r, origin: Rect| {
+        let mut rect = quantize(r);
+        rect.x += origin.x;
+        rect.y += origin.y;
+        rect
+    },
 }
 
-/// Convert a resolved layout into ratatui rects offset by a parent rect's origin.
-///
-/// Panels are positioned relative to `origin.x` and `origin.y`, making this
-/// suitable for rendering a panes layout inside another panes panel.
-pub fn convert_at(resolved: &ResolvedLayout, origin: Rect) -> FxHashMap<PanelId, Rect> {
+pub fn convert_at(resolved: &ResolvedLayout, origin: Rect) -> panes::__FxHashMap<PanelId, Rect> {
     resolved
         .iter()
         .map(|(pid, r)| {
@@ -31,33 +29,6 @@ pub fn convert_at(resolved: &ResolvedLayout, origin: Rect) -> FxHashMap<PanelId,
         .collect()
 }
 
-/// Iterate all panels in kind-grouped order, yielding identity and quantized rect.
-///
-/// No hashmap allocation — produces entries lazily from the resolved layout.
-pub fn panels(resolved: &ResolvedLayout) -> impl Iterator<Item = PanelEntry<'_, Rect>> {
-    resolved.panels().map(|e| e.map_rect(quantize))
-}
-
-/// Iterate all panels with quantized rects offset by a parent rect's origin.
-///
-/// Suitable for rendering a panes layout inside another panes panel.
-pub fn panels_at(
-    resolved: &ResolvedLayout,
-    origin: Rect,
-) -> impl Iterator<Item = PanelEntry<'_, Rect>> {
-    resolved.panels().map(move |e| {
-        e.map_rect(|r| {
-            let mut rect = quantize(r);
-            rect.x += origin.x;
-            rect.y += origin.y;
-            rect
-        })
-    })
-}
-
-/// Iterate all panels with focus state derived from the given focused panel.
-///
-/// Each item pairs a quantized `PanelEntry` with a `bool` indicating focus.
 /// A panel is focused when its id matches `focused`, or when its kind is a
 /// decoration (`_tab` / `_title` suffix) of the focused panel's kind.
 pub fn focused_panels<'a>(
@@ -84,10 +55,6 @@ pub fn focused_panels<'a>(
     })
 }
 
-/// Iterate all panels with focus state, offset by a parent rect's origin.
-///
-/// Combines the focus logic of [`focused_panels`] with the origin offset of
-/// [`panels_at`].
 pub fn focused_panels_at<'a>(
     resolved: &'a ResolvedLayout,
     focused: Option<PanelId>,
@@ -119,33 +86,7 @@ pub fn focused_panels_at<'a>(
     })
 }
 
-/// Iterate all resolved overlays, yielding identity and quantized ratatui rect.
-pub fn overlays(resolved: &ResolvedLayout) -> impl Iterator<Item = OverlayEntry<'_, Rect>> {
-    resolved.overlays().map(|e| e.map_rect(quantize))
-}
-
-/// Iterate all resolved overlays with quantized rects offset by a parent rect's origin.
-///
-/// Suitable for rendering overlays inside a nested panes layout.
-pub fn overlays_at(
-    resolved: &ResolvedLayout,
-    origin: Rect,
-) -> impl Iterator<Item = OverlayEntry<'_, Rect>> {
-    resolved.overlays().map(move |e| {
-        e.map_rect(|r| {
-            let mut rect = quantize(r);
-            rect.x += origin.x;
-            rect.y += origin.y;
-            rect
-        })
-    })
-}
-
-/// Clear underlying cells and render each overlay via the callback.
-///
-/// Overlays sit above panels. Without clearing, panel borders and content
-/// bleed through. This function handles the clear automatically — call it
-/// after rendering panels.
+/// Clear underlying cells before rendering each overlay. Call after panels.
 pub fn render_overlays(
     frame: &mut Frame,
     resolved: &ResolvedLayout,
@@ -157,9 +98,6 @@ pub fn render_overlays(
     }
 }
 
-/// Clear underlying cells and render each overlay, offset by a parent origin.
-///
-/// Combines [`overlays_at`] origin translation with automatic cell clearing.
 pub fn render_overlays_at(
     frame: &mut Frame,
     resolved: &ResolvedLayout,
@@ -172,7 +110,8 @@ pub fn render_overlays_at(
     }
 }
 
-/// Round edges, not positions+sizes, to produce pixel-perfect u16 rects.
+/// Edge-rounding quantization: each edge is rounded independently,
+/// so adjacent panels sharing a float edge produce the same integer.
 fn quantize(r: &panes::Rect) -> Rect {
     let left = clamp_edge(r.x.round());
     let top = clamp_edge(r.y.round());
@@ -187,7 +126,6 @@ fn quantize(r: &panes::Rect) -> Rect {
     }
 }
 
-/// Clamp a rounded edge value to the u16 range.
 fn clamp_edge(v: f32) -> u16 {
     match v {
         v if v <= 0.0 => 0,

@@ -48,27 +48,22 @@ fn is_box_slice_empty<T>(s: &[T]) -> bool {
 }
 
 impl LayoutSnapshot {
-    /// The snapshot source (strategy recipe or tree topology).
     pub fn source(&self) -> &SnapshotSource {
         &self.source
     }
 
-    /// The kind of the focused panel at snapshot time, if any.
     pub fn focused(&self) -> Option<&str> {
         self.focused.as_deref()
     }
 
-    /// Kinds of collapsed panels at snapshot time.
     pub fn collapsed(&self) -> &[Box<str>] {
         &self.collapsed
     }
 
-    /// Overlay definitions at snapshot time.
     pub fn overlays(&self) -> &[SnapshotOverlay] {
         &self.overlays
     }
 
-    /// Consume and return the overlay definitions.
     pub fn into_overlays(self) -> Vec<SnapshotOverlay> {
         self.overlays.into_vec()
     }
@@ -82,23 +77,15 @@ impl LayoutSnapshot {
 pub enum SnapshotSource {
     /// Strategy-based runtime — rebuild from recipe.
     Strategy {
-        /// The strategy configuration.
         strategy: StrategyConfig,
-        /// Panel kinds in sequence order (no decorative panels).
         panels: Box<[Box<str>]>,
     },
     /// Non-strategy runtime — rebuild from tree topology.
-    Tree {
-        /// The root node of the tree.
-        root: SnapshotNode,
-    },
+    Tree { root: SnapshotNode },
     /// Adaptive runtime — rebuild from breakpoints.
     Adaptive {
-        /// Breakpoint definitions sorted by min_width ascending.
         breakpoints: Box<[SnapshotBreakpoint]>,
-        /// Panel kinds in sequence order.
         panels: Box<[Box<str>]>,
-        /// The active breakpoint index at snapshot time.
         active_index: usize,
     },
 }
@@ -107,9 +94,7 @@ pub enum SnapshotSource {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SnapshotBreakpoint {
-    /// Minimum viewport width that activates this breakpoint.
     pub min_width: u32,
-    /// The strategy used at this breakpoint.
     pub strategy: StrategyConfig,
 }
 
@@ -119,82 +104,50 @@ pub struct SnapshotBreakpoint {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StrategyConfig {
-    /// Flat sequence of panels in a row or column.
     Sequence {
-        /// Layout direction.
         direction: Direction,
-        /// Gap between panels.
         gap: f32,
-        /// Split ratio for 2-panel sequences (split preset).
         #[cfg_attr(
             feature = "serde",
             serde(default, skip_serializing_if = "Option::is_none")
         )]
         ratio: Option<f32>,
     },
-    /// One master panel with a stack of secondaries.
     MasterStack {
-        /// Fraction of space for the master panel.
         master_ratio: f32,
-        /// Gap between panels.
         gap: f32,
     },
-    /// Master panel with a peek at adjacent panels.
     Deck {
-        /// Fraction of space for the master panel.
         master_ratio: f32,
-        /// Gap between panels.
         gap: f32,
     },
-    /// Master panel centered with stacks on both sides.
     CenteredMaster {
-        /// Fraction of space for the master panel.
         master_ratio: f32,
-        /// Gap between panels.
         gap: f32,
     },
-    /// Recursive binary splits (dwindle or spiral).
     BinarySplit {
-        /// Whether to alternate split direction in a spiral.
         spiral: bool,
-        /// Split ratio between parent and child.
         ratio: f32,
-        /// Gap between panels.
         gap: f32,
     },
-    /// CSS Grid with per-panel column spans (dashboard, grid, columns).
     Dashboard {
-        /// Column mode (fixed count, auto-fill, or auto-fit).
         columns: GridColumnMode,
-        /// Gap between panels.
         gap: f32,
-        /// Column span for each panel.
         spans: Box<[CardSpan]>,
-        /// When true, rows size to their tallest card instead of equal `1fr`.
         #[cfg_attr(feature = "serde", serde(default))]
         auto_rows: bool,
     },
-    /// Only one panel visible at a time (monocle, tabbed, stacked).
     ActivePanel {
-        /// Which variant of active-panel display.
         variant: ActivePanelVariant,
-        /// Height of the tab/title bar decoration.
         bar_height: f32,
     },
-    /// Sliding window of visible panels.
     Window {
-        /// How many panels are visible at once.
         size: usize,
-        /// Gap between panels.
         gap: f32,
     },
-    /// Fixed slots with predefined constraints.
     Slotted {
-        /// Slot definitions (kind + constraints).
         slots: Box<[SnapshotSlotDef]>,
-        /// Gap between slots.
         gap: f32,
-        /// Layout direction.
         direction: Direction,
     },
 }
@@ -203,9 +156,7 @@ pub enum StrategyConfig {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SnapshotSlotDef {
-    /// Panel kind for this slot.
     pub kind: Box<str>,
-    /// Size constraints for this slot.
     pub constraints: Constraints,
 }
 
@@ -213,25 +164,16 @@ pub struct SnapshotSlotDef {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SnapshotNode {
-    /// A leaf panel.
     Panel {
-        /// Application-defined panel kind.
         kind: Box<str>,
-        /// Size constraints.
         constraints: Constraints,
     },
-    /// Horizontal container (children laid out left-to-right).
     Row {
-        /// Gap between children.
         gap: f32,
-        /// Child nodes.
         children: Box<[SnapshotNode]>,
     },
-    /// Vertical container (children laid out top-to-bottom).
     Col {
-        /// Gap between children.
         gap: f32,
-        /// Child nodes.
         children: Box<[SnapshotNode]>,
     },
 }

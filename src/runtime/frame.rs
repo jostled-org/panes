@@ -3,10 +3,6 @@ use std::sync::Arc;
 use crate::resolver::ResolvedLayout;
 
 /// Result of a single resolve call: the resolved layout for this frame.
-///
-/// To access the diff between this frame and the previous one, call
-/// [`LayoutRuntime::last_diff()`] or [`LayoutRuntime::last_overlay_diff()`]
-/// after `resolve()`.
 #[derive(Clone)]
 pub struct Frame {
     layout: Arc<ResolvedLayout>,

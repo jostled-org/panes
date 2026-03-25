@@ -35,6 +35,7 @@ impl LayoutRuntime {
             &mut self.sequence,
             &mut self.cached_compile,
             &mut self.cached_kinds,
+            &mut self.cached_sorted_kind_keys,
         )?;
 
         self.viewport.collapsed.clear();
