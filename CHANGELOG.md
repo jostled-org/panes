@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2](https://github.com/jostled-org/panes/compare/panes-v0.18.1...panes-v0.18.2) - 2026-03-26
+
+### Fixed
+
+- *(panes-ratatui)* fix resolve_layout lifetime, update docs for TerminalFrame
+
 ## [0.18.1](https://github.com/jostled-org/panes/compare/panes-v0.18.0...panes-v0.18.1) - 2026-03-26
 
 ### Added

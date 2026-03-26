@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "panes"
-version = "0.18.1"
+version = "0.18.2"
 dependencies = [
  "criterion",
  "ratatui",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "panes-ratatui"
-version = "0.4.11"
+version = "0.4.12"
 dependencies = [
  "criterion",
  "panes",
