@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pedant": {
+      "command": "pedant-mcp",
+      "args": []
+    }
+  }
+}
