@@ -102,15 +102,22 @@ Adapters convert rects to renderer-native types:
 
 See the [demo app](https://github.com/jostled-org/p3-demo) for a working ratatui example, or try the [live wasm demo](https://jostled-org.github.io/p3-demo/wasm/).
 
-Each adapter provides a `panels()` iterator that yields `PanelEntry { id, kind, rect, kind_index }` — no hashmap, no cross-referencing:
+For ratatui, `panes_ratatui::resolve()` handles the f32→u16 terminal cell conversion automatically — no manual quantization:
 
 ```rust
-for entry in panes_ratatui::panels(&resolved) {
-    println!("{}: {} at {:?}", entry.id, entry.kind, entry.rect);
-}
+terminal.draw(|frame| {
+    let panes = panes_ratatui::resolve(&mut rt, frame.area())?;
+    for entry in panes.panels() {
+        frame.render_widget(make_widget(entry.kind), entry.rect);
+    }
+    for (entry, is_focused) in panes.focused_panels(rt.focused()) {
+        let style = if is_focused { highlight } else { normal };
+        frame.render_widget(styled_block(entry.kind, style), entry.rect);
+    }
+})?;
 ```
 
-`panes-ratatui` also provides `focused_panels()`, which pairs each entry with a focus bool — decorations (`_tab` / `_title`) light up automatically when their content panel is focused.
+For other adapters, `panels()` yields `PanelEntry { id, kind, rect, kind_index }` with native rect types — no hashmap, no cross-referencing.
 
 ## Performance
 

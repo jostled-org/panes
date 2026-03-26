@@ -987,41 +987,57 @@ let entries: Vec<_> = resolved
 panes-ratatui = "0.4"
 ```
 
+panes computes layout in continuous f32 space. Ratatui renders in u16 terminal cells. `panes_ratatui::resolve()` bridges the gap — it resolves and quantizes in one step, so you never see f32 rects:
+
 ```rust
-let resolved = layout.resolve(80.0, 24.0)?;
+terminal.draw(|frame| {
+    let panes = panes_ratatui::resolve(&mut rt, frame.area())?;
 
-// Iterator — preferred for render loops
-for entry in panes_ratatui::panels(&resolved) {
-    println!("{}: {} at {:?}", entry.id, entry.kind, entry.rect);
-}
-
-// Hashmap — for random access by PanelId
-let rects: FxHashMap<PanelId, ratatui::layout::Rect> = panes_ratatui::convert(&resolved);
+    for entry in panes.panels() {
+        frame.render_widget(make_widget(entry.kind), entry.rect);
+    }
+})?;
 ```
 
-Uses edge-rounding quantization: adjacent panels sharing a float boundary produce matching integer edges. No gaps, no overlaps.
-
-`panels_at()` and `convert_at()` offset rects by a parent origin, for rendering a panes layout inside another panel.
-
-`focused_panels()` pairs each entry with a focus `bool`. A panel is focused when its id matches the given `PanelId`, or when its kind is a decoration (`_tab` / `_title` suffix) of the focused panel's kind. Pass `runtime.focused()` or any `Option<PanelId>`:
+For stateless one-shot layouts (no runtime), use `resolve_layout`:
 
 ```rust
-for (entry, is_focused) in panes_ratatui::focused_panels(&resolved, rt.focused()) {
-    let style = if is_focused { focused_style } else { normal_style };
+let layout = Layout::holy_grail("header", "footer", "left", "main", "right").build()?;
+
+terminal.draw(|frame| {
+    let panes = panes_ratatui::resolve_layout(&layout, frame.area())?;
+    for entry in panes.panels() {
+        frame.render_widget(make_widget(entry.kind), entry.rect);
+    }
+})?;
+```
+
+Both return a `TerminalFrame` with the same methods:
+
+- `panels()` — all panels with quantized rects in kind-grouped order
+- `focused_panels(focused)` — panels paired with a focus bool. Decorations (`_tab` / `_title` suffix) light up automatically when their content panel is focused
+- `overlays()` — overlay rects in z-order
+- `render_overlays(frame, render)` — clears underlying cells then calls your render function per overlay
+- `get(pid)` — quantized rect for a specific panel
+- `diff()` — layout diff (runtime path only, `None` for stateless)
+- `inner()` — raw panes Frame (runtime path only)
+
+```rust
+// Focus-aware rendering
+for (entry, is_focused) in panes.focused_panels(rt.focused()) {
+    let style = match is_focused { true => highlight, false => normal };
     frame.render_widget(styled_block(entry.kind, style), entry.rect);
 }
-```
 
-`focused_panels_at()` combines focus logic with origin offset.
-
-`render_overlays()` clears underlying cells and calls your render function for each overlay. Without clearing, panel borders bleed through. Use this after rendering panels:
-
-```rust
-panes_ratatui::render_overlays(frame, &resolved, |frame, entry| {
-    let block = Block::default().borders(Borders::ALL);
-    frame.render_widget(block, entry.rect);
+// Overlay rendering (clears cells under each overlay first)
+panes.render_overlays(frame, |frame, entry| {
+    frame.render_widget(Block::default().borders(Borders::ALL), entry.rect);
 });
 ```
+
+Edge-rounding quantization ensures adjacent panels sharing a float boundary produce matching integer edges. No gaps, no overlaps.
+
+The free functions (`panels()`, `convert()`, `focused_panels()`, etc.) remain available for manual control, but `TerminalFrame` is the recommended path.
 
 `render_overlays_at()` combines clearing with origin offset. `overlays()` and `overlays_at()` are also available for manual control.
 

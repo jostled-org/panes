@@ -107,8 +107,9 @@ pub fn resolve<'a>(rt: &'a mut LayoutRuntime, area: Rect) -> Result<TerminalFram
 /// Resolve a layout without runtime state.
 ///
 /// Returns a [`TerminalFrame`] with quantized rects. [`diff`](TerminalFrame::diff)
-/// and [`inner`](TerminalFrame::inner) return `None`.
-pub fn resolve_layout(layout: &Layout, area: Rect) -> Result<TerminalFrame<'_>, PaneError> {
+/// and [`inner`](TerminalFrame::inner) return `None`. The `'static` lifetime
+/// reflects that the `Stateless` variant owns all its data.
+pub fn resolve_layout(layout: &Layout, area: Rect) -> Result<TerminalFrame<'static>, PaneError> {
     let resolved = layout.resolve(f32::from(area.width), f32::from(area.height))?;
     Ok(TerminalFrame {
         kind: TerminalFrameKind::Stateless { resolved },

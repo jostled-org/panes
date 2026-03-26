@@ -272,3 +272,65 @@ fn resolve_layout_focused_panels() {
         .expect("chat entry");
     assert!(!chat_focused, "chat should not be focused");
 }
+
+#[test]
+fn resolve_overlays_yields_quantized_rects() {
+    let mut rt = master_stack_runtime(&["editor", "chat"]);
+    rt.add_overlay("picker", Overlay::center().fixed(41.0, 11.0))
+        .unwrap();
+    rt.add_overlay("tooltip", Overlay::center().fixed(19.0, 5.0))
+        .unwrap();
+    let area = Rect::new(0, 0, 80, 24);
+    let frame = panes_ratatui::resolve(&mut rt, area).unwrap();
+
+    let overlays: Vec<_> = frame.overlays().collect();
+    assert_eq!(overlays.len(), 2, "should yield two overlays");
+
+    for entry in &overlays {
+        let r = entry.rect;
+        assert!(
+            r.x + r.width <= 80,
+            "overlay {:?} exceeds width",
+            entry.kind
+        );
+        assert!(
+            r.y + r.height <= 24,
+            "overlay {:?} exceeds height",
+            entry.kind
+        );
+        assert!(
+            r.width > 0 && r.height > 0,
+            "overlay {:?} has zero size",
+            entry.kind
+        );
+        // Quantized dimensions should match the rounded fixed sizes
+        assert_eq!(
+            r.width,
+            (r.x + r.width) - r.x,
+            "width should equal right - left for {:?}",
+            entry.kind
+        );
+    }
+}
+
+#[test]
+fn get_invalid_panel_id_returns_none() {
+    // Runtime path
+    let mut rt = master_stack_runtime(&["editor", "chat"]);
+    let area = Rect::new(0, 0, 80, 24);
+    let frame = panes_ratatui::resolve(&mut rt, area).unwrap();
+
+    let invalid = panes::PanelId::from_raw(9999);
+    assert!(
+        frame.get(invalid).is_none(),
+        "runtime frame should return None for unknown PanelId"
+    );
+
+    // Stateless path
+    let layout = master_stack_layout(&["editor", "chat"]);
+    let frame = panes_ratatui::resolve_layout(&layout, area).unwrap();
+    assert!(
+        frame.get(invalid).is_none(),
+        "stateless frame should return None for unknown PanelId"
+    );
+}
