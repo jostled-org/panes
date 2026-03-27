@@ -1,11 +1,9 @@
 use serde::Serialize;
 
-use crate::WasmRect;
-
 #[derive(Serialize)]
-pub(crate) struct PanelJson {
+pub(crate) struct PanelJson<'a> {
     pub id: u32,
-    pub kind: Box<str>,
+    pub kind: &'a str,
     pub rect: RectJson,
     #[serde(rename = "kindIndex")]
     pub kind_index: usize,
@@ -33,17 +31,6 @@ pub(crate) struct DiffJson {
     pub moved: Box<[RectChangeJson]>,
     pub resized: Box<[RectChangeJson]>,
     pub unchanged: Box<[u32]>,
-}
-
-impl From<WasmRect> for RectJson {
-    fn from(r: WasmRect) -> Self {
-        Self {
-            x: r.x,
-            y: r.y,
-            w: r.w,
-            h: r.h,
-        }
-    }
 }
 
 impl From<panes::Rect> for RectJson {

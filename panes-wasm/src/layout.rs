@@ -1,10 +1,10 @@
+use std::cell::OnceCell;
 use std::sync::Arc;
 
 use panes::{BoundaryAxis, ResolvedLayout};
 #[cfg(feature = "js")]
 use wasm_bindgen::prelude::*;
 
-use crate::WasmRect;
 use crate::json_types::{PanelJson, RectJson};
 
 /// Resolved layout snapshot for JavaScript consumers.
@@ -13,31 +13,85 @@ use crate::json_types::{PanelJson, RectJson};
 #[cfg_attr(feature = "js", wasm_bindgen)]
 pub struct WasmLayout {
     inner: Arc<ResolvedLayout>,
+    buf: Vec<f64>,
+    cached_kind_table: OnceCell<Result<String, String>>,
+    cached_panel_count: OnceCell<u32>,
 }
 
 impl WasmLayout {
     pub(crate) fn new(inner: Arc<ResolvedLayout>) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            buf: Vec::new(),
+            cached_kind_table: OnceCell::new(),
+            cached_panel_count: OnceCell::new(),
+        }
     }
 
     /// Serialize all panels to a JSON array string.
     ///
     /// Each entry has `id`, `kind`, `rect` (with f64 fields), and `kindIndex`.
     pub fn panels(&self) -> Result<String, String> {
-        let entries: Vec<PanelJson> = self
+        let entries: Vec<PanelJson<'_>> = self
             .inner
             .panels()
-            .map(|e| {
-                let wr = WasmRect::from(*e.rect);
-                PanelJson {
-                    id: e.id.raw(),
-                    kind: Box::from(e.kind),
-                    rect: RectJson::from(wr),
-                    kind_index: e.kind_index,
-                }
+            .map(|e| PanelJson {
+                id: e.id.raw(),
+                kind: e.kind,
+                rect: RectJson::from(*e.rect),
+                kind_index: e.kind_index,
             })
             .collect();
         serde_json::to_string(&entries).map_err(|e| e.to_string())
+    }
+
+    /// Populate and return a flat f64 buffer with 6 values per panel.
+    ///
+    /// Layout: `[id, x, y, w, h, kindIndex, id, x, y, w, h, kindIndex, ...]`
+    /// in the same kind-grouped order as [`panels()`](Self::panels).
+    /// The buffer is reused across calls — no allocation after first use
+    /// if panel count stays the same or shrinks.
+    pub fn panels_buf(&mut self) -> &[f64] {
+        self.buf.clear();
+        let mut count: u32 = 0;
+        for entry in self.inner.panels() {
+            self.buf.extend_from_slice(&[
+                f64::from(entry.id.raw()),
+                f64::from(entry.rect.x),
+                f64::from(entry.rect.y),
+                f64::from(entry.rect.w),
+                f64::from(entry.rect.h),
+                f64::from(entry.kind_index as u32),
+            ]);
+            count += 1;
+        }
+        let _ = self.cached_panel_count.set(count);
+        &self.buf
+    }
+
+    /// Return the kind strings as a JSON array in `kind_index` order.
+    ///
+    /// `kind_table()[kindIndex]` gives the kind string for any panel
+    /// in the [`panels_buf()`](Self::panels_buf) output.
+    pub fn kind_table(&self) -> Result<String, String> {
+        self.cached_kind_table
+            .get_or_init(|| {
+                let keys: Vec<&str> = self
+                    .inner
+                    .sorted_kind_keys()
+                    .iter()
+                    .map(AsRef::as_ref)
+                    .collect();
+                serde_json::to_string(&keys).map_err(|e| e.to_string())
+            })
+            .clone()
+    }
+
+    /// Number of panels in the resolved layout.
+    pub fn panel_count(&self) -> u32 {
+        *self
+            .cached_panel_count
+            .get_or_init(|| self.inner.panels().count() as u32)
     }
 
     /// Return the panel whose rect contains the given point, or `None`.
