@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.3](https://github.com/jostled-org/panes/compare/panes-v0.18.2...panes-v0.18.3) - 2026-03-27
+
+### Added
+
+- *(panes-egui)* add EguiFrame resolve wrapper for DX consistency
+
+### Other
+
+- add .mcp.json to gitignore
+
 ## [0.18.2](https://github.com/jostled-org/panes/compare/panes-v0.18.1...panes-v0.18.2) - 2026-03-26
 
 ### Fixed
