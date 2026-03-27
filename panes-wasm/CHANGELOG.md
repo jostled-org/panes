@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/jostled-org/panes/compare/panes-wasm-v0.4.11...panes-wasm-v0.5.0) - 2026-03-27
+
+### Other
+
+- *(panes-wasm)* add Float64Array fast path and cache kind_table
+
 ## [0.4.11](https://github.com/jostled-org/panes/compare/panes-wasm-v0.4.10...panes-wasm-v0.4.11) - 2026-03-25
 
 ### Other
