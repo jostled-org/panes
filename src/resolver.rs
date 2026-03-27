@@ -102,6 +102,13 @@ impl ResolvedLayout {
         self.kinds.keys().map(|k| k.as_ref())
     }
 
+    /// Sorted kind keys in the same order used by [`panels()`](Self::panels).
+    ///
+    /// Index position matches the `kind_index` yielded by `panels()`.
+    pub fn sorted_kind_keys(&self) -> &[Arc<str>] {
+        &self.sorted_kind_keys
+    }
+
     pub fn shift_x(&mut self, dx: f32) {
         for rect in self.rects.iter_mut().flatten() {
             rect.x += dx;
