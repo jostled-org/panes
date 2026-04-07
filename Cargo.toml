@@ -1,6 +1,6 @@
 [package]
 name = "panes"
-version = "0.18.4"
+version = "0.18.5"
 edition = "2024"
 description = "Renderer-agnostic layout engine with declarative ergonomics"
 license = "MIT OR Apache-2.0"

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3](https://github.com/jostled-org/panes/compare/panes-css-v0.7.2...panes-css-v0.7.3) - 2026-04-07
+
+### Fixed
+
+- *(ci)* disable taffy default features to exclude MPL-2.0 cssparser
+
+### Other
+
+- update taffy 0.9→0.10 and egui 0.33→0.34
+
 ## [0.7.2](https://github.com/jostled-org/panes/compare/panes-css-v0.7.1...panes-css-v0.7.2) - 2026-03-25
 
 ### Other
