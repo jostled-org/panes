@@ -5,11 +5,13 @@
 [![dependencies](https://deps.rs/repo/github/jostled-org/panes/status.svg)](https://deps.rs/repo/github/jostled-org/panes)
 [![license](https://img.shields.io/crates/l/panes.svg)](https://github.com/jostled-org/panes/blob/main/LICENSE-MIT)
 
-You keep solving the same panel layout problem — splits, stacks, grids, resize — from scratch in every project.
+You keep rebuilding the same pane manager in every app: split views, stacks, dashboards, resize handles, focus order, and panel insertion rules.
 
-**panes** is a spatial layout engine that computes rectangles without rendering them.
+**panes** is a pane layout and runtime engine. It computes panel rectangles without rendering them, so the same layout logic can power ratatui, egui, the browser, canvas, wasm, or your own renderer.
 
-Describe panels in rows, columns, and presets. panes solves the geometry via Taffy (flexbox and CSS Grid) and hands back a map of `PanelId → Rect`. No framework. No widget system. No opinions about pixels.
+Describe panels in rows, columns, and tiling presets. panes solves the geometry via Taffy, tracks runtime state like focus and mutations, and hands back a map of `PanelId -> Rect`. No widget system. No renderer lock-in.
+
+Use it when you need more than static flexbox: split-pane apps, IDE-like shells, dashboards, game HUDs, TUI workspaces, or any UI where panels are added, removed, resized, focused, or restored from snapshots.
 
 ## Proof
 
@@ -51,7 +53,7 @@ Optional features:
 
 ## Usage
 
-Build custom layouts or pick from 13 presets. Pass any coordinate system — pixels, logical points, terminal cells.
+Build custom layouts or pick from 13 presets. Pass any coordinate system: pixels, logical points, terminal cells.
 
 ```rust
 // Custom — full control with the layout macro
