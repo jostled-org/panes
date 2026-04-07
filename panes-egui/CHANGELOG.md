@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.12](https://github.com/jostled-org/panes/compare/panes-egui-v0.4.11...panes-egui-v0.4.12) - 2026-04-07
+
+### Other
+
+- update taffy 0.9→0.10 and egui 0.33→0.34
+
 ## [0.4.11](https://github.com/jostled-org/panes/compare/panes-egui-v0.4.10...panes-egui-v0.4.11) - 2026-03-27
 
 ### Added
