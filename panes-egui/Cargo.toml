@@ -11,7 +11,7 @@ categories = ["gui"]
 
 [dependencies]
 panes = { version = "0.18", path = ".." }
-egui = { version = "0.33", default-features = false }
+egui = { version = "0.34", default-features = false }
 
 [dev-dependencies]
 panes = { version = "0.18", path = ".." }

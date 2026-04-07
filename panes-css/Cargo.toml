@@ -11,7 +11,7 @@ categories = ["gui", "web-programming"]
 
 [dependencies]
 panes = { version = "0.18", path = ".." }
-taffy = "0.9"
+taffy = "0.10"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
