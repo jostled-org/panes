@@ -61,6 +61,27 @@ fn wasm_boundary_at_point() {
     assert!(parsed.get("sides").is_some());
 }
 
+#[test]
+fn wasm_boundary_at_point_buf_matches_json_hit() {
+    let mut rt = WasmRuntime::from_preset("master-stack", &["a", "b"]).unwrap();
+    let mut layout = rt.resolve(200.0, 100.0).unwrap();
+
+    let json = layout.panels().unwrap();
+    let panels: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
+    let a_rect = &panels[0]["rect"];
+    let boundary_x = a_rect["x"].as_f64().unwrap() + a_rect["w"].as_f64().unwrap();
+
+    let json_hit = layout.boundary_at_point(boundary_x, 50.0, 5.0).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json_hit).unwrap();
+    let buf = layout.boundary_at_point_buf(boundary_x, 50.0, 5.0);
+
+    assert_eq!(buf.len(), 4);
+    assert_eq!(buf[0], 0.0);
+    assert_eq!(buf[1], parsed["sides"][0].as_f64().unwrap());
+    assert_eq!(buf[2], parsed["sides"][1].as_f64().unwrap());
+    assert_eq!(buf[3], parsed["position"].as_f64().unwrap());
+}
+
 // --- 4.T4: boundary_at_point none ---
 
 #[test]
@@ -88,4 +109,33 @@ fn wasm_overlay_at_point() {
     let layout = rt.resolve(200.0, 100.0).unwrap();
 
     assert_eq!(layout.overlay_at_point(50.0, 50.0), None);
+}
+
+#[test]
+fn wasm_hit_test_queries_reject_non_finite_and_out_of_range_inputs() {
+    let mut rt = WasmRuntime::from_preset("master-stack", &["a", "b"]).unwrap();
+    let mut layout = rt.resolve(200.0, 100.0).unwrap();
+
+    assert_eq!(layout.panel_at_point(f64::NAN, 50.0), None);
+    assert_eq!(layout.panel_at_point(f64::INFINITY, 50.0), None);
+    assert_eq!(layout.panel_at_point(f64::from(f32::MAX) * 2.0, 50.0), None);
+
+    assert_eq!(layout.overlay_at_point(50.0, f64::NEG_INFINITY), None);
+    assert_eq!(
+        layout.boundary_at_point(f64::NAN, 50.0, 5.0),
+        None,
+        "boundary JSON helper should reject invalid numbers"
+    );
+    assert!(
+        layout
+            .boundary_at_point_buf(50.0, f64::from(f32::MAX) * 2.0, 5.0)
+            .is_empty(),
+        "boundary buffer helper should reject invalid numbers"
+    );
+    assert!(
+        layout
+            .boundary_at_point_buf(50.0, 50.0, f64::NAN)
+            .is_empty(),
+        "boundary buffer helper should reject invalid tolerance"
+    );
 }

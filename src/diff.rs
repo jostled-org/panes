@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::node::PanelId;
-use crate::overlay::OverlayId;
+use crate::overlay::{AnchorFailure, OverlayId};
 use crate::rect::Rect;
 use crate::resolver::ResolvedLayout;
 
@@ -47,8 +47,26 @@ pub struct DiffResult<'a, Id> {
 /// Panel layout diff between frames.
 pub type LayoutDiff<'a> = DiffResult<'a, PanelId>;
 
-/// Overlay diff between frames.
-pub type OverlayDiff<'a> = DiffResult<'a, OverlayId>;
+/// Overlay diff between frames with anchor failure tracking.
+///
+/// Unlike [`DiffResult`], this type carries an `anchor_failed` field for
+/// overlays that resolved in the previous frame but whose anchor panel
+/// is now missing or collapsed.
+#[derive(Debug)]
+pub struct OverlayDiff<'a> {
+    /// Overlays present in the new frame but not the old.
+    pub added: &'a [OverlayId],
+    /// Overlays present in the old frame but not the new (hidden or removed).
+    pub removed: &'a [OverlayId],
+    /// Overlays whose position changed.
+    pub moved: &'a [RectChange<OverlayId>],
+    /// Overlays whose size changed.
+    pub resized: &'a [RectChange<OverlayId>],
+    /// Overlays whose rect is identical across frames.
+    pub unchanged: &'a [OverlayId],
+    /// Overlays that failed to anchor this frame but were resolved last frame.
+    pub anchor_failed: &'a [OverlayId],
+}
 
 fn position_changed(a: &Rect, b: &Rect) -> bool {
     (a.x - b.x).abs() > EPSILON || (a.y - b.y).abs() > EPSILON
@@ -94,7 +112,11 @@ fn classify<Id: Copy>(
     }
 }
 
-/// Reusable scratch buffers for diffing without per-frame allocation.
+/// Reusable scratch buffers for frame-to-frame diffing.
+///
+/// Retains heap capacity across frames so repeated `resolve()` calls
+/// avoid allocation. Call [`as_diff`](Self::as_diff) to borrow the
+/// categorized results.
 pub struct DiffScratch<Id> {
     pub(crate) added: Vec<Id>,
     pub(crate) removed: Vec<Id>,
@@ -140,10 +162,46 @@ impl<Id> DiffScratch<Id> {
 /// Panel diff scratch buffers.
 pub type PanelDiffScratch = DiffScratch<PanelId>;
 
-/// Overlay diff scratch buffers.
-pub type OverlayDiffScratch = DiffScratch<OverlayId>;
+/// Overlay diff scratch buffers with anchor failure tracking.
+///
+/// Extends [`DiffScratch`] with hash-set bookkeeping for overlay identity
+/// and an `anchor_failed` buffer for overlays whose anchor disappeared.
+#[derive(Default)]
+pub struct OverlayDiffScratch {
+    pub(crate) inner: DiffScratch<OverlayId>,
+    pub(crate) anchor_failed: Vec<OverlayId>,
+    curr_rect_indices: FxHashMap<OverlayId, usize>,
+    curr_failed_ids: FxHashSet<OverlayId>,
+    prev_rect_ids: FxHashSet<OverlayId>,
+}
 
-/// Panel scratch with hash-set bookkeeping for add/remove detection.
+impl OverlayDiffScratch {
+    fn clear(&mut self) {
+        self.inner.clear();
+        self.anchor_failed.clear();
+        self.curr_rect_indices.clear();
+        self.curr_failed_ids.clear();
+        self.prev_rect_ids.clear();
+    }
+
+    /// Borrow the overlay diff result from this scratch buffer.
+    pub fn as_diff(&self) -> OverlayDiff<'_> {
+        OverlayDiff {
+            added: &self.inner.added,
+            removed: &self.inner.removed,
+            moved: &self.inner.moved,
+            resized: &self.inner.resized,
+            unchanged: &self.inner.unchanged,
+            anchor_failed: &self.anchor_failed,
+        }
+    }
+}
+
+/// Panel diff scratch with hash-set bookkeeping for add/remove detection.
+///
+/// Tracks the old and new panel ID sets so added/removed panels can be
+/// computed via set difference. Call [`as_diff`](Self::as_diff) to borrow
+/// the categorized results.
 #[derive(Default)]
 pub struct PanelScratch {
     pub(crate) old_ids: FxHashSet<PanelId>,
@@ -242,46 +300,77 @@ pub(crate) fn first_frame<'a>(
 }
 
 /// Diff overlay rects between frames, reusing scratch buffers.
+///
+/// Overlays that were resolved last frame but now fail to anchor appear in `anchor_failed`.
+/// Overlays that were hidden or removed appear in `removed`.
 pub(crate) fn diff_overlays<'a>(
-    prev: &[(OverlayId, Rect)],
-    curr: &[(OverlayId, Arc<str>, Rect)],
+    prev_rects: &[(OverlayId, Arc<str>, Rect)],
+    curr_rects: &[(OverlayId, Arc<str>, Rect)],
+    curr_failures: &[(OverlayId, Arc<str>, AnchorFailure)],
     scratch: &'a mut OverlayDiffScratch,
 ) -> OverlayDiff<'a> {
     scratch.clear();
+    scratch.curr_rect_indices.extend(
+        curr_rects
+            .iter()
+            .enumerate()
+            .map(|(index, (id, _, _))| (*id, index)),
+    );
+    scratch
+        .curr_failed_ids
+        .extend(curr_failures.iter().map(|(id, _, _)| *id));
+    scratch
+        .prev_rect_ids
+        .extend(prev_rects.iter().map(|(id, _, _)| *id));
 
-    // Find removed and common
-    for (old_id, old_rect) in prev {
-        let found = curr.iter().find(|(id, _, _)| id == old_id);
-        match found {
-            None => scratch.removed.push(*old_id),
-            Some((_, _, new_rect)) => classify(
+    // Find removed/failed and common among previously-resolved overlays
+    for (old_id, _, old_rect) in prev_rects {
+        let in_curr = scratch
+            .curr_rect_indices
+            .get(old_id)
+            .map(|index| &curr_rects[*index].2);
+        let now_failed = scratch.curr_failed_ids.contains(old_id);
+        match (in_curr, now_failed) {
+            (Some(new_rect), _) => classify(
                 *old_id,
                 old_rect,
                 new_rect,
-                &mut scratch.moved,
-                &mut scratch.resized,
-                &mut scratch.unchanged,
+                &mut scratch.inner.moved,
+                &mut scratch.inner.resized,
+                &mut scratch.inner.unchanged,
             ),
+            (None, true) => scratch.anchor_failed.push(*old_id),
+            (None, false) => scratch.inner.removed.push(*old_id),
         }
     }
 
-    // Find added
-    for (new_id, _, _) in curr {
-        let in_prev = prev.iter().any(|(id, _)| id == new_id);
-        if !in_prev {
-            scratch.added.push(*new_id);
+    // Find newly added (in curr_rects but not in prev_rects)
+    for (new_id, _, _) in curr_rects {
+        if !scratch.prev_rect_ids.contains(new_id) {
+            scratch.inner.added.push(*new_id);
         }
     }
+
+    // Overlays that failed in both frames are not reported in any diff category.
+    // Overlays that were failed before but now resolved appear as added (handled above).
 
     scratch.as_diff()
 }
 
-/// Produce an overlay diff for the first frame — all overlays are added.
+/// Produce an overlay diff for the first frame — all resolved overlays are added,
+/// all failed overlays are in anchor_failed.
 pub(crate) fn first_frame_overlays<'a>(
     rects: &[(OverlayId, Arc<str>, Rect)],
+    failures: &[(OverlayId, Arc<str>, AnchorFailure)],
     scratch: &'a mut OverlayDiffScratch,
 ) -> OverlayDiff<'a> {
     scratch.clear();
-    scratch.added.extend(rects.iter().map(|(id, _, _)| *id));
+    scratch
+        .inner
+        .added
+        .extend(rects.iter().map(|(id, _, _)| *id));
+    scratch
+        .anchor_failed
+        .extend(failures.iter().map(|(id, _, _)| *id));
     scratch.as_diff()
 }

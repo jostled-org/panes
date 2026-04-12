@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 //! Comparative benchmark: panes vs ratatui::Layout vs taffy (direct).
 //!
 //! Each scenario builds an equivalent layout and measures resolve time.

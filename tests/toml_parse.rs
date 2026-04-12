@@ -1,4 +1,5 @@
 #![cfg(feature = "toml")]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 use panes::{Layout, LayoutBuilder, TomlError};
 
@@ -908,6 +909,56 @@ fixed = 3.0
     assert_eq!(status_ids.len(), 1);
     let status_rect = resolved.get(status_ids[0]).unwrap();
     assert!((status_rect.h - 3.0).abs() < 1.0);
+}
+
+#[test]
+fn custom_container_constraints_are_applied() {
+    let toml_layout = Layout::from_toml(
+        r#"
+[layout]
+strategy = "custom"
+
+[layout.root]
+type = "col"
+gap = 10.0
+
+[[layout.root.children]]
+type = "row"
+gap = 5.0
+grow = 1.0
+
+[[layout.root.children.children]]
+kind = "a"
+
+[[layout.root.children.children]]
+kind = "b"
+
+[[layout.root.children]]
+type = "row"
+gap = 5.0
+fixed = 100.0
+
+[[layout.root.children.children]]
+kind = "c"
+"#,
+    )
+    .unwrap();
+
+    let mut builder = LayoutBuilder::new();
+    builder
+        .col_gap(10.0, |col| {
+            col.row_gap_with(5.0, panes::grow(1.0), |row| {
+                row.panel("a");
+                row.panel("b");
+            });
+            col.row_gap_with(5.0, panes::fixed(100.0), |row| {
+                row.panel("c");
+            });
+        })
+        .unwrap();
+    let api_layout = builder.build().unwrap();
+
+    assert_rects_equal(&toml_layout, &api_layout, &["a", "b", "c"], 800.0, 600.0);
 }
 
 #[test]

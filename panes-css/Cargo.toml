@@ -12,6 +12,7 @@ categories = ["gui", "web-programming"]
 [dependencies]
 panes = { version = "0.18", path = ".." }
 taffy = { version = "0.10", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "content_size"] }
+thiserror = "2"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }

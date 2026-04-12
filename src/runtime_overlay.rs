@@ -3,8 +3,9 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::error::PaneError;
-use crate::overlay::{self, Overlay, OverlayDef, OverlayId, OverlayIdGenerator};
+use crate::overlay::{self, AnchorFailure, Overlay, OverlayDef, OverlayId, OverlayIdGenerator};
 use crate::resolver::ResolvedLayout;
+use crate::sequence::PanelSequence;
 
 /// Add an overlay. Returns the existing id if the kind already exists.
 pub(crate) fn add_overlay_impl(
@@ -45,15 +46,22 @@ pub(crate) fn remove_overlay_impl(
 pub(crate) fn resolve_overlays_impl(
     overlays: &[OverlayDef],
     overlay_rects_buf: &mut Vec<(OverlayId, Arc<str>, crate::rect::Rect)>,
+    overlay_failures_buf: &mut Vec<(OverlayId, Arc<str>, AnchorFailure)>,
+    sequence: &PanelSequence,
     layout: &mut ResolvedLayout,
     width: f32,
     height: f32,
 ) {
     overlay_rects_buf.clear();
+    overlay_failures_buf.clear();
     for def in overlays.iter().filter(|d| d.visible) {
-        if let Some(rect) = overlay::resolve_overlay(def, width, height, layout) {
-            overlay_rects_buf.push((def.id, Arc::clone(&def.kind), rect));
+        match overlay::resolve_overlay(def, width, height, layout, sequence) {
+            Ok(rect) => overlay_rects_buf.push((def.id, Arc::clone(&def.kind), rect)),
+            Err(failure) => {
+                overlay_failures_buf.push((def.id, Arc::clone(&def.kind), failure));
+            }
         }
     }
     layout.swap_overlay_rects(overlay_rects_buf);
+    layout.swap_overlay_failures(overlay_failures_buf);
 }

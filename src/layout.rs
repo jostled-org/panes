@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::builder::{ContainerCtx, LayoutBuilder};
+use crate::builder::{ContainerCtx, Grid, GridCtx, LayoutBuilder};
 use crate::compiler::compile;
 use crate::error::PaneError;
-use crate::preset::PresetInfo;
+use crate::preset::{PanelInputKind, PresetInfo};
 use crate::resolver::ResolvedLayout;
 use crate::tree::LayoutTree;
 
@@ -32,8 +32,8 @@ impl Layout {
     }
 
     /// How many panels the active window shows at once.
-    pub fn window_size(&self) -> usize {
-        self.tree.window_size()
+    pub fn window_panel_count(&self) -> usize {
+        self.tree.window_panel_count()
     }
 
     /// Compile, compute, and resolve the layout at the given viewport size.
@@ -61,6 +61,13 @@ impl Layout {
     /// Build a column layout with gap from a closure.
     pub fn build_col_gap(gap: f32, f: impl FnOnce(&mut ContainerCtx)) -> Result<Self, PaneError> {
         Self::build_axis(false, gap, f)
+    }
+
+    /// Build a grid layout from a closure.
+    pub fn build_grid(grid: Grid, f: impl FnOnce(&mut GridCtx)) -> Result<Self, PaneError> {
+        let mut b = LayoutBuilder::new();
+        b.grid(grid, f)?;
+        b.build()
     }
 
     /// Equal-grow panels in a row, zero gap.
@@ -104,10 +111,10 @@ impl Layout {
         is_row: bool,
         kinds: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> Result<Self, PaneError> {
-        let kinds: Box<[Arc<str>]> = kinds.into_iter().map(Into::into).collect();
+        let kinds = kinds.into_iter();
         Self::build_axis(is_row, 0.0, |ctx| {
-            for kind in &*kinds {
-                ctx.panel(Arc::clone(kind));
+            for kind in kinds {
+                ctx.panel(kind.into());
             }
         })
     }
@@ -116,10 +123,10 @@ impl Layout {
         is_row: bool,
         panels: impl IntoIterator<Item = (impl Into<Arc<str>>, crate::panel::Constraints)>,
     ) -> Result<Self, PaneError> {
-        let panels: Box<[_]> = panels.into_iter().map(|(k, c)| (k.into(), c)).collect();
+        let panels = panels.into_iter();
         Self::build_axis(is_row, 0.0, |ctx| {
-            for (kind, constraints) in &*panels {
-                ctx.panel_with(Arc::clone(kind), *constraints);
+            for (kind, constraints) in panels {
+                ctx.panel_with(kind.into(), constraints);
             }
         })
     }
@@ -127,6 +134,69 @@ impl Layout {
     /// Return metadata for all built-in presets, sorted alphabetically by name.
     pub fn presets() -> &'static [PresetInfo] {
         &crate::preset::catalog::PRESETS
+    }
+
+    /// Build a runtime from a built-in preset name and panel kinds.
+    pub fn runtime_from_preset(
+        name: &str,
+        kinds: &[&str],
+    ) -> Result<crate::runtime::LayoutRuntime, String> {
+        let preset = Self::presets()
+            .iter()
+            .find(|preset| preset.name == name)
+            .ok_or_else(|| format!("unknown preset: {name}"))?;
+
+        match preset.input {
+            PanelInputKind::DynamicList => Self::dynamic_runtime_from_preset(preset.name, kinds),
+            PanelInputKind::FixedSlots => Self::fixed_runtime_from_preset(preset.name, kinds),
+        }
+    }
+
+    fn dynamic_runtime_from_preset(
+        preset: &str,
+        kinds: &[&str],
+    ) -> Result<crate::runtime::LayoutRuntime, String> {
+        let iter = || kinds.iter().copied();
+        let runtime = match preset {
+            "master-stack" => Self::master_stack(iter()).into_runtime(),
+            "centered-master" => Self::centered_master(iter()).into_runtime(),
+            "monocle" => Self::monocle(iter()).into_runtime(),
+            "scrollable" => Self::scrollable(iter()).into_runtime(),
+            "dwindle" => Self::dwindle(iter()).into_runtime(),
+            "spiral" => Self::spiral(iter()).into_runtime(),
+            "deck" => Self::deck(iter()).into_runtime(),
+            "tabbed" => Self::tabbed(iter()).into_runtime(),
+            "stacked" => Self::stacked(iter()).into_runtime(),
+            "dashboard" => Self::dashboard(iter().map(|kind| (kind, 1usize))).into_runtime(),
+            _ => return Err(format!("unsupported dynamic preset in catalog: {preset}")),
+        };
+        runtime.map_err(|error| error.to_string())
+    }
+
+    fn fixed_runtime_from_preset(
+        preset: &str,
+        kinds: &[&str],
+    ) -> Result<crate::runtime::LayoutRuntime, String> {
+        let runtime = match preset {
+            "sidebar" => {
+                require_preset_slots(kinds, 2, preset)?;
+                Self::sidebar(kinds[0], kinds[1]).into_runtime()
+            }
+            "holy-grail" => {
+                require_preset_slots(kinds, 5, preset)?;
+                Self::holy_grail(kinds[0], kinds[1], kinds[2], kinds[3], kinds[4]).into_runtime()
+            }
+            "split" => {
+                require_preset_slots(kinds, 2, preset)?;
+                Self::split(kinds[0], kinds[1]).into_runtime()
+            }
+            _ => {
+                return Err(format!(
+                    "unsupported fixed-slot preset in catalog: {preset}"
+                ));
+            }
+        };
+        runtime.map_err(|error| error.to_string())
     }
 
     // -- Preset constructors --
@@ -174,12 +244,12 @@ impl Layout {
 
     /// Create a [`Tabbed`](crate::preset::Tabbed) builder.
     pub fn tabbed(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Tabbed {
-        crate::preset::Tabbed::new(kinds)
+        crate::preset::ActivePanelPreset::new_tabbed(kinds)
     }
 
     /// Create a [`Stacked`](crate::preset::Stacked) builder.
     pub fn stacked(kinds: impl IntoIterator<Item = impl Into<Arc<str>>>) -> crate::preset::Stacked {
-        crate::preset::Stacked::new(kinds)
+        crate::preset::ActivePanelPreset::new_stacked(kinds)
     }
 
     /// Create a [`Sidebar`](crate::preset::Sidebar) builder.
@@ -219,6 +289,16 @@ impl Layout {
     ) -> crate::breakpoint::AdaptiveBuilder {
         let panels: Box<[Arc<str>]> = panels.into_iter().map(Into::into).collect();
         crate::breakpoint::AdaptiveBuilder::new(panels)
+    }
+}
+
+fn require_preset_slots(kinds: &[&str], expected: usize, preset: &str) -> Result<(), String> {
+    match kinds.len() == expected {
+        true => Ok(()),
+        false => Err(format!(
+            "preset '{preset}' requires exactly {expected} panels, got {}",
+            kinds.len()
+        )),
     }
 }
 

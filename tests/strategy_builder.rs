@@ -1,7 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
-use panes::Strategy;
 use panes::runtime::LayoutRuntime;
+use panes::{Axis, GridColumnMode, PaneError, Strategy, StrategyKind, TreeError};
 
 // ---------------------------------------------------------------------------
 // Factory → with_panels → into_runtime → resolve
@@ -91,7 +92,7 @@ fn preset_smoke_tests() {
         (
             "scrollable",
             Strategy::scrollable()
-                .size(3)
+                .panel_count(3)
                 .gap(1.0)
                 .with_panels(["p1", "p2", "p3", "p4", "p5"])
                 .into_runtime()
@@ -169,6 +170,20 @@ fn split_vertical_runtime() {
     assert!(top_rect.y < bot_rect.y);
 }
 
+#[test]
+fn strategy_from_kind_split_rejects_invalid_ratio_like_preset() {
+    let error = Strategy::from_kind(StrategyKind::Sequence {
+        axis: Axis::Row,
+        gap: 0.0,
+        ratio: Some(1.1),
+    })
+    .with_panels(["editor", "terminal"])
+    .build()
+    .unwrap_err();
+
+    assert!(matches!(error, PaneError::InvalidConstraint(_)));
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
@@ -199,6 +214,51 @@ fn dashboard_with_panels_default_spans() {
     let frame = rt.resolve(200.0, 200.0).unwrap();
     assert_eq!(frame.layout().by_kind("a").len(), 1);
     assert_eq!(frame.layout().by_kind("d").len(), 1);
+}
+
+#[test]
+fn dashboard_zero_columns_rejected() {
+    let result = Strategy::dashboard()
+        .columns(0)
+        .with_panels(["a", "b"])
+        .into_runtime();
+    assert!(matches!(result, Err(panes::PaneError::InvalidTree(_))));
+}
+
+#[test]
+fn strategy_from_kind_dashboard_rejects_invalid_columns_like_preset() {
+    let error = Strategy::from_kind(StrategyKind::Dashboard {
+        columns: GridColumnMode::Fixed(0),
+        gap: 0.0,
+        spans: Arc::from([]),
+        auto_rows: false,
+    })
+    .with_panels(["a", "b"])
+    .build()
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        PaneError::InvalidTree(TreeError::DashboardNoColumns)
+    ));
+}
+
+#[test]
+fn strategy_from_kind_dashboard_rejects_invalid_min_width_like_preset() {
+    let error = Strategy::from_kind(StrategyKind::Dashboard {
+        columns: GridColumnMode::AutoFit { min_width: 0.0 },
+        gap: 0.0,
+        spans: Arc::from([]),
+        auto_rows: false,
+    })
+    .with_panels(["a", "b"])
+    .build()
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        PaneError::InvalidTree(TreeError::DashboardMinWidthInvalid)
+    ));
 }
 
 #[test]
@@ -455,4 +515,54 @@ fn builder_build_then_with_panels() {
         .unwrap();
     let frame = rt.resolve(100.0, 100.0).unwrap();
     assert_eq!(frame.layout().by_kind("a").len(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Repeated kinds — rebuild preserves panel count and order
+// ---------------------------------------------------------------------------
+
+#[test]
+fn strategy_rebuild_with_repeated_kinds_preserves_panel_count_and_order() {
+    let mut rt = Strategy::master_stack()
+        .master_ratio(0.6)
+        .gap(1.0)
+        .with_panels(["editor", "chat", "editor"])
+        .into_runtime()
+        .unwrap();
+
+    // Initial state: 3 panels in declared order
+    let initial_kinds: Vec<&str> = rt
+        .sequence()
+        .iter()
+        .filter_map(|pid| rt.tree().panel_kind(pid).ok())
+        .collect();
+    assert_eq!(initial_kinds, &["editor", "chat", "editor"]);
+
+    // Add a panel to trigger rebuild
+    let new_pid = rt.add_panel(Arc::from("status")).unwrap();
+
+    // All 4 panels present, original repeated kinds preserved in order
+    let kinds_after_add: Vec<&str> = rt
+        .sequence()
+        .iter()
+        .filter_map(|pid| rt.tree().panel_kind(pid).ok())
+        .collect();
+    assert_eq!(kinds_after_add.len(), 4);
+    let without_status: Vec<&str> = kinds_after_add
+        .iter()
+        .filter(|&&k| k != "status")
+        .copied()
+        .collect();
+    assert_eq!(without_status, &["editor", "chat", "editor"]);
+
+    // Remove the added panel to trigger another rebuild
+    rt.remove_panel(new_pid).unwrap();
+
+    // Back to 3 panels in original order
+    let kinds_after_remove: Vec<&str> = rt
+        .sequence()
+        .iter()
+        .filter_map(|pid| rt.tree().panel_kind(pid).ok())
+        .collect();
+    assert_eq!(kinds_after_remove, &["editor", "chat", "editor"]);
 }

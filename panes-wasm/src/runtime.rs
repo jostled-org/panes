@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{Layout, PanelId};
+use panes::{Layout, PanelId, PresetInfo};
 #[cfg(feature = "js")]
 use wasm_bindgen::prelude::*;
 
-use crate::json_types::{DiffJson, RectChangeJson, RectJson};
+use crate::json_types::{DiffJson, OverlayDiffJson, RectChangeJson, RectJson};
 use crate::layout::WasmLayout;
 
 /// Stateful layout runtime for JavaScript consumers.
@@ -14,6 +14,18 @@ use crate::layout::WasmLayout;
 #[cfg_attr(feature = "js", wasm_bindgen)]
 pub struct WasmRuntime {
     inner: LayoutRuntime,
+}
+
+fn js_number_to_f32(value: f64, name: &str) -> Result<f32, String> {
+    if !value.is_finite() {
+        return Err(format!("{name} must be finite"));
+    }
+
+    if value < f64::from(f32::MIN) || value > f64::from(f32::MAX) {
+        return Err(format!("{name} is out of range for f32"));
+    }
+
+    Ok(value as f32)
 }
 
 fn err_string(e: panes::PaneError) -> String {
@@ -48,19 +60,25 @@ fn rect_change(id: u32, from: panes::Rect, to: panes::Rect) -> RectChangeJson {
 }
 
 impl WasmRuntime {
+    /// Return metadata for all available presets, sourced from the core catalog.
+    pub fn available_presets() -> &'static [PresetInfo] {
+        Layout::presets()
+    }
+
     /// Construct from a preset name and panel kind strings.
     ///
-    /// Supports all `DynamicList` presets (master-stack, monocle, dwindle, etc.).
+    /// Supports all presets in the core catalog. `DynamicList` presets accept
+    /// any number of panels. `FixedSlots` presets require the exact panel count
+    /// for that layout (e.g. 2 for sidebar/split, 5 for holy-grail).
     pub fn from_preset(preset: &str, panels: &[&str]) -> Result<Self, String> {
         let rt = build_from_preset(preset, panels)?;
         Ok(Self { inner: rt })
     }
 
     pub fn resolve(&mut self, width: f64, height: f64) -> Result<WasmLayout, String> {
-        let frame = self
-            .inner
-            .resolve(width as f32, height as f32)
-            .map_err(err_string)?;
+        let width = js_number_to_f32(width, "width")?;
+        let height = js_number_to_f32(height, "height")?;
+        let frame = self.inner.resolve(width, height).map_err(err_string)?;
         Ok(WasmLayout::new(frame.arc()))
     }
 
@@ -89,8 +107,10 @@ impl WasmRuntime {
     }
 
     pub fn set_panel_size(&mut self, pid: u32, width: f64, height: f64) -> Result<(), String> {
+        let width = js_number_to_f32(width, "width")?;
+        let height = js_number_to_f32(height, "height")?;
         self.inner
-            .set_panel_size(PanelId::from_raw(pid), width as f32, height as f32)
+            .set_panel_size(PanelId::from_raw(pid), width, height)
             .map_err(err_string)
     }
 
@@ -105,14 +125,16 @@ impl WasmRuntime {
     }
 
     pub fn set_scroll_offset(&mut self, offset: f64) -> Result<(), String> {
-        self.inner.scroll_to(offset as f32).map_err(err_string)
+        let offset = js_number_to_f32(offset, "offset")?;
+        self.inner.scroll_to(offset).map_err(err_string)
     }
 
     pub fn scroll_by(&mut self, delta: f64) -> Result<(), String> {
-        self.inner.scroll_by(delta as f32).map_err(err_string)
+        let delta = js_number_to_f32(delta, "delta")?;
+        self.inner.scroll_by(delta).map_err(err_string)
     }
 
-    /// Serialize the last layout diff to JSON.
+    /// Serialize the last layout diff to JSON (convenience path).
     ///
     /// Returns `{"added":[...],"removed":[...],"moved":[...],"resized":[...],"unchanged":[...]}`.
     /// Panel IDs are u32, rects have f64 fields.
@@ -129,33 +151,31 @@ impl WasmRuntime {
         )
     }
 
+    /// Serialize the last overlay diff to JSON (convenience path).
+    ///
+    /// Includes an `anchorFailed` array alongside the standard diff fields.
     pub fn overlay_diff(&self) -> Result<String, String> {
         let diff = self.inner.last_overlay_diff();
-        diff_to_json(
-            diff.added,
-            diff.removed,
-            diff.moved,
-            diff.resized,
-            diff.unchanged,
-            panes::OverlayId::raw,
-            |c| rect_change(c.id.raw(), c.from, c.to),
-        )
+        let json = OverlayDiffJson {
+            added: diff.added.iter().map(|id| id.raw()).collect(),
+            removed: diff.removed.iter().map(|id| id.raw()).collect(),
+            moved: diff
+                .moved
+                .iter()
+                .map(|c| rect_change(c.id.raw(), c.from, c.to))
+                .collect(),
+            resized: diff
+                .resized
+                .iter()
+                .map(|c| rect_change(c.id.raw(), c.from, c.to))
+                .collect(),
+            unchanged: diff.unchanged.iter().map(|id| id.raw()).collect(),
+            anchor_failed: diff.anchor_failed.iter().map(|id| id.raw()).collect(),
+        };
+        serde_json::to_string(&json).map_err(|e| e.to_string())
     }
 }
 
 fn build_from_preset(preset: &str, kinds: &[&str]) -> Result<LayoutRuntime, String> {
-    let iter = || kinds.iter().copied();
-    match preset {
-        "master-stack" => Layout::master_stack(iter()).into_runtime(),
-        "centered-master" => Layout::centered_master(iter()).into_runtime(),
-        "monocle" => Layout::monocle(iter()).into_runtime(),
-        "scrollable" => Layout::scrollable(iter()).into_runtime(),
-        "dwindle" => Layout::dwindle(iter()).into_runtime(),
-        "spiral" => Layout::spiral(iter()).into_runtime(),
-        "deck" => Layout::deck(iter()).into_runtime(),
-        "tabbed" => Layout::tabbed(iter()).into_runtime(),
-        "stacked" => Layout::stacked(iter()).into_runtime(),
-        _ => return Err(format!("unknown preset: {preset}")),
-    }
-    .map_err(err_string)
+    Layout::runtime_from_preset(preset, kinds)
 }

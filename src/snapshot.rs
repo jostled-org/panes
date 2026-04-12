@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use crate::error::{PaneError, TreeError};
-use crate::node::{Node, NodeId};
+use crate::node::{Node, NodeId, PanelKey};
 use crate::overlay::{OverlayDef, SnapshotOverlay};
+use crate::panel::Axis;
 use crate::panel::Constraints;
-use crate::strategy::{
-    ActivePanelVariant, CardSpan, Direction, GridColumnMode, SlotDef, StrategyKind,
-};
+use crate::strategy::{ActivePanelVariant, CardSpan, GridColumnMode, SlotDef, StrategyKind};
 use crate::tree::LayoutTree;
+use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
 /// Serializable snapshot of a [`LayoutRuntime`](crate::runtime::LayoutRuntime)
 /// for session persistence.
@@ -35,6 +35,20 @@ pub struct LayoutSnapshot {
     source: SnapshotSource,
     focused: Option<Box<str>>,
     collapsed: Box<[Box<str>]>,
+    /// Sequence index of the focused panel for deterministic restore
+    /// with repeated kinds. Preferred over `focused` when present.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    focused_key: Option<PanelKey>,
+    /// Sequence indices of collapsed panels for deterministic restore
+    /// with repeated kinds. Preferred over `collapsed` when present.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "is_box_slice_empty")
+    )]
+    collapsed_keys: Box<[PanelKey]>,
     #[cfg_attr(
         feature = "serde",
         serde(default, skip_serializing_if = "is_box_slice_empty")
@@ -48,22 +62,37 @@ fn is_box_slice_empty<T>(s: &[T]) -> bool {
 }
 
 impl LayoutSnapshot {
+    /// Returns the snapshot source: a strategy config, tree topology, or adaptive breakpoint set.
     pub fn source(&self) -> &SnapshotSource {
         &self.source
     }
 
+    /// Returns the kind of the focused panel at capture time, if any.
     pub fn focused(&self) -> Option<&str> {
         self.focused.as_deref()
     }
 
+    /// Returns the kinds of all collapsed panels at capture time.
     pub fn collapsed(&self) -> &[Box<str>] {
         &self.collapsed
     }
 
+    /// Sequence index of the focused panel for deterministic restore.
+    pub fn focused_key(&self) -> Option<PanelKey> {
+        self.focused_key
+    }
+
+    /// Sequence indices of collapsed panels for deterministic restore.
+    pub fn collapsed_keys(&self) -> &[PanelKey] {
+        &self.collapsed_keys
+    }
+
+    /// Returns the overlay definitions captured at snapshot time.
     pub fn overlays(&self) -> &[SnapshotOverlay] {
         &self.overlays
     }
 
+    /// Consumes the snapshot and returns the overlay definitions as an owned `Vec`.
     pub fn into_overlays(self) -> Vec<SnapshotOverlay> {
         self.overlays.into_vec()
     }
@@ -98,14 +127,16 @@ pub struct SnapshotBreakpoint {
     pub strategy: StrategyConfig,
 }
 
-/// Serializable strategy configuration — mirrors [`StrategyKind`] with
-/// owned collections instead of `Arc<[T]>`.
-
+/// Serializable strategy recipe for snapshot restore.
+///
+/// Mirrors [`StrategyKind`] with owned collections (`Box<[T]>`) instead of
+/// `Arc<[T]>`, making it safe for serde round-trips without shared-ownership
+/// bookkeeping.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StrategyConfig {
     Sequence {
-        direction: Direction,
+        axis: Axis,
         gap: f32,
         #[cfg_attr(
             feature = "serde",
@@ -142,13 +173,13 @@ pub enum StrategyConfig {
         bar_height: f32,
     },
     Window {
-        size: usize,
+        panel_count: usize,
         gap: f32,
     },
     Slotted {
         slots: Box<[SnapshotSlotDef]>,
         gap: f32,
-        direction: Direction,
+        axis: Axis,
     },
 }
 
@@ -160,7 +191,25 @@ pub struct SnapshotSlotDef {
     pub constraints: Constraints,
 }
 
-/// Recursive tree node for serializing non-strategy layouts.
+/// A grid item inside a [`SnapshotNode::Grid`] container.
+///
+/// Wraps a child node with an optional column span. Items without a span
+/// use the default single-column placement.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SnapshotGridItem {
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub span: Option<CardSpan>,
+    pub node: SnapshotNode,
+}
+
+/// Recursive tree topology node for non-strategy snapshots.
+///
+/// Variants mirror the runtime node types (`Panel`, `Row`, `Col`, `Grid`).
+/// The tree is walked depth-first during capture and rebuilt on restore.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SnapshotNode {
@@ -170,11 +219,28 @@ pub enum SnapshotNode {
     },
     Row {
         gap: f32,
+        #[cfg_attr(
+            feature = "serde",
+            serde(default, skip_serializing_if = "Option::is_none")
+        )]
+        constraints: Option<Constraints>,
         children: Box<[SnapshotNode]>,
     },
     Col {
         gap: f32,
+        #[cfg_attr(
+            feature = "serde",
+            serde(default, skip_serializing_if = "Option::is_none")
+        )]
+        constraints: Option<Constraints>,
         children: Box<[SnapshotNode]>,
+    },
+    Grid {
+        columns: GridColumnMode,
+        gap: f32,
+        #[cfg_attr(feature = "serde", serde(default))]
+        auto_rows: bool,
+        children: Box<[SnapshotGridItem]>,
     },
 }
 
@@ -222,34 +288,34 @@ macro_rules! strategy_convert {
 
 strategy_convert! {
     copy: [
-        Sequence { direction, gap, ratio },
+        Sequence { axis, gap, ratio },
         MasterStack { master_ratio, gap },
         Deck { master_ratio, gap },
         CenteredMaster { master_ratio, gap },
         BinarySplit { spiral, ratio, gap },
         ActivePanel { variant, bar_height },
-        Window { size, gap },
+        Window { panel_count, gap },
     ],
     custom_to_config: [
         StrategyKind::Dashboard { columns, gap, spans, auto_rows } => StrategyConfig::Dashboard {
             columns: *columns, gap: *gap, spans: Box::from(&**spans), auto_rows: *auto_rows,
         },
-        StrategyKind::Slotted { slots, gap, direction } => StrategyConfig::Slotted {
+        StrategyKind::Slotted { slots, gap, axis } => StrategyConfig::Slotted {
             slots: slots.iter().map(|s| SnapshotSlotDef {
                 kind: Box::from(&*s.kind), constraints: s.constraints,
-            }).collect::<Vec<_>>().into_boxed_slice(),
-            gap: *gap, direction: *direction,
+            }).collect::<Box<[_]>>(),
+            gap: *gap, axis: *axis,
         },
     ],
     custom_to_kind: [
         StrategyConfig::Dashboard { columns, gap, spans, auto_rows } => StrategyKind::Dashboard {
             columns: *columns, gap: *gap, spans: Arc::from(&**spans), auto_rows: *auto_rows,
         },
-        StrategyConfig::Slotted { slots, gap, direction } => StrategyKind::Slotted {
+        StrategyConfig::Slotted { slots, gap, axis } => StrategyKind::Slotted {
             slots: slots.iter().map(|s| SlotDef {
                 kind: Arc::from(&*s.kind), constraints: s.constraints,
-            }).collect::<Vec<_>>().into(),
-            gap: *gap, direction: *direction,
+            }).collect::<Arc<[_]>>(),
+            gap: *gap, axis: *axis,
         },
     ],
 }
@@ -262,39 +328,127 @@ strategy_convert! {
 const MAX_SNAPSHOT_DEPTH: usize = 64;
 
 /// Walk the tree from `root` and build a recursive `SnapshotNode`.
-/// Returns `None` if root is missing or contains unsupported node types.
-pub(crate) fn tree_to_snapshot(tree: &LayoutTree) -> Option<SnapshotNode> {
-    let root = tree.root()?;
-    node_to_snapshot(tree, root, 0)
+/// Returns `None` if the tree has no root.
+pub(crate) fn tree_to_snapshot(tree: &LayoutTree) -> Result<Option<SnapshotNode>, PaneError> {
+    let Some(root) = tree.root() else {
+        return Ok(None);
+    };
+    node_to_snapshot(tree, root, 0).map(Some)
 }
 
-fn container_snapshot(is_row: bool, gap: f32, children: Box<[SnapshotNode]>) -> SnapshotNode {
+fn container_snapshot(
+    is_row: bool,
+    gap: f32,
+    constraints: Option<Constraints>,
+    children: Box<[SnapshotNode]>,
+) -> SnapshotNode {
     match is_row {
-        true => SnapshotNode::Row { gap, children },
-        false => SnapshotNode::Col { gap, children },
+        true => SnapshotNode::Row {
+            gap,
+            constraints,
+            children,
+        },
+        false => SnapshotNode::Col {
+            gap,
+            constraints,
+            children,
+        },
     }
 }
 
-fn node_to_snapshot(tree: &LayoutTree, nid: NodeId, depth: usize) -> Option<SnapshotNode> {
-    let node = tree.node(nid)?;
-    match (depth > MAX_SNAPSHOT_DEPTH, node) {
-        (true, _) | (_, Node::TaffyPassthrough { .. }) => None,
-        (
-            _,
-            Node::Panel {
-                kind, constraints, ..
-            },
-        ) => Some(SnapshotNode::Panel {
+fn node_to_snapshot(
+    tree: &LayoutTree,
+    nid: NodeId,
+    depth: usize,
+) -> Result<SnapshotNode, PaneError> {
+    if depth > MAX_SNAPSHOT_DEPTH {
+        return Err(PaneError::InvalidTree(TreeError::SnapshotTooDeep(
+            MAX_SNAPSHOT_DEPTH,
+        )));
+    }
+    let Some(node) = tree.node(nid) else {
+        return Err(PaneError::NodeNotFound(nid));
+    };
+    match node {
+        Node::Grid {
+            columns,
+            gap,
+            auto_rows,
+            children,
+        } => {
+            let snap_children = children
+                .iter()
+                .map(|&child_nid| grid_child_to_snapshot(tree, child_nid, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_boxed_slice();
+            Ok(SnapshotNode::Grid {
+                columns: *columns,
+                gap: *gap,
+                auto_rows: *auto_rows,
+                children: snap_children,
+            })
+        }
+        Node::TaffyPassthrough { .. } | Node::GridItemWrapper { .. } => Err(
+            PaneError::InvalidTree(TreeError::UnsupportedSnapshotNode(nid)),
+        ),
+        Node::Panel {
+            kind, constraints, ..
+        } => Ok(SnapshotNode::Panel {
             kind: Box::from(&**kind),
             constraints: *constraints,
         }),
-        (_, Node::Row { gap, children } | Node::Col { gap, children }) => {
+        Node::Row {
+            gap,
+            constraints,
+            children,
+        }
+        | Node::Col {
+            gap,
+            constraints,
+            children,
+        } => {
             let is_row = matches!(node, Node::Row { .. });
-            let kids: Box<[SnapshotNode]> = children
+            let snap_children = children
                 .iter()
-                .filter_map(|&c| node_to_snapshot(tree, c, depth + 1))
-                .collect();
-            (!kids.is_empty()).then(|| container_snapshot(is_row, *gap, kids))
+                .map(|&child_id| node_to_snapshot(tree, child_id, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_boxed_slice();
+            Ok(container_snapshot(
+                is_row,
+                *gap,
+                *constraints,
+                snap_children,
+            ))
+        }
+    }
+}
+
+/// Convert a single grid child to a snapshot grid item.
+///
+/// If the child is a `GridItemWrapper`, unwrap it and attach the span
+/// to the inner node. Otherwise treat as a regular child.
+fn grid_child_to_snapshot(
+    tree: &LayoutTree,
+    nid: NodeId,
+    depth: usize,
+) -> Result<SnapshotGridItem, PaneError> {
+    let Some(node) = tree.node(nid) else {
+        return Err(PaneError::NodeNotFound(nid));
+    };
+    match node {
+        Node::GridItemWrapper { span, child } => {
+            let inner = node_to_snapshot(tree, *child, depth)?;
+            Ok(SnapshotGridItem {
+                span: Some(*span),
+                node: inner,
+            })
+        }
+        _ => {
+            let inner = node_to_snapshot(tree, nid, depth)?;
+            Ok(SnapshotGridItem {
+                span: None,
+                node: inner,
+            })
         }
     }
 }
@@ -305,63 +459,118 @@ fn node_to_snapshot(tree: &LayoutTree, nid: NodeId, depth: usize) -> Option<Snap
 
 /// Rebuild a `LayoutTree` from a `SnapshotNode`.
 pub(crate) fn snapshot_to_tree(root: &SnapshotNode) -> Result<LayoutTree, PaneError> {
-    let mut builder = crate::builder::LayoutBuilder::new();
-    match root {
-        SnapshotNode::Row { gap, children } => {
-            build_root_container(&mut builder, true, *gap, children)?;
-        }
-        SnapshotNode::Col { gap, children } => {
-            build_root_container(&mut builder, false, *gap, children)?;
-        }
-        SnapshotNode::Panel { kind, constraints } => {
-            builder.row(|ctx| {
-                ctx.panel_with(&**kind, *constraints);
-            })?;
-        }
-    }
-    Ok(LayoutTree::from(builder.build()?))
+    let mut tree = LayoutTree::new();
+    let root_id = snapshot_node_to_tree(&mut tree, root, 0)?;
+    tree.set_root(root_id);
+    tree.validate()?;
+    Ok(tree)
 }
 
-fn build_root_container(
-    builder: &mut crate::builder::LayoutBuilder,
-    is_row: bool,
-    gap: f32,
-    children: &[SnapshotNode],
-) -> Result<(), PaneError> {
-    let populate = |ctx: &mut crate::ContainerCtx| {
-        for child in children {
-            add_snapshot_node(ctx, child, 1);
-        }
-    };
-    match is_row {
-        true => builder.row_gap(gap, populate),
-        false => builder.col_gap(gap, populate),
-    }
-}
-
-fn add_snapshot_node(ctx: &mut crate::ContainerCtx, node: &SnapshotNode, depth: usize) {
+fn snapshot_node_to_tree(
+    tree: &mut LayoutTree,
+    snapshot_node: &SnapshotNode,
+    depth: usize,
+) -> Result<NodeId, PaneError> {
     if depth > MAX_SNAPSHOT_DEPTH {
-        ctx.set_error(PaneError::InvalidTree(TreeError::SnapshotTooDeep(
+        return Err(PaneError::InvalidTree(TreeError::SnapshotTooDeep(
             MAX_SNAPSHOT_DEPTH,
         )));
-        return;
     }
-    match node {
+
+    match snapshot_node {
         SnapshotNode::Panel { kind, constraints } => {
-            ctx.panel_with(&**kind, *constraints);
+            let (_, node_id) = tree.add_panel(&**kind, *constraints)?;
+            Ok(node_id)
         }
-        SnapshotNode::Row { gap, children } => {
-            ctx.row_gap(*gap, |inner| add_snapshot_children(inner, children, depth));
+        SnapshotNode::Row {
+            gap,
+            constraints,
+            children,
+        } => {
+            validate_snapshot_gap(*gap)?;
+            let child_ids = snapshot_children_to_tree(tree, children, depth)?;
+            tree.add_row_constrained(*gap, *constraints, child_ids)
         }
-        SnapshotNode::Col { gap, children } => {
-            ctx.col_gap(*gap, |inner| add_snapshot_children(inner, children, depth));
+        SnapshotNode::Col {
+            gap,
+            constraints,
+            children,
+        } => {
+            validate_snapshot_gap(*gap)?;
+            let child_ids = snapshot_children_to_tree(tree, children, depth)?;
+            tree.add_col_constrained(*gap, *constraints, child_ids)
+        }
+        SnapshotNode::Grid {
+            columns,
+            gap,
+            auto_rows,
+            children,
+        } => {
+            crate::preset::validate_grid_columns(*columns)?;
+            validate_snapshot_gap(*gap)?;
+            let child_ids = grid_children_to_tree(tree, children, depth)?;
+            tree.add_grid(*columns, *gap, *auto_rows, child_ids)
         }
     }
 }
 
-fn add_snapshot_children(ctx: &mut crate::ContainerCtx, children: &[SnapshotNode], depth: usize) {
-    for child in children {
-        add_snapshot_node(ctx, child, depth + 1);
+fn snapshot_children_to_tree(
+    tree: &mut LayoutTree,
+    children: &[SnapshotNode],
+    depth: usize,
+) -> Result<Vec<NodeId>, PaneError> {
+    children
+        .iter()
+        .map(|child| snapshot_node_to_tree(tree, child, depth + 1))
+        .collect()
+}
+
+fn grid_children_to_tree(
+    tree: &mut LayoutTree,
+    children: &[SnapshotGridItem],
+    depth: usize,
+) -> Result<Vec<NodeId>, PaneError> {
+    children
+        .iter()
+        .map(|grid_item| grid_item_to_tree(tree, grid_item, depth + 1))
+        .collect()
+}
+
+fn grid_item_to_tree(
+    tree: &mut LayoutTree,
+    grid_item: &SnapshotGridItem,
+    depth: usize,
+) -> Result<NodeId, PaneError> {
+    if depth > MAX_SNAPSHOT_DEPTH {
+        return Err(PaneError::InvalidTree(TreeError::SnapshotTooDeep(
+            MAX_SNAPSHOT_DEPTH,
+        )));
+    }
+
+    match (&grid_item.span, &grid_item.node) {
+        (Some(span), SnapshotNode::Panel { kind, constraints }) => {
+            crate::preset::validate_grid_span(*span)?;
+            let (_, panel_id) = tree.add_panel(&**kind, *constraints)?;
+            tree.add_grid_item(*span, panel_id)
+        }
+        (Some(_), snapshot_node) => Err(PaneError::InvalidTree(
+            TreeError::SnapshotSpanRequiresPanel(snapshot_node_kind(snapshot_node)),
+        )),
+        (None, snapshot_node) => snapshot_node_to_tree(tree, snapshot_node, depth),
+    }
+}
+
+fn validate_snapshot_gap(gap: f32) -> Result<(), PaneError> {
+    check_f32_non_negative(gap)
+        .map_err(|error| PaneError::InvalidConstraint(float_invalid_to_constraint("gap", error)))
+}
+
+fn snapshot_node_kind(snapshot_node: &SnapshotNode) -> &'static str {
+    match snapshot_node {
+        SnapshotNode::Panel { .. } => "panel",
+        SnapshotNode::Row { .. } => "row",
+        SnapshotNode::Col { .. } => "col",
+        SnapshotNode::Grid { .. } => "grid",
     }
 }
 
@@ -380,20 +589,54 @@ pub(crate) fn capture(
 ) -> Result<LayoutSnapshot, PaneError> {
     let focused = viewport
         .focus
-        .and_then(|pid| tree.panel_kind(pid).ok())
-        .map(Box::from);
+        .map(|pid| tree.panel_kind(pid).map(Box::from))
+        .transpose()?;
+
+    let focused_key = match sequence.is_empty() {
+        true => None,
+        false => viewport
+            .focus
+            .map(|pid| {
+                sequence
+                    .index_of(pid)
+                    .map(|idx| PanelKey::from_raw(idx as u32))
+                    .ok_or(PaneError::InvalidTree(
+                        TreeError::SnapshotFocusedMissingFromSequence(pid),
+                    ))
+            })
+            .transpose()?,
+    };
 
     let collapsed: Box<[Box<str>]> = viewport
         .collapsed
         .iter()
-        .filter_map(|&pid| tree.panel_kind(pid).ok().map(Box::from))
-        .collect();
+        .map(|&pid| tree.panel_kind(pid).map(Box::from))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_boxed_slice();
 
-    let panels_box = || -> Box<[Box<str>]> {
-        sequence
+    let collapsed_keys: Box<[PanelKey]> = match sequence.is_empty() {
+        true => Box::default(),
+        false => viewport
+            .collapsed
             .iter()
-            .filter_map(|pid| tree.panel_kind(pid).ok().map(Box::from))
-            .collect()
+            .map(|&pid| {
+                sequence
+                    .index_of(pid)
+                    .map(|idx| PanelKey::from_raw(idx as u32))
+                    .ok_or(PaneError::InvalidTree(
+                        TreeError::SnapshotCollapsedMissingFromSequence(pid),
+                    ))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_boxed_slice(),
+    };
+
+    let panels_box = || -> Result<Box<[Box<str>]>, PaneError> {
+        Ok(sequence
+            .iter()
+            .map(|pid| tree.panel_kind(pid).map(Box::from))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_boxed_slice())
     };
 
     let source = match (breakpoints, strategy) {
@@ -407,17 +650,17 @@ pub(crate) fn capture(
                 .collect();
             SnapshotSource::Adaptive {
                 breakpoints: snap_bps,
-                panels: panels_box(),
+                panels: panels_box()?,
                 active_index,
             }
         }
         (None, Some(sk)) => SnapshotSource::Strategy {
             strategy: StrategyConfig::from(sk),
-            panels: panels_box(),
+            panels: panels_box()?,
         },
         (None, None) => {
             let root =
-                tree_to_snapshot(tree).ok_or(PaneError::InvalidTree(TreeError::SnapshotNoRoot))?;
+                tree_to_snapshot(tree)?.ok_or(PaneError::InvalidTree(TreeError::SnapshotNoRoot))?;
             SnapshotSource::Tree { root }
         }
     };
@@ -437,6 +680,8 @@ pub(crate) fn capture(
         source,
         focused,
         collapsed,
+        focused_key,
+        collapsed_keys,
         overlays,
     })
 }

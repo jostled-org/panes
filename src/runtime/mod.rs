@@ -19,7 +19,7 @@ use std::sync::Arc;
 use types::{strategy_ref, strategy_ref_mut};
 
 use crate::breakpoint::BreakpointEntry;
-use crate::node::PanelId;
+use crate::node::{PanelId, PanelKey};
 use crate::sequence::PanelSequence;
 use crate::strategy::StrategyKind;
 use crate::tree::LayoutTree;
@@ -45,9 +45,7 @@ impl LayoutRuntime {
     ///
     /// Clears cached compile and kind data to prevent stale reads.
     pub fn tree_mut(&mut self) -> &mut LayoutTree {
-        self.cached_compile = None;
-        self.cached_kinds = None;
-        self.cached_sorted_kind_keys = None;
+        self.invalidate_topology();
         &mut self.tree
     }
 
@@ -100,16 +98,28 @@ impl LayoutRuntime {
         self.resolve_scratch.collect_boundaries = collect;
     }
 
+    /// The stable identity key for a panel, derived from its sequence position.
+    ///
+    /// Returns `None` if the panel is not in the sequence (e.g. decoration panels).
+    pub fn panel_key(&self, pid: PanelId) -> Option<PanelKey> {
+        self.sequence
+            .index_of(pid)
+            .map(|idx| PanelKey::from_raw(idx as u32))
+    }
+
+    /// The stable identity key of the currently focused panel.
+    pub fn focused_panel_key(&self) -> Option<PanelKey> {
+        self.viewport.focus.and_then(|pid| self.panel_key(pid))
+    }
+
     /// Whether `pid` is a decorative panel (tab bar, title bar) for `content_pid`.
     pub fn is_decoration_for(&self, pid: PanelId, content_pid: PanelId) -> bool {
-        let (Ok(dec_kind), Ok(content_kind)) =
-            (self.tree.panel_kind(pid), self.tree.panel_kind(content_pid))
-        else {
+        let Some(meta) = self.tree.decoration_meta(pid) else {
             return false;
         };
-        let base = dec_kind
-            .strip_suffix("_tab")
-            .or_else(|| dec_kind.strip_suffix("_title"));
-        matches!(base, Some(b) if b == content_kind)
+        let Ok(content_kind) = self.tree.panel_kind(content_pid) else {
+            return false;
+        };
+        meta.content_kind.as_ref() == content_kind
     }
 }

@@ -4,7 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::validate_f32_param;
+use crate::preset::{validate_f32_param, validate_share_param};
 
 /// Builder for the split preset layout.
 pub struct Split {
@@ -40,7 +40,7 @@ impl Split {
 
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
-        validate_f32_param("ratio", self.ratio)?;
+        validate_share_param("ratio", self.ratio)?;
         validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();

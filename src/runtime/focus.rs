@@ -3,6 +3,7 @@ use std::sync::Arc;
 use super::types::{LayoutRuntime, strategy_ref};
 use crate::error::{MutationError, PaneError, ViewportError};
 use crate::focus::{self, FocusDirection};
+use crate::focus_outcome::{FocusOutcome, FocusRejection};
 use crate::node::PanelId;
 use crate::panel::fixed;
 use crate::resolver::ResolvedLayout;
@@ -15,21 +16,22 @@ impl LayoutRuntime {
     pub fn toggle_collapsed(&mut self, pid: PanelId) -> Result<(), PaneError> {
         match self.viewport.collapsed.contains(&pid) {
             true => {
-                let saved = self.viewport.saved_constraints.remove(&pid).ok_or(
+                let saved = *self.viewport.saved_constraints.get(&pid).ok_or(
                     PaneError::InvalidViewport(ViewportError::NoSavedConstraints(pid)),
                 )?;
                 self.tree.set_constraints(pid, saved)?;
+                self.viewport.saved_constraints.remove(&pid);
                 self.viewport.collapsed.remove(&pid);
-                Ok(())
             }
             false => {
                 let current = self.tree.panel_constraints(pid)?;
-                self.viewport.saved_constraints.insert(pid, current);
                 self.tree.set_constraints(pid, fixed(0.0))?;
+                self.viewport.saved_constraints.insert(pid, current);
                 self.viewport.collapsed.insert(pid);
-                Ok(())
             }
         }
+        self.invalidate_layout();
+        Ok(())
     }
 
     /// Shift the scroll offset by a delta.
@@ -59,54 +61,77 @@ impl LayoutRuntime {
 
     /// Set focus to a specific panel.
     ///
-    /// Returns `true` if focus was set, `false` if `pid` is not in the
-    /// sequence (strategy path) or not a known panel.
-    pub fn focus(&mut self, pid: PanelId) -> bool {
+    /// Returns `Applied` when focus moved, `Unchanged` when the panel
+    /// was already focused, or `Rejected` when the panel is missing or
+    /// the strategy rejected the request.
+    pub fn focus(&mut self, pid: PanelId) -> FocusOutcome {
         let Some(strategy) =
             strategy_ref(&self.strategy_source, &self.breakpoints, self.active_bp_idx)
         else {
-            self.set_focus_unchecked(pid);
-            return true;
+            return self.focus_no_strategy(pid);
         };
-        crate::strategy::try_apply_focus(
+        let outcome = crate::strategy::try_apply_focus(
             strategy,
             &mut self.tree,
             &mut self.sequence,
             &mut self.viewport,
             pid,
-        )
+        );
+        // Strategy focus may modify constraints (visibility toggling).
+        // Mark layout dirty so the dirty-state model stays consistent.
+        if outcome.is_applied() && self.tree.is_dirty() {
+            self.invalidate_layout();
+        }
+        outcome
+    }
+
+    fn focus_no_strategy(&mut self, pid: PanelId) -> FocusOutcome {
+        let exists = self.tree.node_for_panel(pid).is_some();
+        let already = matches!(self.viewport.focus, Some(prev) if prev == pid);
+        match (exists, already) {
+            (false, _) => FocusOutcome::Rejected(FocusRejection::PanelNotFound),
+            (true, true) => FocusOutcome::Unchanged,
+            (true, false) => {
+                self.set_focus_unchecked(pid);
+                FocusOutcome::Applied
+            }
+        }
     }
 
     /// Swap the focused panel with the next panel in the sequence (wrapping).
-    /// No-op if there is no focus or fewer than two panels.
-    pub fn swap_next(&mut self) {
-        self.swap_by(1);
+    ///
+    /// Returns `Ok(())` when the swap succeeds or is a documented no-op.
+    /// Slotted strategies remain a no-op because move is unsupported there.
+    pub fn swap_next(&mut self) -> Result<(), PaneError> {
+        self.swap_by(1)
     }
 
     /// Swap the focused panel with the previous panel in the sequence (wrapping).
-    /// No-op if there is no focus or fewer than two panels.
-    pub fn swap_prev(&mut self) {
-        self.swap_by(-1);
+    ///
+    /// Returns `Ok(())` when the swap succeeds or is a documented no-op.
+    /// Slotted strategies remain a no-op because move is unsupported there.
+    pub fn swap_prev(&mut self) -> Result<(), PaneError> {
+        self.swap_by(-1)
     }
 
-    fn swap_by(&mut self, delta: isize) {
+    fn swap_by(&mut self, delta: isize) -> Result<(), PaneError> {
         let (pid, idx) = match (
             self.viewport.focus,
             self.viewport.focus.and_then(|c| self.sequence.index_of(c)),
         ) {
             (Some(pid), Some(idx)) => (pid, idx),
-            _ => return,
+            _ => return Ok(()),
         };
         let len = self.sequence.len();
         match len <= 1 {
-            true => return,
+            true => return Ok(()),
             false => {}
         }
         let target = ((idx as isize + delta).rem_euclid(len as isize)) as usize;
-        // MoveNotSupported is expected for slotted strategies (swap is a
-        // no-op). Other errors cannot occur: rem_euclid guarantees bounds
-        // and rebuild cannot fail with len > 1.
-        let _ = self.move_panel(pid, target);
+        match self.move_panel(pid, target) {
+            Ok(_) | Err(PaneError::InvalidMutation(MutationError::MoveNotSupported)) => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 
     /// Move focus to the next panel in the sequence.
@@ -140,8 +165,10 @@ impl LayoutRuntime {
 
     /// Move focus to the nearest panel in a spatial direction.
     ///
-    /// Returns `Ok(Some(target))` when focus moved, `Ok(None)` when no
-    /// candidate exists in that direction or no panel is focused.
+    /// Returns the spatial candidate (if any) paired with the focus outcome.
+    /// When no candidate exists or no panel is focused, returns `(None, Unchanged)`.
+    /// When a candidate is found but the strategy rejects it, returns
+    /// `(Some(target), Rejected(reason))`.
     ///
     /// Returns `Err(SpatialNavUnsupported)` for strategies where spatial
     /// navigation is meaningless (ActivePanel, Window). Use
@@ -150,23 +177,24 @@ impl LayoutRuntime {
         &mut self,
         layout: &ResolvedLayout,
         direction: FocusDirection,
-    ) -> Result<Option<PanelId>, PaneError> {
+    ) -> Result<(Option<PanelId>, FocusOutcome), PaneError> {
         self.check_spatial_nav()?;
         let Some(focused) = self.focused() else {
-            return Ok(None);
+            return Ok((None, FocusOutcome::Unchanged));
         };
         let Some(target) = focus::find_nearest(layout, focused, &self.sequence, direction) else {
-            return Ok(None);
+            return Ok((None, FocusOutcome::Unchanged));
         };
-        self.focus(target);
-        Ok(Some(target))
+        let outcome = self.focus(target);
+        Ok((Some(target), outcome))
     }
 
     /// Move focus to the nearest panel in a spatial direction, using the
     /// most recently resolved layout.
     ///
-    /// Returns `Ok(Some(target))` when focus moved, `Ok(None)` when no
-    /// layout has been resolved, no panel is focused, or no candidate exists.
+    /// Same semantics as [`focus_direction`](Self::focus_direction), but uses
+    /// the cached layout from the most recent `resolve()` call.
+    /// Returns `(None, Unchanged)` when no layout has been resolved.
     ///
     /// Returns `Err(SpatialNavUnsupported)` for strategies where spatial
     /// navigation is meaningless (ActivePanel, Window). Use
@@ -174,10 +202,10 @@ impl LayoutRuntime {
     pub fn focus_direction_current(
         &mut self,
         direction: FocusDirection,
-    ) -> Result<Option<PanelId>, PaneError> {
+    ) -> Result<(Option<PanelId>, FocusOutcome), PaneError> {
         self.check_spatial_nav()?;
         let Some(layout) = self.previous.as_ref().map(Arc::clone) else {
-            return Ok(None);
+            return Ok((None, FocusOutcome::Unchanged));
         };
         self.focus_direction(&layout, direction)
     }

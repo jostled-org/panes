@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::compiler::CompileResult;
 use crate::error::{PaneError, TreeError};
 use crate::panel::fixed;
-use crate::resolver;
 use crate::runtime::LayoutRuntime;
 use crate::sequence::PanelSequence;
 use crate::strategy::StrategyKind;
@@ -61,10 +59,25 @@ impl AdaptiveBuilder {
             false => {}
         }
         self.breakpoints.sort_by_key(|bp| bp.min_width);
+        validate_breakpoint_widths(&self.breakpoints)?;
         let active_idx = 0;
         let breakpoints: Box<[BreakpointEntry]> = self.breakpoints.into();
         LayoutRuntime::from_adaptive(&self.panels, breakpoints, active_idx)
     }
+}
+
+fn validate_breakpoint_widths(breakpoints: &[BreakpointEntry]) -> Result<(), PaneError> {
+    for pair in breakpoints.windows(2) {
+        if pair[0].min_width == pair[1].min_width {
+            return Err(PaneError::InvalidTree(
+                TreeError::DuplicateBreakpointWidth {
+                    width: pair[1].min_width,
+                },
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// Find the breakpoint index whose `min_width` is the largest that doesn't
@@ -89,9 +102,6 @@ pub(crate) fn rebuild_for_breakpoint(
     new_idx: usize,
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
-    cached_compile: &mut Option<CompileResult>,
-    cached_kinds: &mut Option<resolver::KindIndex>,
-    cached_sorted_kind_keys: &mut Option<Arc<[Arc<str>]>>,
 ) -> Result<Box<[Arc<str>]>, PaneError> {
     let kinds = crate::strategy::collect_kinds_from_sequence(tree, sequence);
 
@@ -103,24 +113,23 @@ pub(crate) fn rebuild_for_breakpoint(
 
     *tree = new_tree;
     *sequence = new_seq;
-    *cached_compile = None;
-    *cached_kinds = None;
-    *cached_sorted_kind_keys = None;
 
     Ok(kinds)
 }
 
 /// Restore focus and collapsed state after a breakpoint switch.
+///
+/// Uses sequence indices for deterministic restore when panels share a kind.
 pub(crate) fn restore_breakpoint_viewport(
     tree: &mut LayoutTree,
     sequence: &mut PanelSequence,
     viewport: &mut ViewportState,
     strategy: Option<&StrategyKind>,
-    focused_kind: Option<Arc<str>>,
-    collapsed_kinds: &[Arc<str>],
+    focused_seq_idx: Option<usize>,
+    collapsed_seq_indices: &[usize],
 ) -> Result<(), PaneError> {
-    let focus_pid = focused_kind
-        .and_then(|kind| tree.panels_by_kind(&kind).first().copied())
+    let focus_pid = focused_seq_idx
+        .and_then(|idx| sequence.get(idx))
         .or_else(|| sequence.get(0));
     viewport.focus = focus_pid;
     match (focus_pid, strategy) {
@@ -130,15 +139,16 @@ pub(crate) fn restore_breakpoint_viewport(
         _ => {}
     }
 
-    for kind in collapsed_kinds {
-        if let Some(&pid) = tree.panels_by_kind(kind).first() {
-            let Ok(current) = tree.panel_constraints(pid) else {
-                continue;
-            };
-            viewport.saved_constraints.insert(pid, current);
-            tree.set_constraints(pid, fixed(0.0))?;
-            viewport.collapsed.insert(pid);
-        }
+    for &idx in collapsed_seq_indices {
+        let Some(pid) = sequence.get(idx) else {
+            continue;
+        };
+        let Ok(current) = tree.panel_constraints(pid) else {
+            continue;
+        };
+        viewport.saved_constraints.insert(pid, current);
+        tree.set_constraints(pid, fixed(0.0))?;
+        viewport.collapsed.insert(pid);
     }
     Ok(())
 }

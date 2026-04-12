@@ -1,6 +1,7 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
-use panes::{Layout, Strategy};
+use panes::{Layout, PaneError, Strategy, TreeError};
 
 #[test]
 fn basic_breakpoint_selection() {
@@ -180,6 +181,37 @@ fn same_breakpoint_no_rebuild() {
     assert!(diff.removed.is_empty());
 }
 
+#[test]
+fn adaptive_duplicate_breakpoints_are_rejected() {
+    let result = Layout::adaptive(["a", "b"])
+        .at(600, Strategy::stacked())
+        .at(0, Strategy::dashboard())
+        .at(600, Strategy::master_stack())
+        .into_runtime();
+
+    let error = result.err().unwrap();
+
+    assert!(matches!(
+        error,
+        PaneError::InvalidTree(TreeError::DuplicateBreakpointWidth { width: 600 })
+    ));
+}
+
+#[test]
+fn adaptive_unsorted_breakpoints_are_sorted_before_runtime_validation() {
+    let mut runtime = Layout::adaptive(["a", "b"])
+        .at(600, Strategy::master_stack())
+        .at(0, Strategy::stacked())
+        .into_runtime()
+        .unwrap();
+
+    runtime.resolve(400.0, 300.0).unwrap();
+    assert_eq!(runtime.active_breakpoint_index(), 0);
+
+    runtime.resolve(800.0, 300.0).unwrap();
+    assert_eq!(runtime.active_breakpoint_index(), 1);
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn empty_breakpoints_snapshot_returns_error() {
@@ -200,6 +232,55 @@ fn empty_breakpoints_snapshot_returns_error() {
     let err = result.err().unwrap();
     assert!(
         matches!(err, panes::PaneError::InvalidTree(ref e) if e.to_string().contains("breakpoint"))
+    );
+}
+
+#[test]
+fn adaptive_breakpoint_restore_with_repeated_kinds_preserves_focus_and_collapsed_state() {
+    let mut rt = Layout::adaptive(["editor", "chat", "editor"])
+        .at(0, Strategy::stacked())
+        .at(600, Strategy::master_stack().master_ratio(0.6).gap(1.0))
+        .into_runtime()
+        .unwrap();
+
+    // Resolve at wide breakpoint (master_stack)
+    rt.resolve(800.0, 600.0).unwrap();
+
+    // Focus the second "editor" (sequence index 2)
+    let second_editor = rt.sequence().get(2).unwrap();
+    assert_eq!(rt.tree().panel_kind(second_editor).unwrap(), "editor");
+    rt.focus(second_editor);
+
+    // Collapse "chat" (sequence index 1)
+    let chat_pid = rt.sequence().get(1).unwrap();
+    assert_eq!(rt.tree().panel_kind(chat_pid).unwrap(), "chat");
+    rt.toggle_collapsed(chat_pid).unwrap();
+
+    // Switch to narrow breakpoint (stacked)
+    rt.resolve(400.0, 300.0).unwrap();
+
+    // Focus should be the second "editor", not the first
+    let focused_idx = rt
+        .viewport()
+        .focus
+        .and_then(|pid| rt.sequence().index_of(pid))
+        .unwrap();
+    assert_eq!(
+        focused_idx, 2,
+        "after breakpoint switch, focus should remain on second editor"
+    );
+    assert_eq!(rt.focused_kind(), Some("editor"));
+
+    // Collapsed state should include "chat"
+    let collapsed_kinds: Vec<&str> = rt
+        .viewport()
+        .collapsed
+        .iter()
+        .filter_map(|&pid| rt.tree().panel_kind(pid).ok())
+        .collect();
+    assert!(
+        collapsed_kinds.contains(&"chat"),
+        "chat should remain collapsed after breakpoint switch"
     );
 }
 

@@ -1,6 +1,7 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::{compile, compute_layout};
 use panes::resolver::resolve;
-use panes::{LayoutTree, Rect, fixed, grow};
+use panes::{Layout, LayoutTree, PanelId, Rect, fixed, grow};
 
 fn compile_and_resolve(tree: &LayoutTree, w: f32, h: f32) -> panes::resolver::ResolvedLayout {
     let mut result = compile(tree).unwrap();
@@ -291,5 +292,182 @@ fn lerp_midpoint() {
         let r = result.get(pid).unwrap();
         assert!((r.x - (from_rect.x + to_rect.x) / 2.0).abs() < 0.01);
         assert!((r.w - (from_rect.w + to_rect.w) / 2.0).abs() < 0.01);
+    }
+}
+
+// -- kind query methods --
+
+#[test]
+fn kind_of_returns_correct_kind_for_each_panel() {
+    let mut tree = LayoutTree::new();
+    let (p_ed, n_ed) = tree.add_panel("editor", grow(1.0)).unwrap();
+    let (p_term, n_term) = tree.add_panel("terminal", grow(1.0)).unwrap();
+    let (p_chat, n_chat) = tree.add_panel("chat", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![n_ed, n_term, n_chat]).unwrap();
+    tree.set_root(root);
+
+    let resolved = compile_and_resolve(&tree, 120.0, 40.0);
+
+    assert_eq!(resolved.kind_of(p_ed), Some("editor"));
+    assert_eq!(resolved.kind_of(p_term), Some("terminal"));
+    assert_eq!(resolved.kind_of(p_chat), Some("chat"));
+
+    // Absent panel returns None
+    assert_eq!(resolved.kind_of(PanelId::from_raw(999)), None);
+}
+
+#[test]
+fn kind_index_of_panel_matches_panels_iterator() {
+    let mut tree = LayoutTree::new();
+    let (_, na) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (_, nb) = tree.add_panel("b", grow(1.0)).unwrap();
+    let (_, na2) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (_, nc) = tree.add_panel("c", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![na, nb, na2, nc]).unwrap();
+    tree.set_root(root);
+
+    let resolved = compile_and_resolve(&tree, 120.0, 40.0);
+
+    // Collect from panels() iterator
+    let panel_entries: Vec<_> = resolved.panels().collect();
+    for entry in &panel_entries {
+        assert_eq!(
+            resolved.kind_index_of_panel(entry.id),
+            Some(entry.kind_index),
+            "kind_index_of_panel mismatch for {:?}",
+            entry.id
+        );
+    }
+
+    // Absent panel returns None
+    assert_eq!(resolved.kind_index_of_panel(PanelId::from_raw(999)), None);
+}
+
+#[test]
+fn kind_index_of_matches_sorted_kind_keys_position() {
+    let mut tree = LayoutTree::new();
+    let (_, nc) = tree.add_panel("chat", grow(1.0)).unwrap();
+    let (_, ne) = tree.add_panel("editor", grow(1.0)).unwrap();
+    let (_, nt) = tree.add_panel("terminal", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![nc, ne, nt]).unwrap();
+    tree.set_root(root);
+
+    let resolved = compile_and_resolve(&tree, 120.0, 40.0);
+
+    for (i, kind) in resolved.sorted_kind_keys().iter().enumerate() {
+        assert_eq!(
+            resolved.kind_index_of(kind),
+            Some(i),
+            "kind_index_of mismatch for {kind}"
+        );
+    }
+    assert_eq!(resolved.kind_index_of("nonexistent"), None);
+}
+
+#[test]
+fn decoration_entries_returns_matching_decorations_with_kind_index() {
+    let mut rt = Layout::tabbed(["editor", "chat"]).into_runtime().unwrap();
+    let frame = rt.resolve(80.0, 24.0).unwrap();
+    let resolved = frame.layout();
+
+    let entries: Vec<_> = resolved.decoration_entries("editor").collect();
+    // Tabbed layout produces tab decorations for each kind
+    assert!(
+        entries
+            .iter()
+            .any(|(info, _)| info.content_kind.as_ref() == "editor"),
+        "expected at least one decoration for editor"
+    );
+    // kind_index should match kind_index_of("editor")
+    let expected_ki = resolved.kind_index_of("editor").unwrap();
+    for (_, ki) in &entries {
+        assert_eq!(*ki, expected_ki);
+    }
+
+    // Nonexistent kind yields nothing
+    assert_eq!(resolved.decoration_entries("nonexistent").count(), 0);
+}
+
+#[test]
+fn decoration_role_returns_indexed_role_for_decoration_panel() {
+    let mut rt = Layout::tabbed(["editor", "chat"]).into_runtime().unwrap();
+    let frame = rt.resolve(80.0, 24.0).unwrap();
+    let resolved = frame.layout();
+
+    let decoration = resolved
+        .decoration_panels()
+        .first()
+        .expect("tabbed layout should expose decorations");
+
+    assert_eq!(
+        resolved.decoration_role(decoration.id),
+        Some(decoration.role)
+    );
+    assert_eq!(resolved.decoration_role(PanelId::from_raw(999)), None);
+}
+
+#[test]
+fn kind_queries_survive_layout_only_reframe() {
+    let mut rt = Layout::master_stack(["a", "b", "c"])
+        .into_runtime()
+        .unwrap();
+    let frame1 = rt.resolve(80.0, 24.0).unwrap();
+
+    // Record kind_of results
+    let first_kinds: Vec<_> = frame1
+        .layout()
+        .panel_ids()
+        .map(|pid| (pid, frame1.layout().kind_of(pid).map(str::to_owned)))
+        .collect();
+
+    // Trigger layout-only dirty (topology unchanged) by changing constraints
+    let any_pid = first_kinds[0].0;
+    rt.set_constraints(any_pid, fixed(10.0)).unwrap();
+    let frame2 = rt.resolve(80.0, 24.0).unwrap();
+
+    for (pid, expected_kind) in &first_kinds {
+        assert_eq!(
+            frame2.layout().kind_of(*pid).map(str::to_owned).as_ref(),
+            expected_kind.as_ref(),
+            "kind_of mismatch after layout-only reframe for {:?}",
+            pid
+        );
+    }
+}
+
+#[test]
+fn kind_queries_correct_on_interpolated_layout() {
+    let mut tree_a = LayoutTree::new();
+    let (_, na) = tree_a.add_panel("a", grow(1.0)).unwrap();
+    let (_, nb) = tree_a.add_panel("b", grow(1.0)).unwrap();
+    let (_, nc) = tree_a.add_panel("c", grow(1.0)).unwrap();
+    let root = tree_a.add_row(0.0, vec![na, nb, nc]).unwrap();
+    tree_a.set_root(root);
+    let layout1 = compile_and_resolve(&tree_a, 90.0, 30.0);
+
+    let mut tree_b = LayoutTree::new();
+    let (_, na) = tree_b.add_panel("a", grow(1.0)).unwrap();
+    let (_, nb) = tree_b.add_panel("b", grow(2.0)).unwrap();
+    let (_, nc) = tree_b.add_panel("c", grow(1.0)).unwrap();
+    let root = tree_b.add_row(0.0, vec![na, nb, nc]).unwrap();
+    tree_b.set_root(root);
+    let layout2 = compile_and_resolve(&tree_b, 120.0, 30.0);
+
+    let interpolated = layout1.lerp(&layout2, 0.5);
+
+    // kind_of and kind_index_of_panel should match source layout
+    for pid in interpolated.panel_ids() {
+        assert_eq!(
+            interpolated.kind_of(pid),
+            layout1.kind_of(pid),
+            "kind_of mismatch on interpolated layout for {:?}",
+            pid
+        );
+        assert_eq!(
+            interpolated.kind_index_of_panel(pid),
+            layout1.kind_index_of_panel(pid),
+            "kind_index_of_panel mismatch on interpolated layout for {:?}",
+            pid
+        );
     }
 }

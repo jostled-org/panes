@@ -32,7 +32,7 @@ Adjacent panels sharing a float boundary produce matching integer edges. No gaps
 
 ### Focus-aware iteration
 
-`focused_panels` pairs each entry with a `bool` indicating focus. A panel is focused when its id matches the given `PanelId`, or when its kind is a decoration (`_tab` / `_title` suffix) of the focused panel's kind.
+`focused_panels` pairs each entry with a `bool` indicating focus. A panel is focused when its id matches the given `PanelId`, or when it is a decoration panel whose content kind matches the focused panel's kind.
 
 ```rust
 for (entry, is_focused) in panes_ratatui::focused_panels(&resolved, runtime.focused()) {

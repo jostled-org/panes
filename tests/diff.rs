@@ -1,7 +1,9 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 mod helpers;
 
 use helpers::build_row_tree;
 use panes::diff::diff;
+use panes::runtime::LayoutRuntime;
 use panes::{LayoutTree, PanelId, Rect, fixed, grow};
 
 #[test]
@@ -162,4 +164,119 @@ fn diff_first_frame() {
     assert_eq!(d.unchanged.len(), 2);
     assert!(d.unchanged.contains(&pids[0]));
     assert!(d.unchanged.contains(&pids[1]));
+}
+
+#[test]
+fn same_panel_diff_ignores_retired_panel_holes_after_remove_and_resize() {
+    // Build a tree with panels, including some that will be removed to create
+    // retired PanelId holes in the sparse rects array.
+    let mut tree = LayoutTree::new();
+    let (_, n0) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (hole1, n_hole1) = tree.add_panel("tmp1", grow(1.0)).unwrap();
+    let (_, n1) = tree.add_panel("b", grow(1.0)).unwrap();
+    let (hole2, n_hole2) = tree.add_panel("tmp2", grow(1.0)).unwrap();
+    let (_, n2) = tree.add_panel("c", grow(1.0)).unwrap();
+    let root = tree
+        .add_row(0.0, vec![n0, n_hole1, n1, n_hole2, n2])
+        .unwrap();
+    tree.set_root(root);
+
+    // Remove the temporary panels to create retired PanelId holes.
+    tree.remove_panel(hole1).unwrap();
+    tree.remove_panel(hole2).unwrap();
+
+    let mut rt = LayoutRuntime::new(tree);
+
+    // First resolve: topology dirty, establishes the baseline frame.
+    rt.resolve(200.0, 200.0).unwrap();
+
+    // Second resolve at same dimensions: layout-only, same panel set.
+    // This uses diff_same_panels_reuse which should iterate only live panels.
+    rt.resolve(200.0, 200.0).unwrap();
+
+    // Layout-only resolve at different viewport: triggers same-panel diff path.
+    let frame = rt.resolve(300.0, 200.0).unwrap();
+    let d = rt.last_diff();
+
+    // No panels were added or removed — this was layout-only.
+    assert!(d.added.is_empty(), "expected no added, got {:?}", d.added);
+    assert!(
+        d.removed.is_empty(),
+        "expected no removed, got {:?}",
+        d.removed
+    );
+
+    // All live panels should be classified. Note: moved and resized can overlap
+    // (a panel that both moves and resizes appears in both), so count unique IDs.
+    let live_count = frame.layout().panels().count();
+    let mut classified_ids: Vec<PanelId> = Vec::new();
+    classified_ids.extend(d.moved.iter().map(|c| c.id));
+    classified_ids.extend(d.resized.iter().map(|c| c.id));
+    classified_ids.extend(d.unchanged.iter().copied());
+    classified_ids.sort_by_key(|p| p.raw());
+    classified_ids.dedup();
+    assert_eq!(
+        classified_ids.len(),
+        live_count,
+        "diff classified {} unique panels but {live_count} are live",
+        classified_ids.len(),
+    );
+}
+
+#[test]
+fn topology_dirty_frames_still_report_add_remove_over_live_panel_iteration_changes() {
+    let mut tree = LayoutTree::new();
+    let (_, n0) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (_, n1) = tree.add_panel("b", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![n0, n1]).unwrap();
+    tree.set_root(root);
+
+    let mut rt = LayoutRuntime::new(tree);
+    rt.resolve(200.0, 200.0).unwrap();
+
+    // Topology mutation: add a new panel via tree_mut (marks topology dirty).
+    let (new_pid, new_nid) = rt.tree_mut().add_panel("c", grow(1.0)).unwrap();
+    rt.tree_mut().insert_child_at(root, 2, new_nid).unwrap();
+
+    let frame = rt.resolve(200.0, 200.0).unwrap();
+    let d = rt.last_diff();
+
+    // The new panel should appear in added.
+    assert!(d.added.contains(&new_pid), "new panel should be in added");
+    assert!(d.removed.is_empty(), "no panels were removed");
+
+    // All live panels must be accounted for (moved/resized can overlap).
+    let live_count = frame.layout().panels().count();
+    let mut ids: Vec<PanelId> = Vec::new();
+    ids.extend(d.added.iter().copied());
+    ids.extend(d.moved.iter().map(|c| c.id));
+    ids.extend(d.resized.iter().map(|c| c.id));
+    ids.extend(d.unchanged.iter().copied());
+    ids.sort_by_key(|p| p.raw());
+    ids.dedup();
+    assert_eq!(ids.len(), live_count, "all live panels must be classified");
+
+    // Now remove it — topology dirty again.
+    rt.tree_mut().remove_panel(new_pid).unwrap();
+    let frame2 = rt.resolve(200.0, 200.0).unwrap();
+    let d2 = rt.last_diff();
+
+    assert!(
+        d2.removed.contains(&new_pid),
+        "removed panel should be in removed"
+    );
+    assert!(d2.added.is_empty(), "no panels were added");
+
+    let live_count2 = frame2.layout().panels().count();
+    let mut ids2: Vec<PanelId> = Vec::new();
+    ids2.extend(d2.moved.iter().map(|c| c.id));
+    ids2.extend(d2.resized.iter().map(|c| c.id));
+    ids2.extend(d2.unchanged.iter().copied());
+    ids2.sort_by_key(|p| p.raw());
+    ids2.dedup();
+    assert_eq!(
+        ids2.len(),
+        live_count2,
+        "all live panels must be classified"
+    );
 }

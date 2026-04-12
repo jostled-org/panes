@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use super::builder::BoundStrategy;
-use super::{Direction, SlotDef, StrategyKind};
+use crate::panel::Axis;
+
+use super::{SlotDef, StrategyKind};
 
 /// Builder for sidebar strategy: fixed-width sidebar + grow content.
 #[derive(Debug, Clone)]
@@ -45,7 +47,7 @@ impl SidebarStrategy {
         let kind = StrategyKind::Slotted {
             slots,
             gap: self.gap,
-            direction: Direction::Horizontal,
+            axis: Axis::Row,
         };
         BoundStrategy::new(kind, Box::from([sidebar, content]), None)
     }

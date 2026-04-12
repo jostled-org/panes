@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::{compile, compute_layout, panel_layout};
 use panes::runtime::LayoutRuntime;
 use panes::{Align, Layout, LayoutTree, PaneError, SizeMode, fixed, grow};

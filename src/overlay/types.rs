@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::macros::id_newtype;
+use crate::node::PanelKey;
 
 #[cfg(feature = "serde")]
 fn serialize_arc_str<S: serde::Serializer>(v: &Arc<str>, s: S) -> Result<S::Ok, S::Error> {
@@ -9,14 +10,33 @@ fn serialize_arc_str<S: serde::Serializer>(v: &Arc<str>, s: S) -> Result<S::Ok, 
 
 #[cfg(feature = "serde")]
 fn deserialize_arc_str<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Arc<str>, D::Error> {
-    let s: String = serde::Deserialize::deserialize(d)?;
-    Ok(Arc::from(s.as_str()))
+    let s: Box<str> = serde::Deserialize::deserialize(d)?;
+    Ok(Arc::from(s))
 }
 
 id_newtype!(
     /// Opaque overlay identifier.
     pub OverlayId
 );
+
+/// Generates sequential, unique `OverlayId` values.
+#[derive(Default)]
+pub(crate) struct OverlayIdGenerator {
+    counter: u32,
+}
+
+impl OverlayIdGenerator {
+    pub(crate) fn next_id(&mut self) -> Result<OverlayId, crate::error::PaneError> {
+        let id = OverlayId::from_raw(self.counter);
+        self.counter = self
+            .counter
+            .checked_add(1)
+            .ok_or(crate::error::PaneError::InvalidTree(
+                crate::error::TreeError::OverlayIdExhausted,
+            ))?;
+        Ok(id)
+    }
+}
 
 /// Horizontal alignment for overlay anchoring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +68,10 @@ pub enum OverlayAnchor {
         margin_y: f32,
     },
     /// Relative to a base panel's rect (looked up by kind).
+    ///
+    /// Rejects ambiguity: if multiple panels share the kind, the overlay
+    /// is silently omitted during resolve. Use `PanelAnchor` for
+    /// identity-based anchoring when repeated kinds are expected.
     Panel {
         #[cfg_attr(
             feature = "serde",
@@ -57,6 +81,18 @@ pub enum OverlayAnchor {
             )
         )]
         kind: Arc<str>,
+        h: HAlign,
+        v: VAlign,
+        offset_x: f32,
+        offset_y: f32,
+    },
+    /// Relative to a panel identified by its stable [`PanelKey`].
+    ///
+    /// Preferred over `Panel` when multiple panels may share a kind.
+    /// The key is resolved via the runtime's sequence to a `PanelId`,
+    /// then looked up in the resolved layout.
+    PanelAnchor {
+        key: PanelKey,
         h: HAlign,
         v: VAlign,
         offset_x: f32,
@@ -88,7 +124,10 @@ impl Default for OverlayExtent {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExtentValue {
     Fixed(f32),
-    /// Percentage of viewport (0.0–100.0).
+    /// Percentage of the viewport size.
+    ///
+    /// Values above `100.0` are allowed and produce overlays larger than the
+    /// viewport before any optional min/max clamp is applied.
     Percent(f32),
     Full,
 }
@@ -145,6 +184,17 @@ impl<'a, R> OverlayEntry<'a, R> {
             rect: f(self.rect),
         }
     }
+}
+
+/// Why an overlay anchor failed to resolve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnchorFailure {
+    /// Kind-based anchor matched zero panels.
+    KindNotFound,
+    /// Kind-based anchor matched multiple panels (ambiguous).
+    KindAmbiguous,
+    /// PanelKey no longer maps to a live panel in the sequence/layout.
+    KeyStale,
 }
 
 /// Serializable overlay for snapshot persistence.

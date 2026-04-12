@@ -6,7 +6,7 @@ use crate::layout::Layout;
 use crate::panel::grow;
 use crate::preset::{
     add_active_hidden_panels, col_style, collect_kinds, validate_active, validate_f32_param,
-    validate_kinds,
+    validate_kinds, validate_share_param,
 };
 
 /// Builder for the deck preset layout.
@@ -43,7 +43,7 @@ impl Deck {
             true => validate_active(self.active, self.kinds.len() - 1)?,
             false => {}
         }
-        validate_f32_param("master_ratio", self.master_ratio)?;
+        validate_share_param("master_ratio", self.master_ratio)?;
         validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();

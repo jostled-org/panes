@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::builder::LayoutBuilder;
-use crate::error::{PaneError, TreeError};
+use crate::error::{ConstraintError, PaneError, TreeError};
 use crate::layout::Layout;
 use crate::panel::{fixed, grow};
 use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
@@ -34,6 +34,17 @@ pub(crate) fn validate_kinds(kinds: &[Arc<str>]) -> Result<(), PaneError> {
 pub(crate) fn validate_f32_param(name: &'static str, value: f32) -> Result<(), PaneError> {
     check_f32_non_negative(value)
         .map_err(|e| PaneError::InvalidConstraint(float_invalid_to_constraint(name, e)))
+}
+
+/// Validate that an `f32` share parameter is finite, non-negative, and at most `1.0`.
+pub(crate) fn validate_share_param(name: &'static str, value: f32) -> Result<(), PaneError> {
+    validate_f32_param(name, value)?;
+    match value <= 1.0 {
+        true => Ok(()),
+        false => Err(PaneError::InvalidConstraint(ConstraintError::ExceedsOne(
+            name,
+        ))),
+    }
 }
 
 /// Validate that `active` is within bounds.
@@ -154,6 +165,62 @@ pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32, auto_rows: bool)
             width: gap_len,
             height: gap_len,
         },
+        ..Default::default()
+    }
+}
+
+/// Validate that a grid column mode is valid (non-zero columns, positive finite min width).
+///
+/// Reuses existing dashboard error variants for semantic consistency.
+pub(crate) fn validate_grid_columns(columns: GridColumnMode) -> Result<(), PaneError> {
+    match columns {
+        GridColumnMode::Fixed(0) => Err(PaneError::InvalidTree(TreeError::DashboardNoColumns)),
+        GridColumnMode::AutoFill { min_width } | GridColumnMode::AutoFit { min_width }
+            if !(min_width > 0.0 && min_width.is_finite()) =>
+        {
+            Err(PaneError::InvalidTree(TreeError::DashboardMinWidthInvalid))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Validate that a grid span fits in a u16 (taffy grid placement limit).
+pub(crate) fn validate_grid_span(span: crate::strategy::CardSpan) -> Result<(), PaneError> {
+    match span {
+        crate::strategy::CardSpan::Columns(n) => {
+            u16::try_from(n).map_err(|_| {
+                PaneError::InvalidConstraint(crate::error::ConstraintError::GridSpanOverflow(n))
+            })?;
+            Ok(())
+        }
+        crate::strategy::CardSpan::FullWidth => Ok(()),
+    }
+}
+
+/// Build a taffy style for a grid item with column span placement.
+///
+/// Callers must validate the span via `validate_grid_span` before calling.
+/// The builder validates at construction; the compiler processes pre-validated nodes.
+pub(crate) fn grid_item_style(span: crate::strategy::CardSpan) -> taffy::Style {
+    use crate::strategy::CardSpan;
+    use taffy::prelude::TaffyGridLine;
+
+    let grid_column = match span {
+        CardSpan::FullWidth => taffy::Line {
+            start: taffy::GridPlacement::from_line_index(1),
+            end: taffy::GridPlacement::from_line_index(-1),
+        },
+        CardSpan::Columns(n) => {
+            // Builder validated this fits in u16 at construction time.
+            let span_u16 = n as u16;
+            taffy::Line {
+                start: taffy::GridPlacement::Auto,
+                end: taffy::GridPlacement::Span(span_u16),
+            }
+        }
+    };
+    taffy::Style {
+        grid_column,
         ..Default::default()
     }
 }

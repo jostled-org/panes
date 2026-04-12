@@ -30,17 +30,20 @@ impl LayoutRuntime {
         match strategy_ref(&self.strategy_source, &self.breakpoints, self.active_bp_idx) {
             Some(strategy) => {
                 let index = self.placement_to_index(placement);
-                crate::strategy::apply_add(
+                let pid = crate::strategy::apply_add(
                     strategy,
                     &mut self.tree,
                     &mut self.sequence,
                     &mut self.viewport,
                     kind,
                     index,
-                )
+                );
+                self.invalidate_topology();
+                pid
             }
             None => {
-                let direction = self.auto_direction();
+                let direction = self.auto_axis();
+                // add_panel_adjacent_with handles topology invalidation internally
                 self.add_panel_adjacent_with(kind, direction, crate::panel::grow(1.0), placement)
             }
         }
@@ -67,27 +70,31 @@ impl LayoutRuntime {
     pub fn remove_panel(&mut self, pid: PanelId) -> Result<Option<PanelId>, PaneError> {
         let strategy = strategy_ref(&self.strategy_source, &self.breakpoints, self.active_bp_idx)
             .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))?;
-        crate::strategy::apply_remove(
+        let new_focus = crate::strategy::apply_remove(
             strategy,
             &mut self.tree,
             &mut self.sequence,
             &mut self.viewport,
             pid,
-        )
+        );
+        self.invalidate_topology();
+        new_focus
     }
 
     /// Move a panel to a new sequence index using the active strategy.
     pub fn move_panel(&mut self, pid: PanelId, new_index: usize) -> Result<PanelId, PaneError> {
         let strategy = strategy_ref(&self.strategy_source, &self.breakpoints, self.active_bp_idx)
             .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))?;
-        crate::strategy::apply_move(
+        let moved_pid = crate::strategy::apply_move(
             strategy,
             &mut self.tree,
             &mut self.sequence,
             &mut self.viewport,
             pid,
             new_index,
-        )
+        );
+        self.invalidate_topology();
+        moved_pid
     }
 
     /// Change a dashboard card's column span and rebuild the grid.
@@ -109,10 +116,10 @@ impl LayoutRuntime {
             pid,
             span,
         )?;
-        match self.strategy_mut() {
-            Some(s) => *s = new_strategy,
-            None => {}
-        }
+        *self
+            .strategy_mut()
+            .ok_or(PaneError::InvalidMutation(MutationError::NoStrategy))? = new_strategy;
+        self.invalidate_topology();
         Ok(())
     }
 
@@ -121,6 +128,27 @@ impl LayoutRuntime {
     /// Positive delta gives the panel more space; negative gives it less.
     /// All siblings in the parent container must be panels with grow constraints.
     pub fn resize_boundary(&mut self, pid: PanelId, delta: f32) -> Result<(), PaneError> {
-        crate::resize::resize_boundary(&mut self.tree, pid, delta)
+        crate::resize::resize_boundary(&mut self.tree, pid, delta)?;
+        self.invalidate_layout();
+        Ok(())
+    }
+
+    /// Invalidate compile cache after a constraint or size change.
+    ///
+    /// Kind caches remain valid — only the compiled taffy tree needs rebuilding.
+    pub(crate) fn invalidate_layout(&mut self) {
+        self.dirty.mark_layout();
+        self.cached_compile = None;
+    }
+
+    /// Clear all caches after a topology-changing mutation.
+    pub(crate) fn invalidate_topology(&mut self) {
+        self.dirty.mark_topology();
+        self.cached_compile = None;
+        self.cached_kinds = None;
+        self.cached_sorted_kind_keys = None;
+        self.cached_panel_kind_indices = None;
+        self.cached_decorations = None;
+        self.cached_decoration_roles = None;
     }
 }

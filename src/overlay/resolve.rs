@@ -1,27 +1,10 @@
 use super::types::{
-    ExtentValue, HAlign, OverlayAnchor, OverlayDef, OverlayExtent, OverlayId, VAlign,
+    AnchorFailure, ExtentValue, HAlign, OverlayAnchor, OverlayDef, OverlayExtent, VAlign,
 };
+use crate::node::PanelKey;
 use crate::rect::Rect;
 use crate::resolver::ResolvedLayout;
-
-/// Generates sequential, unique `OverlayId` values.
-#[derive(Default)]
-pub(crate) struct OverlayIdGenerator {
-    counter: u32,
-}
-
-impl OverlayIdGenerator {
-    pub(crate) fn next_id(&mut self) -> Result<OverlayId, crate::error::PaneError> {
-        let id = OverlayId::from_raw(self.counter);
-        self.counter = self
-            .counter
-            .checked_add(1)
-            .ok_or(crate::error::PaneError::InvalidTree(
-                crate::error::TreeError::OverlayIdExhausted,
-            ))?;
-        Ok(id)
-    }
-}
+use crate::sequence::PanelSequence;
 
 /// Validate an `OverlayExtent`'s value and min/max bounds.
 pub(crate) fn validate_extent(
@@ -89,12 +72,16 @@ fn align_v(align: VAlign, origin: f32, container: f32, size: f32, margin: f32) -
 }
 
 /// Resolve a single overlay to a rect, given viewport dimensions and the base layout.
+///
+/// Returns `Err(AnchorFailure)` when the anchor cannot be resolved — the
+/// variant distinguishes missing panels, ambiguous kind matches, and stale keys.
 pub(crate) fn resolve_overlay(
     def: &OverlayDef,
     vp_w: f32,
     vp_h: f32,
     base: &ResolvedLayout,
-) -> Option<Rect> {
+    sequence: &PanelSequence,
+) -> Result<Rect, AnchorFailure> {
     let w = resolve_extent(&def.width, vp_w);
     let h = resolve_extent(&def.height, vp_h);
 
@@ -116,14 +103,49 @@ pub(crate) fn resolve_overlay(
             offset_x,
             offset_y,
         } => {
-            let panel_id = base.by_kind(kind).first()?;
-            let panel_rect = base.get(*panel_id)?;
-
+            let panel_rect = resolve_unique_kind_rect(kind, base)?;
+            let x = align_h(*ha, panel_rect.x, panel_rect.w, w, *offset_x);
+            let y = align_v(*va, panel_rect.y, panel_rect.h, h, *offset_y);
+            (x, y)
+        }
+        OverlayAnchor::PanelAnchor {
+            key,
+            h: ha,
+            v: va,
+            offset_x,
+            offset_y,
+        } => {
+            let panel_rect = resolve_panel_key_rect(*key, base, sequence)?;
             let x = align_h(*ha, panel_rect.x, panel_rect.w, w, *offset_x);
             let y = align_v(*va, panel_rect.y, panel_rect.h, h, *offset_y);
             (x, y)
         }
     };
 
-    Some(Rect { x, y, w, h })
+    Ok(Rect { x, y, w, h })
+}
+
+/// Resolve a kind to a rect, rejecting ambiguity (zero or multiple panels).
+fn resolve_unique_kind_rect<'a>(
+    kind: &str,
+    base: &'a ResolvedLayout,
+) -> Result<&'a Rect, AnchorFailure> {
+    let panels = base.by_kind(kind);
+    match panels {
+        [] => Err(AnchorFailure::KindNotFound),
+        [panel_id] => base.get(*panel_id).ok_or(AnchorFailure::KindNotFound),
+        _ => Err(AnchorFailure::KindAmbiguous),
+    }
+}
+
+/// Resolve a `PanelKey` to a rect via the sequence → PanelId → layout lookup.
+fn resolve_panel_key_rect<'a>(
+    key: PanelKey,
+    base: &'a ResolvedLayout,
+    sequence: &PanelSequence,
+) -> Result<&'a Rect, AnchorFailure> {
+    let pid = sequence
+        .get(key.raw() as usize)
+        .ok_or(AnchorFailure::KeyStale)?;
+    base.get(pid).ok_or(AnchorFailure::KeyStale)
 }

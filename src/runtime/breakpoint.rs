@@ -20,12 +20,16 @@ impl LayoutRuntime {
             return Ok(());
         };
 
-        let focused_kind = self.focused_kind_arc();
-        let collapsed_kinds: Box<[_]> = self
+        // Save state by sequence index for deterministic restore with repeated kinds.
+        let focused_seq_idx = self
+            .viewport
+            .focus
+            .and_then(|pid| self.sequence.index_of(pid));
+        let collapsed_seq_indices: Box<[usize]> = self
             .viewport
             .collapsed
             .iter()
-            .filter_map(|&pid| self.tree.panel_kind_arc(pid).ok())
+            .filter_map(|&pid| self.sequence.index_of(pid))
             .collect();
 
         breakpoint::rebuild_for_breakpoint(
@@ -33,11 +37,9 @@ impl LayoutRuntime {
             new_idx,
             &mut self.tree,
             &mut self.sequence,
-            &mut self.cached_compile,
-            &mut self.cached_kinds,
-            &mut self.cached_sorted_kind_keys,
         )?;
 
+        self.invalidate_topology();
         self.viewport.collapsed.clear();
         self.viewport.saved_constraints.clear();
 
@@ -49,8 +51,8 @@ impl LayoutRuntime {
             &mut self.sequence,
             &mut self.viewport,
             strategy_ref(&self.strategy_source, &self.breakpoints, self.active_bp_idx),
-            focused_kind,
-            &collapsed_kinds,
+            focused_seq_idx,
+            &collapsed_seq_indices,
         )?;
 
         Ok(())

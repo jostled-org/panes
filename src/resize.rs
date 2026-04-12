@@ -288,7 +288,10 @@ fn collect_siblings(tree: &LayoutTree, parent_nid: NodeId) -> Result<Vec<Sibling
                 });
             }
             Node::TaffyPassthrough { .. } => {} // skip zero-grow decorations
-            Node::Row { .. } | Node::Col { .. } => {
+            Node::Row { .. }
+            | Node::Col { .. }
+            | Node::Grid { .. }
+            | Node::GridItemWrapper { .. } => {
                 return Err(PaneError::InvalidMutation(MutationError::SiblingsNotPanels));
             }
         }

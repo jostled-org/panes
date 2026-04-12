@@ -156,7 +156,7 @@ struct BreakpointDef {
     min_column_width: Option<f32>,
     column_mode: Option<Box<str>>,
     bar_height: Option<f32>,
-    size: Option<usize>,
+    panel_count: Option<usize>,
 }
 
 /// Parse a TOML string into a `Layout`.
@@ -367,7 +367,8 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
                 crate::error::TreeError::NodeKindAndType,
             ));
         }
-        (Some(_), None) if node.grow.is_some() && node.fixed.is_some() => {
+        (kind, node_type) if node.grow.is_some() && node.fixed.is_some() => {
+            let _ = (kind, node_type);
             ctx.set_error(crate::error::PaneError::InvalidConstraint(
                 crate::error::ConstraintError::GrowFixedExclusive,
             ));
@@ -377,14 +378,10 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
             ctx.panel_with(kind, constraints);
         }
         (None, Some("row")) => {
-            ctx.row_gap(node.gap.unwrap_or(0.0), |inner| {
-                add_tree_children(inner, node.children);
-            });
+            add_row_node(ctx, node);
         }
         (None, Some("col")) => {
-            ctx.col_gap(node.gap.unwrap_or(0.0), |inner| {
-                add_tree_children(inner, node.children);
-            });
+            add_col_node(ctx, node);
         }
         (None, Some(other)) => {
             ctx.set_error(crate::error::PaneError::InvalidTree(
@@ -399,37 +396,77 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
     }
 }
 
+fn add_row_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
+    let gap = node.gap.unwrap_or(0.0);
+    match container_constraints(&node) {
+        Some(constraints) => ctx.row_gap_with(gap, constraints, |inner| {
+            add_tree_children(inner, node.children);
+        }),
+        None => ctx.row_gap(gap, |inner| add_tree_children(inner, node.children)),
+    }
+}
+
+fn add_col_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
+    let gap = node.gap.unwrap_or(0.0);
+    match container_constraints(&node) {
+        Some(constraints) => ctx.col_gap_with(gap, constraints, |inner| {
+            add_tree_children(inner, node.children);
+        }),
+        None => ctx.col_gap(gap, |inner| add_tree_children(inner, node.children)),
+    }
+}
+
+fn container_constraints(node: &TreeNodeDef) -> Option<crate::panel::Constraints> {
+    match has_constraints(node) {
+        true => Some(node_constraints(node)),
+        false => None,
+    }
+}
+
+fn has_constraints(node: &TreeNodeDef) -> bool {
+    node.grow.is_some()
+        || node.fixed.is_some()
+        || node.min.is_some()
+        || node.max.is_some()
+        || node.min_width.is_some()
+        || node.max_width.is_some()
+        || node.min_height.is_some()
+        || node.max_height.is_some()
+        || node.align.is_some()
+        || node.size_mode.is_some()
+}
+
 fn node_constraints(node: &TreeNodeDef) -> crate::panel::Constraints {
-    let mut c = match (node.grow, node.fixed) {
+    let mut constraints = match (node.grow, node.fixed) {
         (Some(g), _) => crate::panel::grow(g),
         (_, Some(f)) => crate::panel::fixed(f),
         (None, None) => crate::panel::grow(1.0),
     };
     if let Some(lo) = node.min {
-        c = c.min(lo);
+        constraints = constraints.min(lo);
     }
     if let Some(hi) = node.max {
-        c = c.max(hi);
+        constraints = constraints.max(hi);
     }
     if let Some(v) = node.min_width {
-        c = c.min_width(v);
+        constraints = constraints.min_width(v);
     }
     if let Some(v) = node.max_width {
-        c = c.max_width(v);
+        constraints = constraints.max_width(v);
     }
     if let Some(v) = node.min_height {
-        c = c.min_height(v);
+        constraints = constraints.min_height(v);
     }
     if let Some(v) = node.max_height {
-        c = c.max_height(v);
+        constraints = constraints.max_height(v);
     }
     if let Some(a) = node.align {
-        c = c.align(a);
+        constraints = constraints.align(a);
     }
     if let Some(sm) = node.size_mode {
-        c = c.size_mode(sm);
+        constraints = constraints.size_mode(sm);
     }
-    c
+    constraints
 }
 
 // -- Adaptive / runtime parsing --
@@ -483,7 +520,7 @@ fn breakpoint_def_to_strategy(
         "monocle" => build_bp_strategy!(Strategy::monocle(), bp, bar_height),
         "tabbed" => build_bp_strategy!(Strategy::tabbed(), bp, bar_height),
         "stacked" => build_bp_strategy!(Strategy::stacked(), bp, bar_height),
-        "scrollable" => build_bp_strategy!(Strategy::scrollable(), bp, size, gap),
+        "scrollable" => build_bp_strategy!(Strategy::scrollable(), bp, panel_count, gap),
         "dwindle" => build_bp_strategy!(Strategy::dwindle(), bp, ratio, gap),
         "spiral" => build_bp_strategy!(Strategy::spiral(), bp, ratio, gap),
         "columns" | "grid" | "dashboard" => build_bp_dashboard(bp),

@@ -4,7 +4,9 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::{col_style, collect_kinds, row_style, validate_f32_param, validate_kinds};
+use crate::preset::{
+    col_style, collect_kinds, row_style, validate_f32_param, validate_kinds, validate_share_param,
+};
 
 /// Builder for the dwindle preset layout.
 pub struct Dwindle {
@@ -32,7 +34,7 @@ impl Dwindle {
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
-        validate_f32_param("ratio", self.ratio)?;
+        validate_share_param("ratio", self.ratio)?;
         validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();

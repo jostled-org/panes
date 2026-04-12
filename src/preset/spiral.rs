@@ -4,7 +4,7 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::preset::dwindle::build_recursive;
-use crate::preset::{collect_kinds, validate_f32_param, validate_kinds};
+use crate::preset::{collect_kinds, validate_f32_param, validate_kinds, validate_share_param};
 
 /// Builder for the spiral preset layout.
 pub struct Spiral {
@@ -32,7 +32,7 @@ impl Spiral {
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
-        validate_f32_param("ratio", self.ratio)?;
+        validate_share_param("ratio", self.ratio)?;
         validate_f32_param("gap", self.gap)?;
 
         let mut b = LayoutBuilder::new();

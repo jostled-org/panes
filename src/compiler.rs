@@ -1,7 +1,6 @@
 use crate::error::{PaneError, TreeError, ViewportError};
 use crate::node::{Node, NodeId, PanelId};
-use crate::panel::{Align, Constraints};
-use crate::strategy::Direction;
+use crate::panel::{Align, Axis, Constraints};
 use crate::tree::LayoutTree;
 use crate::validate::{FloatInvalid, check_f32_non_negative};
 
@@ -32,7 +31,7 @@ fn merge_dim(axis_dim: taffy::Dimension, absolute_dim: taffy::Dimension) -> taff
 }
 
 /// Map panes `Constraints` to a Taffy `Style` for a child along the given axis.
-pub fn constraints_to_style(constraints: &Constraints, axis: Direction) -> taffy::Style {
+pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Style {
     let (flex_grow, flex_basis, flex_shrink) = match (constraints.grow, constraints.fixed) {
         (Some(g), _) => (g, taffy::Dimension::length(0.0), 1.0),
         (_, Some(f)) => (0.0, taffy::Dimension::length(f), 0.0),
@@ -67,7 +66,7 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Direction) -> taffy
         .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
 
     let (min_size, max_size) = match axis {
-        Direction::Horizontal => (
+        Axis::Row => (
             taffy::Size {
                 width: merge_dim(min_dim, cross_min_w),
                 height: cross_min_h,
@@ -77,7 +76,7 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Direction) -> taffy
                 height: cross_max_h,
             },
         ),
-        Direction::Vertical => (
+        Axis::Col => (
             taffy::Size {
                 width: cross_min_w,
                 height: merge_dim(min_dim, cross_min_h),
@@ -107,31 +106,29 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Direction) -> taffy
     }
 }
 
-/// Build a Taffy `Style` for a container node (Row, Col, or TaffyPassthrough).
+/// Build a Taffy `Style` for a container node.
 ///
 /// Only called from the container arm of `compile_node`; the Panel arm is
 /// unreachable by construction but kept for exhaustiveness.
-fn container_style(node: &Node, is_root: bool) -> taffy::Style {
-    let (size, flex_grow, flex_basis, flex_shrink) = match is_root {
-        true => (
-            taffy::Size {
-                width: taffy::Dimension::percent(1.0),
-                height: taffy::Dimension::percent(1.0),
-            },
-            0.0,
-            taffy::Dimension::auto(),
-            0.0,
-        ),
-        false => (taffy::Size::auto(), 1.0, taffy::Dimension::length(0.0), 1.0),
-    };
-
-    let (direction, gap_value) = match node {
-        Node::Row { gap, .. } => (taffy::FlexDirection::Row, *gap),
-        Node::Col { gap, .. } => (taffy::FlexDirection::Column, *gap),
+fn container_style(node: &Node, parent_axis: Axis, is_root: bool) -> taffy::Style {
+    let (direction, gap_value, constraints) = match node {
+        Node::Row {
+            gap, constraints, ..
+        } => (taffy::FlexDirection::Row, *gap, constraints.as_ref()),
+        Node::Col {
+            gap, constraints, ..
+        } => (taffy::FlexDirection::Column, *gap, constraints.as_ref()),
+        Node::Grid {
+            columns,
+            gap,
+            auto_rows,
+            ..
+        } => return crate::preset::simple_grid_style(*columns, *gap, *auto_rows),
         // Deep-clones the taffy::Style; known cost accepted for correctness.
         Node::TaffyPassthrough { style, .. } => return style.as_ref().clone(),
-        Node::Panel { .. } => return taffy::Style::default(),
+        Node::Panel { .. } | Node::GridItemWrapper { .. } => return taffy::Style::default(),
     };
+
     let gap_size = match direction {
         taffy::FlexDirection::Row | taffy::FlexDirection::RowReverse => taffy::Size {
             width: taffy::LengthPercentage::length(gap_value),
@@ -142,30 +139,51 @@ fn container_style(node: &Node, is_root: bool) -> taffy::Style {
             height: taffy::LengthPercentage::length(gap_value),
         },
     };
-    taffy::Style {
-        flex_direction: direction,
-        size,
-        flex_grow,
-        flex_basis,
-        flex_shrink,
-        gap: gap_size,
-        ..Default::default()
+
+    match (is_root, constraints) {
+        (true, _) => taffy::Style {
+            flex_direction: direction,
+            size: taffy::Size {
+                width: taffy::Dimension::percent(1.0),
+                height: taffy::Dimension::percent(1.0),
+            },
+            flex_grow: 0.0,
+            flex_basis: taffy::Dimension::auto(),
+            flex_shrink: 0.0,
+            gap: gap_size,
+            ..Default::default()
+        },
+        (false, Some(c)) => {
+            let mut style = constraints_to_style(c, parent_axis);
+            style.flex_direction = direction;
+            style.gap = gap_size;
+            style
+        }
+        (false, None) => taffy::Style {
+            flex_direction: direction,
+            size: taffy::Size::auto(),
+            flex_grow: 1.0,
+            flex_basis: taffy::Dimension::length(0.0),
+            flex_shrink: 1.0,
+            gap: gap_size,
+            ..Default::default()
+        },
     }
 }
 
-/// Derive the layout direction from a parent node.
-pub(crate) fn direction_of(node: &Node) -> Direction {
+/// Derive the primary axis from a parent node.
+pub(crate) fn axis_of(node: &Node) -> Axis {
     match node {
-        Node::Col { .. } => Direction::Vertical,
+        Node::Col { .. } => Axis::Col,
         Node::TaffyPassthrough { style, .. }
             if matches!(
                 style.flex_direction,
                 taffy::FlexDirection::Column | taffy::FlexDirection::ColumnReverse
             ) =>
         {
-            Direction::Vertical
+            Axis::Col
         }
-        _ => Direction::Horizontal,
+        _ => Axis::Row,
     }
 }
 
@@ -218,7 +236,7 @@ pub fn compile_with_sizes(
     };
 
     let root_node = tree.node(root_id).ok_or(PaneError::NodeNotFound(root_id))?;
-    let root_axis = direction_of(root_node);
+    let root_axis = axis_of(root_node);
     let taffy_root = compile_node(tree, root_id, root_axis, true, &mut ctx)?;
 
     Ok(CompileResult {
@@ -231,7 +249,7 @@ pub fn compile_with_sizes(
 /// Build a taffy style for a panel, applying intrinsic size override when present.
 fn panel_leaf_style(
     constraints: &Constraints,
-    parent_axis: Direction,
+    parent_axis: Axis,
     intrinsic: Option<(f32, f32)>,
 ) -> taffy::Style {
     let mut style = constraints_to_style(constraints, parent_axis);
@@ -254,7 +272,7 @@ fn panel_leaf_style(
 fn compile_node(
     tree: &LayoutTree,
     nid: NodeId,
-    parent_axis: Direction,
+    parent_axis: Axis,
     is_root: bool,
     ctx: &mut CompileCtx<'_>,
 ) -> Result<taffy::NodeId, PaneError> {
@@ -270,9 +288,17 @@ fn compile_node(
                 .new_leaf(style)
                 .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?
         }
-        Node::Row { .. } | Node::Col { .. } | Node::TaffyPassthrough { .. } => {
+        Node::GridItemWrapper { span, child } => {
+            let style = crate::preset::grid_item_style(*span);
+            let child_axis = Axis::Row;
+            let child_taffy = compile_node(tree, *child, child_axis, false, ctx)?;
+            ctx.taffy_tree
+                .new_with_children(style, &[child_taffy])
+                .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?
+        }
+        Node::Row { .. } | Node::Col { .. } | Node::Grid { .. } | Node::TaffyPassthrough { .. } => {
             let taffy_children = compile_children(tree, node, ctx)?;
-            let style = container_style(node, is_root);
+            let style = container_style(node, parent_axis, is_root);
             ctx.taffy_tree
                 .new_with_children(style, &taffy_children)
                 .map_err(|e| PaneError::InvalidTree(TreeError::TaffyError(e.to_string().into())))?
@@ -291,7 +317,7 @@ fn compile_children(
     node: &Node,
     ctx: &mut CompileCtx<'_>,
 ) -> Result<Vec<taffy::NodeId>, PaneError> {
-    let child_axis = direction_of(node);
+    let child_axis = axis_of(node);
     node.children()
         .iter()
         .map(|&child_nid| compile_node(tree, child_nid, child_axis, false, ctx))

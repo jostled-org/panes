@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic, clippy::unreachable)]
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use panes::runtime::LayoutRuntime;
 use panes::{Layout, Overlay};

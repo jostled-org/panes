@@ -1,5 +1,7 @@
 use crate::error::PaneError;
 use crate::node::PanelId;
+use crate::panel::Constraints;
+use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
 use super::types::LayoutRuntime;
 
@@ -14,6 +16,13 @@ impl LayoutRuntime {
         width: f32,
         height: f32,
     ) -> Result<(), PaneError> {
+        check_f32_non_negative(width).map_err(|err| {
+            PaneError::InvalidConstraint(float_invalid_to_constraint("width", err))
+        })?;
+        check_f32_non_negative(height).map_err(|err| {
+            PaneError::InvalidConstraint(float_invalid_to_constraint("height", err))
+        })?;
+
         self.tree
             .node_for_panel(pid)
             .ok_or(PaneError::PanelNotFound(pid))?;
@@ -27,9 +36,23 @@ impl LayoutRuntime {
             true => {}
             false => {
                 self.panel_sizes[idx] = new_val;
-                self.cached_compile = None;
+                self.invalidate_layout();
             }
         }
+        Ok(())
+    }
+
+    /// Update a panel's constraints without invalidating kind caches.
+    ///
+    /// Unlike `tree_mut().set_constraints()`, this marks only layout dirty,
+    /// preserving cached kind indices and sorted kind keys across the next resolve.
+    pub fn set_constraints(
+        &mut self,
+        pid: PanelId,
+        constraints: Constraints,
+    ) -> Result<(), PaneError> {
+        self.tree.set_constraints(pid, constraints)?;
+        self.invalidate_layout();
         Ok(())
     }
 
@@ -43,7 +66,7 @@ impl LayoutRuntime {
         match self.panel_sizes.get_mut(idx) {
             Some(slot @ Some(_)) => {
                 *slot = None;
-                self.cached_compile = None;
+                self.invalidate_layout();
             }
             _ => {}
         }

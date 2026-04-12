@@ -1,6 +1,7 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
-use panes::{Constraints, LayoutTree, Node, PaneError, PanelId, Position, fixed, grow};
+use panes::{Constraints, LayoutTree, Node, PaneError, PanelId, Position, TreeError, fixed, grow};
 
 #[test]
 fn tree_add_panel_returns_panel_id_and_node_id() {
@@ -22,7 +23,7 @@ fn tree_add_row_with_children() {
 
     assert_eq!(tree.root(), Some(row));
     match tree.node(row) {
-        Some(Node::Row { children, gap }) => {
+        Some(Node::Row { children, gap, .. }) => {
             assert_eq!(*gap, 8.0);
             assert_eq!(children.len(), 2);
             assert_eq!(children[0], n1);
@@ -40,7 +41,7 @@ fn tree_add_col_with_children() {
     let col = tree.add_col(0.0, vec![n1, n2]).unwrap();
 
     match tree.node(col) {
-        Some(Node::Col { children, gap }) => {
+        Some(Node::Col { children, gap, .. }) => {
             assert_eq!(*gap, 0.0);
             assert_eq!(children.len(), 2);
         }
@@ -175,6 +176,19 @@ fn remove_panel_not_found_returns_error() {
     let bad_id = PanelId::from_raw(999);
     let result = tree.remove_panel(bad_id);
     assert!(matches!(result, Err(PaneError::PanelNotFound(_))));
+}
+
+#[test]
+fn remove_root_panel_clears_root() {
+    let mut tree = LayoutTree::new();
+    let (pid, root) = tree.add_panel("root", grow(1.0)).unwrap();
+    tree.set_root(root);
+
+    tree.remove_panel(pid).unwrap();
+
+    assert_eq!(tree.root(), None);
+    assert_eq!(tree.panel_count(), 0);
+    assert!(tree.node(root).is_none());
 }
 
 #[test]
@@ -375,6 +389,52 @@ fn move_panel_updates_parent_map_consistently() {
     }
 }
 
+#[test]
+fn failed_move_does_not_mutate_tree() {
+    let mut tree = LayoutTree::new();
+    let (pa, na) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (_, nb) = tree.add_panel("b", grow(1.0)).unwrap();
+    let row = tree.add_row(0.0, vec![na, nb]).unwrap();
+    tree.set_root(row);
+
+    let result = tree.move_panel(pa, Position::After(pa));
+
+    assert!(matches!(result, Err(PaneError::NodeNotFound(id)) if id == na));
+    assert_eq!(tree.parent(na).unwrap(), Some(row));
+    assert_eq!(tree.parent(nb).unwrap(), Some(row));
+    match tree.node(row) {
+        Some(Node::Row { children, .. }) => assert_eq!(children, &[na, nb]),
+        other => panic!("expected Row, got {other:?}"),
+    }
+    assert!(tree.validate().is_ok());
+}
+
+#[test]
+fn failed_move_into_taffy_container_rolls_back() {
+    let mut tree = LayoutTree::new();
+    let style = taffy::Style::default();
+    let (pa, na) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (pb, nb) = tree.add_panel("b", grow(1.0)).unwrap();
+    let taffy = tree.add_taffy_node(style, vec![nb]).unwrap();
+    let row = tree.add_row(0.0, vec![na, taffy]).unwrap();
+    tree.set_root(row);
+
+    let result = tree.move_panel(pa, Position::After(pb));
+
+    assert!(matches!(result, Err(PaneError::NodeNotFound(id)) if id == taffy));
+    assert_eq!(tree.parent(na).unwrap(), Some(row));
+    assert_eq!(tree.parent(nb).unwrap(), Some(taffy));
+    match tree.node(row) {
+        Some(Node::Row { children, .. }) => assert_eq!(children, &[na, taffy]),
+        other => panic!("expected Row, got {other:?}"),
+    }
+    match tree.node(taffy) {
+        Some(Node::TaffyPassthrough { children, .. }) => assert_eq!(children.as_ref(), &[nb]),
+        other => panic!("expected TaffyPassthrough, got {other:?}"),
+    }
+    assert!(tree.validate().is_ok());
+}
+
 // --- Step 5: Constraint validation tests ---
 
 #[test]
@@ -398,6 +458,16 @@ fn set_constraints_rejects_min_exceeds_max() {
     let bad = grow(1.0).min(100.0).max(10.0);
     let result = tree.set_constraints(pid, bad);
     assert!(matches!(result, Err(PaneError::InvalidConstraint(_))));
+}
+
+#[test]
+fn add_panel_rejects_empty_kind() {
+    let mut tree = LayoutTree::new();
+    let result = tree.add_panel("", grow(1.0));
+    assert!(matches!(
+        result,
+        Err(PaneError::InvalidTree(TreeError::EmptyKind))
+    ));
 }
 
 #[test]
@@ -462,6 +532,63 @@ fn validate_catches_parent_map_inconsistency() {
 
     // Well-formed tree should pass
     assert!(tree.validate().is_ok());
+}
+
+#[test]
+fn insert_child_at_marks_tree_dirty() {
+    let mut tree = LayoutTree::new();
+    let (_, left) = tree.add_panel("left", grow(1.0)).unwrap();
+    let (_, right) = tree.add_panel("right", grow(1.0)).unwrap();
+    let row = tree.add_row(0.0, vec![left]).unwrap();
+    tree.set_root(row);
+    tree.clear_dirty();
+
+    tree.insert_child_at(row, 1, right).unwrap();
+
+    assert!(tree.is_dirty());
+}
+
+#[test]
+fn validate_rejects_duplicate_child_under_multiple_containers() {
+    let mut tree = LayoutTree::new();
+    let (_, shared) = tree.add_panel("shared", grow(1.0)).unwrap();
+    let left = tree.add_row(0.0, vec![shared]).unwrap();
+    let right = tree.add_row(0.0, vec![shared]).unwrap();
+    let root = tree.add_row(0.0, vec![left, right]).unwrap();
+    tree.set_root(root);
+
+    let result = tree.validate();
+
+    assert!(matches!(
+        result,
+        Err(PaneError::InvalidTree(TreeError::ChildListedMultipleTimes { child, .. }))
+            if child == shared
+    ));
+}
+
+#[test]
+fn validate_rejects_disconnected_live_subtree() {
+    let mut tree = LayoutTree::new();
+    let (_, root_panel) = tree.add_panel("root", grow(1.0)).unwrap();
+    let (_, stray_left_panel) = tree.add_panel("stray-left", grow(1.0)).unwrap();
+    let (_, stray_right_panel) = tree.add_panel("stray-right", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![root_panel]).unwrap();
+    let stray_left = tree.add_row(0.0, vec![stray_left_panel]).unwrap();
+    let stray_right = tree.add_row(0.0, vec![stray_right_panel]).unwrap();
+    tree.insert_child_at(stray_left, 1, stray_right).unwrap();
+    tree.insert_child_at(stray_right, 1, stray_left).unwrap();
+    tree.set_root(root);
+
+    let result = tree.validate();
+
+    assert!(matches!(
+        result,
+        Err(PaneError::InvalidTree(TreeError::DisconnectedNode(node_id)))
+            if node_id == stray_left
+                || node_id == stray_right
+                || node_id == stray_left_panel
+                || node_id == stray_right_panel
+    ));
 }
 
 // --- insert_node guard ---

@@ -1,7 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{Direction, SlotDef, StrategyKind, fixed, grow};
+use panes::{Axis, SlotDef, StrategyKind, fixed, grow};
 
 fn sidebar_runtime() -> LayoutRuntime {
     let slots: Arc<[SlotDef]> = vec![
@@ -20,7 +21,7 @@ fn sidebar_runtime() -> LayoutRuntime {
         StrategyKind::Slotted {
             slots,
             gap: 0.0,
-            direction: Direction::Horizontal,
+            axis: Axis::Row,
         },
         &kinds,
     )
@@ -39,7 +40,7 @@ fn slotted_move_returns_error() {
 fn slotted_swap_is_noop() {
     let mut rt = sidebar_runtime();
     let before: Vec<_> = rt.sequence().iter().collect();
-    rt.swap_next();
+    rt.swap_next().unwrap();
     let after: Vec<_> = rt.sequence().iter().collect();
     assert_eq!(before, after);
 }

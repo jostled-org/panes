@@ -21,4 +21,4 @@ pub(crate) use mutate::collect_kinds_from_sequence;
 pub use mutate::{apply_add, apply_move, apply_remove, apply_set_card_span};
 pub use sidebar::SidebarStrategy;
 pub use types::GridColumnMode;
-pub use types::{ActivePanelVariant, CardSpan, Direction, SlotDef, StrategyKind};
+pub use types::{ActivePanelVariant, CardSpan, SlotDef, StrategyKind};

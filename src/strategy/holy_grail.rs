@@ -3,7 +3,9 @@ use std::sync::Arc;
 use crate::error::PaneError;
 
 use super::builder::BoundStrategy;
-use super::{Direction, SlotDef, StrategyKind};
+use crate::panel::Axis;
+
+use super::{SlotDef, StrategyKind};
 
 /// Builder for holy-grail strategy: header, footer, left sidebar, main, right sidebar.
 #[derive(Debug, Clone)]
@@ -82,7 +84,7 @@ impl HolyGrailStrategy {
         let kind = StrategyKind::Slotted {
             slots,
             gap: self.gap,
-            direction: Direction::Vertical,
+            axis: Axis::Col,
         };
 
         let layout = crate::preset::HolyGrail::new(

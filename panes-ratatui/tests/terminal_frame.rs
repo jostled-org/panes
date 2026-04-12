@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -207,19 +209,68 @@ fn terminal_frame_focused_panels() {
     assert!(editor_focused, "editor should be focused");
     assert!(editor_entry.rect.width > 0);
 
-    // Editor tab decoration is also focused
-    let (_, tab_focused) = focused
+    // Decoration panel for editor is also focused
+    // Decoration panels use the content kind, so find by id exclusion
+    let decoration_ids: Vec<_> = focused
         .iter()
-        .find(|(e, _)| e.kind == "editor_tab")
-        .expect("should have editor_tab entry");
-    assert!(tab_focused, "editor_tab should be focused (decoration)");
+        .filter(|(e, is_focused)| e.id != editor_pid && *is_focused)
+        .collect();
+    assert!(
+        !decoration_ids.is_empty(),
+        "editor's tab decoration should be focused"
+    );
 
     // Chat is not focused
     let (_, chat_focused) = focused
         .iter()
-        .find(|(e, _)| e.kind == "chat")
+        .find(|(e, _)| e.kind == "chat" && e.id != editor_pid)
         .expect("should have chat entry");
     assert!(!chat_focused, "chat should not be focused");
+}
+
+#[test]
+fn terminal_frame_marks_tabbed_decoration_as_focused_via_metadata() {
+    let mut rt = tabbed_runtime(&["editor", "chat"]);
+    let area = Rect::new(0, 0, 80, 24);
+    let frame = panes_ratatui::resolve(&mut rt, area).unwrap();
+
+    let editor_pid = frame
+        .panels()
+        .find(|e| e.kind == "editor")
+        .expect("should have editor panel")
+        .id;
+
+    // Verify decoration metadata exists for editor's tab
+    let resolved = frame.inner().unwrap().layout();
+    let editor_tab = resolved
+        .decoration_panels()
+        .iter()
+        .find(|d| d.content_kind.as_ref() == "editor" && d.role == panes::DecorationRole::Tab)
+        .expect("editor should have a Tab decoration");
+
+    // The decoration panel should appear focused when its content panel is focused
+    let focused: Vec<_> = frame.focused_panels(Some(editor_pid)).collect();
+    let (tab_entry, tab_focused) = focused
+        .iter()
+        .find(|(e, _)| e.id == editor_tab.id)
+        .expect("tab decoration should appear in focused_panels");
+    assert!(tab_focused, "tab decoration should be focused via metadata");
+    assert!(tab_entry.rect.width > 0, "tab decoration should have area");
+
+    // Chat's tab decoration should NOT be focused
+    let chat_tab = resolved
+        .decoration_panels()
+        .iter()
+        .find(|d| d.content_kind.as_ref() == "chat" && d.role == panes::DecorationRole::Tab)
+        .expect("chat should have a Tab decoration");
+    let (_, chat_tab_focused) = focused
+        .iter()
+        .find(|(e, _)| e.id == chat_tab.id)
+        .expect("chat tab should appear in focused_panels");
+    assert!(
+        !chat_tab_focused,
+        "chat tab decoration should not be focused"
+    );
 }
 
 #[test]
@@ -332,5 +383,68 @@ fn get_invalid_panel_id_returns_none() {
     assert!(
         frame.get(invalid).is_none(),
         "stateless frame should return None for unknown PanelId"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 3.T1: Runtime vs stateless behavior preserved under shared frame shell
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ratatui_runtime_frame_exposes_diff_stateless_does_not() {
+    let kinds = &["editor", "chat", "status"];
+    let area = Rect::new(0, 0, 80, 24);
+
+    // Runtime path: diff is available
+    let mut rt = master_stack_runtime(kinds);
+    let rt_frame = panes_ratatui::resolve(&mut rt, area).unwrap();
+    assert!(rt_frame.diff().is_some(), "runtime frame must expose diff");
+    assert!(
+        rt_frame.inner().is_some(),
+        "runtime frame must expose inner"
+    );
+
+    // Stateless path: diff is absent
+    let layout = master_stack_layout(kinds);
+    let sl_frame = panes_ratatui::resolve_layout(&layout, area).unwrap();
+    assert!(
+        sl_frame.diff().is_none(),
+        "stateless frame must not expose diff"
+    );
+    assert!(
+        sl_frame.inner().is_none(),
+        "stateless frame must not expose inner"
+    );
+
+    // Panel iteration yields the same logical panels for both paths
+    let rt_panels: Vec<_> = rt_frame.panels().map(|e| e.kind.to_owned()).collect();
+    let sl_panels: Vec<_> = sl_frame.panels().map(|e| e.kind.to_owned()).collect();
+    assert_eq!(
+        rt_panels, sl_panels,
+        "runtime and stateless frames should yield the same panel kinds"
+    );
+
+    // Rects should match between paths
+    for (rp, sp) in rt_frame.panels().zip(sl_frame.panels()) {
+        assert_eq!(rp.rect, sp.rect, "rects for {:?} should match", rp.kind);
+    }
+}
+
+#[test]
+fn ratatui_runtime_and_stateless_overlay_iteration_aligned() {
+    let kinds = &["editor", "chat"];
+    let area = Rect::new(0, 0, 80, 24);
+
+    // Runtime with overlay
+    let mut rt = master_stack_runtime(kinds);
+    rt.add_overlay("modal", panes::Overlay::center().fixed(40.0, 10.0))
+        .unwrap();
+    let rt_frame = panes_ratatui::resolve(&mut rt, area).unwrap();
+    let rt_overlays: Vec<_> = rt_frame.overlays().collect();
+    assert_eq!(rt_overlays.len(), 1);
+    assert_eq!(rt_overlays[0].kind, "modal");
+    assert!(
+        rt_overlays[0].rect.width > 0,
+        "runtime overlay rect should be non-empty"
     );
 }

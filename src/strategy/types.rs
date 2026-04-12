@@ -1,16 +1,6 @@
 use std::sync::Arc;
 
-use crate::panel::Constraints;
-
-/// Direction for linear layouts (split, columns).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Direction {
-    /// Left-to-right.
-    Horizontal,
-    /// Top-to-bottom.
-    Vertical,
-}
+use crate::panel::{Axis, Constraints};
 
 /// Sub-variant for single-visible-panel layouts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,8 +82,8 @@ impl GridColumnMode {
 pub enum StrategyKind {
     /// Linear sequence of equal panels (split, columns).
     Sequence {
-        /// Layout direction.
-        direction: Direction,
+        /// Primary axis of the container.
+        axis: Axis,
         /// Gap between panels.
         gap: f32,
         /// When `Some(r)` and exactly 2 panels, applies `grow(r)` / `grow(1-r)`
@@ -158,8 +148,8 @@ pub enum StrategyKind {
 
     /// Scrollable window showing N adjacent panels (scrollable/NIRI).
     Window {
-        /// How many panels the window shows at once.
-        size: usize,
+        /// How many panels are visible at once in the active window.
+        panel_count: usize,
         /// Gap between visible panels.
         gap: f32,
     },
@@ -170,8 +160,8 @@ pub enum StrategyKind {
         slots: Arc<[SlotDef]>,
         /// Gap between slots.
         gap: f32,
-        /// Direction of the outer container.
-        direction: Direction,
+        /// Primary axis of the outer container.
+        axis: Axis,
     },
 }
 

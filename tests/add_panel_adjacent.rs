@@ -1,13 +1,14 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{Direction, LayoutTree, Node, Placement, grow};
+use panes::{Axis, LayoutTree, Node, Placement, grow};
 
 // ---------------------------------------------------------------------------
 // Non-strategy runtimes: direct tree topology via add_panel_adjacent_with
 // ---------------------------------------------------------------------------
 
-fn build_tree_runtime(count: usize, direction: Direction) -> LayoutRuntime {
+fn build_tree_runtime(count: usize, direction: Axis) -> LayoutRuntime {
     let mut tree = LayoutTree::new();
     let mut pids = Vec::new();
     let nodes: Vec<_> = (0..count)
@@ -20,8 +21,8 @@ fn build_tree_runtime(count: usize, direction: Direction) -> LayoutRuntime {
         })
         .collect();
     let root = match direction {
-        Direction::Vertical => tree.add_col(0.0, nodes).unwrap(),
-        Direction::Horizontal => tree.add_row(0.0, nodes).unwrap(),
+        Axis::Col => tree.add_col(0.0, nodes).unwrap(),
+        Axis::Row => tree.add_row(0.0, nodes).unwrap(),
     };
     tree.set_root(root);
     let mut seq = panes::PanelSequence::default();
@@ -34,11 +35,11 @@ fn build_tree_runtime(count: usize, direction: Direction) -> LayoutRuntime {
 }
 
 fn build_col_tree(count: usize) -> LayoutRuntime {
-    build_tree_runtime(count, Direction::Vertical)
+    build_tree_runtime(count, Axis::Col)
 }
 
 fn build_row_tree(count: usize) -> LayoutRuntime {
-    build_tree_runtime(count, Direction::Horizontal)
+    build_tree_runtime(count, Axis::Row)
 }
 
 #[test]
@@ -49,12 +50,7 @@ fn insert_horizontal_in_row() {
     let parent_id = rt.tree().parent(focused_nid).unwrap().unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("new"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("new"), Axis::Row, grow(1.0), Placement::After)
         .unwrap();
 
     let children = rt.tree().children(parent_id).unwrap();
@@ -72,12 +68,7 @@ fn insert_vertical_in_col() {
     let parent_id = rt.tree().parent(focused_nid).unwrap().unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("new"),
-            Direction::Vertical,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("new"), Axis::Col, grow(1.0), Placement::After)
         .unwrap();
 
     let children = rt.tree().children(parent_id).unwrap();
@@ -95,12 +86,7 @@ fn cross_axis_horizontal_in_col() {
     let parent_id = rt.tree().parent(focused_nid).unwrap().unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("new"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("new"), Axis::Row, grow(1.0), Placement::After)
         .unwrap();
 
     // Parent col should still have 3 children (focused replaced by sub-container)
@@ -128,12 +114,7 @@ fn cross_axis_vertical_in_row() {
     let parent_id = rt.tree().parent(focused_nid).unwrap().unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("new"),
-            Direction::Vertical,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("new"), Axis::Col, grow(1.0), Placement::After)
         .unwrap();
 
     let children = rt.tree().children(parent_id).unwrap();
@@ -204,22 +185,12 @@ fn repeated_adjacent() {
     let original_focused = rt.focused().unwrap();
 
     let first = rt
-        .add_panel_adjacent_with(
-            Arc::from("a"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("a"), Axis::Row, grow(1.0), Placement::After)
         .unwrap();
     assert_eq!(rt.focused(), Some(first));
 
     let second = rt
-        .add_panel_adjacent_with(
-            Arc::from("b"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("b"), Axis::Row, grow(1.0), Placement::After)
         .unwrap();
     assert_eq!(rt.focused(), Some(second));
 
@@ -245,13 +216,8 @@ fn cross_axis_preserves_parent_gap() {
     let mut rt = LayoutRuntime::new(tree);
     rt.set_focus_unchecked(p0);
 
-    rt.add_panel_adjacent_with(
-        Arc::from("new"),
-        Direction::Vertical,
-        grow(1.0),
-        Placement::After,
-    )
-    .unwrap();
+    rt.add_panel_adjacent_with(Arc::from("new"), Axis::Col, grow(1.0), Placement::After)
+        .unwrap();
 
     // Parent row should still have gap=8
     match rt.tree().node(root) {
@@ -266,27 +232,12 @@ fn repeated_cross_axis() {
     let mut rt = build_row_tree(2);
 
     // Alternate vertical and horizontal splits three times
-    rt.add_panel_adjacent_with(
-        Arc::from("v1"),
-        Direction::Vertical,
-        grow(1.0),
-        Placement::After,
-    )
-    .unwrap();
-    rt.add_panel_adjacent_with(
-        Arc::from("h1"),
-        Direction::Horizontal,
-        grow(1.0),
-        Placement::After,
-    )
-    .unwrap();
-    rt.add_panel_adjacent_with(
-        Arc::from("v2"),
-        Direction::Vertical,
-        grow(1.0),
-        Placement::After,
-    )
-    .unwrap();
+    rt.add_panel_adjacent_with(Arc::from("v1"), Axis::Col, grow(1.0), Placement::After)
+        .unwrap();
+    rt.add_panel_adjacent_with(Arc::from("h1"), Axis::Row, grow(1.0), Placement::After)
+        .unwrap();
+    rt.add_panel_adjacent_with(Arc::from("v2"), Axis::Col, grow(1.0), Placement::After)
+        .unwrap();
 
     rt.tree().validate().unwrap();
     assert_eq!(rt.sequence().len(), 5);
@@ -303,12 +254,7 @@ fn single_child_parent() {
     rt.set_focus_unchecked(p0);
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("sibling"),
-            Direction::Vertical,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("sibling"), Axis::Col, grow(1.0), Placement::After)
         .unwrap();
 
     // Same axis: should be a sibling, not wrapped
@@ -322,13 +268,8 @@ fn single_child_parent() {
 #[test]
 fn resolve_after_adjacent() {
     let mut rt = build_row_tree(2);
-    rt.add_panel_adjacent_with(
-        Arc::from("new"),
-        Direction::Vertical,
-        grow(1.0),
-        Placement::After,
-    )
-    .unwrap();
+    rt.add_panel_adjacent_with(Arc::from("new"), Axis::Col, grow(1.0), Placement::After)
+        .unwrap();
 
     let frame = rt.resolve(800.0, 600.0).unwrap();
     let layout = frame.layout();
@@ -347,12 +288,7 @@ fn adjacent_with_custom_constraints() {
     let custom = panes::fixed(200.0);
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("fixed"),
-            Direction::Horizontal,
-            custom,
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("fixed"), Axis::Row, custom, Placement::After)
         .unwrap();
 
     let stored = rt.tree().panel_constraints(new_pid).unwrap();
@@ -368,12 +304,7 @@ fn placement_before_same_axis() {
     let parent_id = rt.tree().parent(focused_nid).unwrap().unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("before"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::Before,
-        )
+        .add_panel_adjacent_with(Arc::from("before"), Axis::Row, grow(1.0), Placement::Before)
         .unwrap();
 
     let children = rt.tree().children(parent_id).unwrap();
@@ -391,12 +322,7 @@ fn placement_before_cross_axis() {
     let focused_nid = rt.tree().node_for_panel(focused).unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("before"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::Before,
-        )
+        .add_panel_adjacent_with(Arc::from("before"), Axis::Row, grow(1.0), Placement::Before)
         .unwrap();
 
     // Cross-axis wraps in a Row: [new, focused]
@@ -418,12 +344,7 @@ fn placement_before_sequence_order() {
     let focused_idx = rt.sequence().index_of(focused).unwrap();
 
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("before"),
-            Direction::Horizontal,
-            grow(1.0),
-            Placement::Before,
-        )
+        .add_panel_adjacent_with(Arc::from("before"), Axis::Row, grow(1.0), Placement::Before)
         .unwrap();
 
     // New panel should be at focused's original sequence index
@@ -478,6 +399,64 @@ fn auto_direction_defaults_horizontal_without_resolve() {
     rt.tree().validate().unwrap();
 }
 
+#[test]
+fn adjacent_same_axis_failure_rolls_back_new_panel() {
+    let mut tree = LayoutTree::new();
+    let style = taffy::Style::default();
+    let (focused, focused_nid) = tree.add_panel("focused", grow(1.0)).unwrap();
+    let taffy = tree.add_taffy_node(style, vec![focused_nid]).unwrap();
+    tree.set_root(taffy);
+
+    let mut rt = LayoutRuntime::new(tree);
+    rt.set_focus_unchecked(focused);
+
+    let result =
+        rt.add_panel_adjacent_with(Arc::from("new"), Axis::Row, grow(1.0), Placement::After);
+
+    assert!(matches!(result, Err(panes::PaneError::NodeNotFound(id)) if id == taffy));
+    assert_eq!(rt.focused(), Some(focused));
+    assert_eq!(rt.tree().panel_count(), 1);
+    assert!(rt.tree().panels_by_kind("new").is_empty());
+    match rt.tree().node(taffy) {
+        Some(Node::TaffyPassthrough { children, .. }) => {
+            assert_eq!(children.as_ref(), &[focused_nid]);
+        }
+        other => panic!("expected TaffyPassthrough, got {other:?}"),
+    }
+    rt.tree().validate().unwrap();
+}
+
+#[test]
+fn adjacent_cross_axis_failure_rolls_back_detach() {
+    let mut tree = LayoutTree::new();
+    let style = taffy::Style {
+        flex_direction: taffy::FlexDirection::Column,
+        ..Default::default()
+    };
+    let (focused, focused_nid) = tree.add_panel("focused", grow(1.0)).unwrap();
+    let taffy = tree.add_taffy_node(style, vec![focused_nid]).unwrap();
+    tree.set_root(taffy);
+
+    let mut rt = LayoutRuntime::new(tree);
+    rt.set_focus_unchecked(focused);
+
+    let result =
+        rt.add_panel_adjacent_with(Arc::from("new"), Axis::Row, grow(1.0), Placement::After);
+
+    assert!(matches!(result, Err(panes::PaneError::NodeNotFound(id)) if id == taffy));
+    assert_eq!(rt.focused(), Some(focused));
+    assert_eq!(rt.tree().panel_count(), 1);
+    assert!(rt.tree().panels_by_kind("new").is_empty());
+    assert_eq!(rt.tree().parent(focused_nid).unwrap(), Some(taffy));
+    match rt.tree().node(taffy) {
+        Some(Node::TaffyPassthrough { children, .. }) => {
+            assert_eq!(children.as_ref(), &[focused_nid]);
+        }
+        other => panic!("expected TaffyPassthrough, got {other:?}"),
+    }
+    rt.tree().validate().unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // Strategy runtimes: add_panel_adjacent_with delegates to strategy
 // ---------------------------------------------------------------------------
@@ -486,7 +465,7 @@ fn auto_direction_defaults_horizontal_without_resolve() {
 fn strategy_adjacent_with_delegates() {
     let kinds: Vec<Arc<str>> = vec![Arc::from("a"), Arc::from("b"), Arc::from("c")];
     let strategy = panes::StrategyKind::Sequence {
-        direction: Direction::Horizontal,
+        axis: Axis::Row,
         gap: 0.0,
         ratio: None,
     };
@@ -494,19 +473,14 @@ fn strategy_adjacent_with_delegates() {
 
     // add_panel_adjacent_with on a strategy runtime should delegate
     let new_pid = rt
-        .add_panel_adjacent_with(
-            Arc::from("new"),
-            Direction::Vertical,
-            grow(1.0),
-            Placement::After,
-        )
+        .add_panel_adjacent_with(Arc::from("new"), Axis::Col, grow(1.0), Placement::After)
         .unwrap();
 
     assert_eq!(rt.focused(), Some(new_pid));
     rt.tree().validate().unwrap();
 
     // Should still be strategy-consistent: swap_next should work
-    rt.swap_next();
+    rt.swap_next().unwrap();
     rt.tree().validate().unwrap();
 }
 
@@ -514,13 +488,13 @@ fn strategy_adjacent_with_delegates() {
 fn swap_after_add_panel_is_consistent() {
     let kinds: Vec<Arc<str>> = vec![Arc::from("a"), Arc::from("b")];
     let strategy = panes::StrategyKind::Sequence {
-        direction: Direction::Horizontal,
+        axis: Axis::Row,
         gap: 0.0,
         ratio: None,
     };
     let mut rt = LayoutRuntime::from_strategy(strategy, &kinds).unwrap();
 
     rt.add_panel(Arc::from("c")).unwrap();
-    rt.swap_next();
+    rt.swap_next().unwrap();
     rt.tree().validate().unwrap();
 }

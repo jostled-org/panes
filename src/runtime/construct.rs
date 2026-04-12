@@ -4,7 +4,7 @@ use super::types::{LayoutRuntime, StrategySource, base};
 use crate::breakpoint::BreakpointEntry;
 use crate::error::{PaneError, TreeError};
 use crate::layout::Layout;
-use crate::node::{Node, NodeId};
+use crate::node::{Node, NodeId, PanelId};
 use crate::overlay::{self, OverlayDef};
 use crate::sequence::PanelSequence;
 use crate::snapshot::{self, LayoutSnapshot, SnapshotSource};
@@ -106,8 +106,7 @@ impl LayoutRuntime {
     /// Strategy runtimes snapshot the recipe (strategy config + panel kinds).
     /// Non-strategy runtimes snapshot the tree topology.
     ///
-    /// `TaffyPassthrough` nodes are not serializable and are omitted from tree
-    /// snapshots. Returns `SnapshotNoRoot` if the root itself is a passthrough.
+    /// Unsupported live nodes cause snapshot capture to fail.
     pub fn snapshot(&self) -> Result<LayoutSnapshot, PaneError> {
         let bp_info = self
             .breakpoints
@@ -162,20 +161,33 @@ impl LayoutRuntime {
             }
         };
 
-        // Restore focus by kind — best-effort: the panel exists in the tree
-        // via panels_by_kind, so focus() should always succeed.
-        if let Some(&pid) = snap
-            .focused()
-            .and_then(|kind| rt.tree.panels_by_kind(kind).first())
-        {
+        // Restore focus — prefer sequence index for deterministic repeated-kind
+        // restore, fall back to kind-based lookup for legacy snapshots.
+        let focus_pid = match snap.focused_key() {
+            Some(key) => rt.sequence.get(key.raw() as usize),
+            None => snap
+                .focused()
+                .and_then(|kind| rt.tree.panels_by_kind(kind).first().copied()),
+        };
+        if let Some(pid) = focus_pid {
             let _ = rt.focus(pid);
         }
 
-        // Restore collapsed by kind
-        for kind in snap.collapsed() {
-            if let Some(&pid) = rt.tree.panels_by_kind(kind).first() {
-                rt.toggle_collapsed(pid)?;
-            }
+        // Restore collapsed — prefer sequence indices when available.
+        let collapsed_pids: Box<[PanelId]> = match snap.collapsed_keys().is_empty() {
+            true => snap
+                .collapsed()
+                .iter()
+                .filter_map(|kind| rt.tree.panels_by_kind(kind).first().copied())
+                .collect(),
+            false => snap
+                .collapsed_keys()
+                .iter()
+                .filter_map(|&key| rt.sequence.get(key.raw() as usize))
+                .collect(),
+        };
+        for pid in collapsed_pids {
+            rt.toggle_collapsed(pid)?;
         }
 
         restore_overlays(&mut rt, snap.into_overlays())?;

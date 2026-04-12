@@ -7,8 +7,8 @@ use crate::sequence::PanelSequence;
 
 /// Spatial direction for focus navigation.
 ///
-/// Distinct from [`Direction`](crate::Direction), which describes a container's
-/// axis orientation (`Horizontal`/`Vertical`).
+/// Distinct from [`Axis`](crate::Axis), which describes a container's
+/// primary layout axis (`Row`/`Col`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FocusDirection {
     /// Move focus to the nearest panel on the left.

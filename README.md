@@ -9,7 +9,7 @@ You keep rebuilding the same pane manager in every app: split views, stacks, das
 
 **panes** is a pane layout and runtime engine. It computes panel rectangles without rendering them, so the same layout logic can power ratatui, egui, the browser, canvas, wasm, or your own renderer.
 
-Describe panels in rows, columns, and tiling presets. panes solves the geometry via Taffy, tracks runtime state like focus and mutations, and hands back a map of `PanelId -> Rect`. No widget system. No renderer lock-in.
+Describe panels in rows, columns, grids, and tiling presets. panes solves the geometry via Taffy, tracks runtime state like focus and mutations, and hands back a map of `PanelId -> Rect`. No widget system. No renderer lock-in.
 
 Use it when you need more than static flexbox: split-pane apps, IDE-like shells, dashboards, game HUDs, TUI workspaces, or any UI where panels are added, removed, resized, focused, or restored from snapshots.
 
@@ -69,6 +69,18 @@ let layout = layout! {
 ```
 
 ```rust
+// Grid — responsive card layout with column spans
+let layout = layout! {
+    grid(auto_fit: 200.0, gap: 12.0) {
+        panel("metric-a")
+        panel("metric-b")
+        panel("detail", span: 2)
+        panel("banner", full_width: true)
+    }
+}?;
+```
+
+```rust
 // Preset — one-liner for common patterns
 Layout::master_stack(["editor", "chat", "status"]).master_ratio(0.6).gap(1.0)
 ```
@@ -80,9 +92,9 @@ let mut rt = Layout::master_stack(["editor", "chat", "status"])
 
 rt.add_panel("terminal".into())?;          // insert after focused, rebuild via strategy
 rt.add_panel_with("logs".into(), Placement::End)?;  // append to end
-rt.swap_next();                            // reorder in sequence
+rt.swap_next()?;                           // reorder in sequence
 rt.focus_next();
-rt.focus_direction_current(FocusDirection::Right)?;
+let (target, outcome) = rt.focus_direction_current(FocusDirection::Right)?;
 
 let frame = rt.resolve(80.0, 24.0)?;
 let diff = rt.last_diff();  // added, removed, moved, resized, unchanged

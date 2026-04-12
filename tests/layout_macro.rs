@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{Align, LayoutBuilder, Rect, fixed, grow};
 
 // -- Step 1: Basic row/col/panel macro with grow and fixed --

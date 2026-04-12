@@ -5,7 +5,7 @@
 
 use panes::diff::LayoutDiff;
 use panes::runtime::{Frame as PanesFrame, LayoutRuntime};
-use panes::{Layout, OverlayEntry, PaneError, PanelEntry, PanelId, ResolvedLayout};
+use panes::{AdapterFrame, Layout, OverlayEntry, PaneError, PanelEntry, PanelId};
 
 // ---------------------------------------------------------------------------
 // EguiFrame
@@ -16,56 +16,46 @@ use panes::{Layout, OverlayEntry, PaneError, PanelEntry, PanelId, ResolvedLayout
 /// Created via [`resolve`] or [`resolve_layout`]. Provides
 /// [`diff`](Self::diff) and [`inner`](Self::inner) for runtime state access.
 pub struct EguiFrame<'a> {
-    kind: EguiFrameKind<'a>,
-}
-
-enum EguiFrameKind<'a> {
-    Runtime {
-        frame: PanesFrame,
-        rt: &'a LayoutRuntime,
-    },
-    Stateless {
-        resolved: ResolvedLayout,
-    },
+    shell: AdapterFrame<'a>,
 }
 
 impl<'a> EguiFrame<'a> {
-    fn resolved(&self) -> &ResolvedLayout {
-        match &self.kind {
-            EguiFrameKind::Runtime { frame, .. } => frame.layout(),
-            EguiFrameKind::Stateless { resolved } => resolved,
-        }
-    }
-
     /// `egui::Rect` for a panel.
     pub fn get(&self, id: PanelId) -> Option<egui::Rect> {
-        self.resolved().get(id).map(to_egui_rect)
+        self.shell.resolved().get(id).map(to_egui_rect)
     }
 
     /// All panels with `egui::Rect` values, in kind-grouped order.
     pub fn panels(&self) -> impl Iterator<Item = PanelEntry<'_, egui::Rect>> {
-        self.resolved().panels().map(|e| e.map_rect(to_egui_rect))
+        self.shell
+            .resolved()
+            .panels()
+            .map(|e| e.map_rect(to_egui_rect))
     }
 
     /// Overlays with `egui::Rect` values.
     pub fn overlays(&self) -> impl Iterator<Item = OverlayEntry<'_, egui::Rect>> {
-        self.resolved().overlays().map(|e| e.map_rect(to_egui_rect))
+        self.shell
+            .resolved()
+            .overlays()
+            .map(|e| e.map_rect(to_egui_rect))
     }
 
     /// Layout diff (panel IDs, not rects). `None` for stateless resolves.
     pub fn diff(&self) -> Option<LayoutDiff<'_>> {
-        match &self.kind {
-            EguiFrameKind::Runtime { rt, .. } => Some(rt.last_diff()),
-            EguiFrameKind::Stateless { .. } => None,
-        }
+        self.shell.diff()
     }
 
     /// Raw panes `Frame`. `None` for stateless resolves.
     pub fn inner(&self) -> Option<&PanesFrame> {
-        match &self.kind {
-            EguiFrameKind::Runtime { frame, .. } => Some(frame),
-            EguiFrameKind::Stateless { .. } => None,
-        }
+        self.shell.inner()
+    }
+
+    /// Overlays that failed to anchor during the most recent resolve.
+    pub fn overlay_failures(
+        &self,
+    ) -> &[(panes::OverlayId, std::sync::Arc<str>, panes::AnchorFailure)] {
+        self.shell.overlay_failures()
     }
 }
 
@@ -79,7 +69,7 @@ pub fn resolve<'a>(
 ) -> Result<EguiFrame<'a>, PaneError> {
     let frame = rt.resolve(area.width(), area.height())?;
     Ok(EguiFrame {
-        kind: EguiFrameKind::Runtime { frame, rt },
+        shell: AdapterFrame::from_runtime(frame, rt),
     })
 }
 
@@ -91,7 +81,7 @@ pub fn resolve<'a>(
 pub fn resolve_layout(layout: &Layout, area: egui::Rect) -> Result<EguiFrame<'static>, PaneError> {
     let resolved = layout.resolve(area.width(), area.height())?;
     Ok(EguiFrame {
-        kind: EguiFrameKind::Stateless { resolved },
+        shell: AdapterFrame::from_stateless(resolved),
     })
 }
 

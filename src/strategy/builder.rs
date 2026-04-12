@@ -9,7 +9,9 @@ use super::build::build_tree_for_strategy;
 use super::dashboard::DashboardStrategy;
 use super::holy_grail::HolyGrailStrategy;
 use super::sidebar::SidebarStrategy;
-use super::{ActivePanelVariant, Direction, GridColumnMode, StrategyKind};
+use crate::panel::Axis;
+
+use super::{ActivePanelVariant, GridColumnMode, StrategyKind};
 
 /// Generate a `build() -> Strategy` method from 1:1 field-to-variant mapping.
 macro_rules! impl_build_strategy {
@@ -29,7 +31,7 @@ impl_build_strategy!(MasterStackStrategy => MasterStack { master_ratio, gap });
 impl_build_strategy!(CenteredMasterStrategy => CenteredMaster { master_ratio, gap });
 impl_build_strategy!(DeckStrategy => Deck { master_ratio, gap });
 impl_build_strategy!(ActivePanelStrategy => ActivePanel { variant, bar_height });
-impl_build_strategy!(WindowStrategy => Window { size, gap });
+impl_build_strategy!(WindowStrategy => Window { panel_count, gap });
 impl_build_strategy!(BinarySplitStrategy => BinarySplit { spiral, ratio, gap });
 
 /// Generate a `with_panels` shorthand that delegates to `self.build().with_panels(panels)`.
@@ -165,7 +167,10 @@ impl Strategy {
 
     /// Scrollable strategy: window showing N adjacent panels.
     pub fn scrollable() -> WindowStrategy {
-        WindowStrategy { size: 2, gap: 0.0 }
+        WindowStrategy {
+            panel_count: 2,
+            gap: 0.0,
+        }
     }
 
     /// Dwindle strategy: recursive binary split without spiral.
@@ -329,14 +334,14 @@ impl ActivePanelStrategy {
 /// Builder for [`StrategyKind::Window`] (scrollable).
 #[derive(Debug, Clone)]
 pub struct WindowStrategy {
-    size: usize,
+    panel_count: usize,
     gap: f32,
 }
 
 impl WindowStrategy {
     crate::macros::builder_setters!(
-        /// Set how many panels the window shows at once.
-        size(size: usize);
+        /// Set how many panels are visible at once in the active window.
+        panel_count(panel_count: usize);
         /// Set the gap between visible panels.
         gap(gap: f32)
     );
@@ -384,9 +389,9 @@ impl SplitStrategy {
     pub fn build(self) -> Strategy {
         Strategy {
             kind: StrategyKind::Sequence {
-                direction: match self.is_vertical {
-                    true => Direction::Vertical,
-                    false => Direction::Horizontal,
+                axis: match self.is_vertical {
+                    true => Axis::Col,
+                    false => Axis::Row,
                 },
                 gap: self.gap,
                 ratio: Some(self.ratio),

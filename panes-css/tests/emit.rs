@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{Align, CardSpan, Layout, LayoutBuilder, Overlay, SizeMode, fixed, grow};
 
 /// Build a scrollable-pattern layout: a root row containing a TaffyPassthrough
@@ -236,7 +237,7 @@ fn adaptive_media_queries() {
     let narrow = Layout::stacked(["a", "b"]).build().unwrap();
     let wide = Layout::master_stack(["a", "b"]).build().unwrap();
 
-    let css = panes_css::emit_adaptive(&[(0, &narrow), (600, &wide)]);
+    let css = panes_css::emit_adaptive(&[(0, &narrow), (600, &wide)]).unwrap();
 
     assert!(
         css.contains("@media (max-width: 599px)"),
@@ -255,7 +256,7 @@ fn adaptive_three_breakpoints() {
     let medium = Layout::row(["a", "b"]).unwrap();
     let large = Layout::master_stack(["a", "b"]).build().unwrap();
 
-    let css = panes_css::emit_adaptive(&[(0, &small), (600, &medium), (1200, &large)]);
+    let css = panes_css::emit_adaptive(&[(0, &small), (600, &medium), (1200, &large)]).unwrap();
 
     assert!(
         css.contains("@media (max-width: 599px)"),
@@ -274,13 +275,47 @@ fn adaptive_three_breakpoints() {
 #[test]
 fn adaptive_single_breakpoint_no_media_query() {
     let layout = Layout::row(["a", "b"]).unwrap();
-    let css = panes_css::emit_adaptive(&[(0, &layout)]);
+    let css = panes_css::emit_adaptive(&[(0, &layout)]).unwrap();
 
     assert!(
         !css.contains("@media"),
         "single breakpoint should not wrap in @media, got: {css}"
     );
     assert!(css.contains("[data-pane=\"a\"]"), "missing panel a");
+}
+
+#[test]
+fn adaptive_unsorted_breakpoints_are_rejected() {
+    let narrow = Layout::stacked(["a", "b"]).build().unwrap();
+    let wide = Layout::master_stack(["a", "b"]).build().unwrap();
+
+    let error = panes_css::emit_adaptive(&[(600, &wide), (0, &narrow)]).unwrap_err();
+
+    assert_eq!(
+        error,
+        panes_css::AdaptiveCssError::UnsortedOrDuplicate {
+            index: 1,
+            previous_width: 600,
+            width: 0,
+        }
+    );
+}
+
+#[test]
+fn adaptive_duplicate_breakpoints_are_rejected() {
+    let narrow = Layout::stacked(["a", "b"]).build().unwrap();
+    let wide = Layout::master_stack(["a", "b"]).build().unwrap();
+
+    let error = panes_css::emit_adaptive(&[(0, &narrow), (0, &wide)]).unwrap_err();
+
+    assert_eq!(
+        error,
+        panes_css::AdaptiveCssError::UnsortedOrDuplicate {
+            index: 1,
+            previous_width: 0,
+            width: 0,
+        }
+    );
 }
 
 #[test]
@@ -710,6 +745,78 @@ fn css_emit_without_overlays_unchanged() {
     assert!(
         !css.contains("data-pane-overlay"),
         "emit() without overlays should not include overlay selectors, got: {css}"
+    );
+}
+
+#[test]
+fn css_panel_anchor_overlay_adds_anchor_container_rule() {
+    let mut runtime = Layout::master_stack(["editor", "chat"])
+        .into_runtime()
+        .unwrap();
+    let frame = runtime.resolve(600.0, 300.0).unwrap();
+    let editor = frame.layout().by_kind("editor")[0];
+    let key = runtime.panel_key(editor).unwrap();
+    runtime
+        .add_overlay("tooltip", Overlay::above_key(key).fixed(60.0, 10.0))
+        .unwrap();
+
+    let overlays = runtime.overlays().to_vec();
+    let layout = Layout::row(["editor", "chat"]).unwrap();
+    let css = panes_css::emit_with_overlays(&layout, &overlays);
+
+    assert!(
+        css.contains(&format!(
+            r#"[data-pane-key="{key}"] {{ position: relative; }}"#
+        )),
+        "missing panel anchor container rule, got: {css}"
+    );
+}
+
+#[test]
+fn css_escapes_panel_kind_in_selector() {
+    let layout = Layout::row(["kind\"\\line\nfeed"]).unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("[data-pane=\"kind\\\"\\\\line\\a feed\"]"),
+        "missing escaped panel selector, got: {css}"
+    );
+}
+
+#[test]
+fn css_escapes_overlay_and_anchor_kinds_in_selectors() {
+    let mut runtime = Layout::master_stack(["panel\"kind", "chat"])
+        .into_runtime()
+        .unwrap();
+    runtime
+        .add_overlay(
+            "overlay\"kind\\line\nfeed",
+            Overlay::below("panel\"kind").fixed(60.0, 10.0),
+        )
+        .unwrap();
+
+    let overlays = runtime.overlays().to_vec();
+    let layout = Layout::row(["panel\"kind", "chat"]).unwrap();
+    let css = panes_css::emit_with_overlays(&layout, &overlays);
+
+    assert!(
+        css.contains("[data-pane=\"panel\\\"kind\"] { position: relative; }"),
+        "missing escaped anchor selector, got: {css}"
+    );
+    assert!(
+        css.contains("[data-pane-overlay=\"overlay\\\"kind\\\\line\\a feed\"]"),
+        "missing escaped overlay selector, got: {css}"
+    );
+}
+
+#[test]
+fn css_escapes_null_bytes_in_selector() {
+    let layout = Layout::row(["kind\0embedded"]).unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("[data-pane=\"kind\\0 embedded\"]"),
+        "missing null-byte escaped selector, got: {css}"
     );
 }
 

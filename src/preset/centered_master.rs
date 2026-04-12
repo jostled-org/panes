@@ -4,7 +4,9 @@ use crate::builder::LayoutBuilder;
 use crate::error::PaneError;
 use crate::layout::Layout;
 use crate::panel::grow;
-use crate::preset::{add_panels, col_style, collect_kinds, validate_f32_param, validate_kinds};
+use crate::preset::{
+    add_panels, col_style, collect_kinds, validate_f32_param, validate_kinds, validate_share_param,
+};
 
 /// Builder for the centered-master preset layout.
 pub struct CenteredMaster {
@@ -32,7 +34,7 @@ impl CenteredMaster {
     /// Consume the builder and produce a [`Layout`].
     pub fn build(&self) -> Result<Layout, PaneError> {
         validate_kinds(&self.kinds)?;
-        validate_f32_param("master_ratio", self.master_ratio)?;
+        validate_share_param("master_ratio", self.master_ratio)?;
         validate_f32_param("gap", self.gap)?;
         match self.kinds.len() {
             1 => super::build_single(Arc::clone(&self.kinds[0])),

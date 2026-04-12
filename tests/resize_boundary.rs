@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod helpers;
 
 use std::sync::Arc;
@@ -681,11 +682,16 @@ fn tabbed_resize_skips_tab_bar() {
     // panel — verify the tab bar container is untouched.
     rt.resize_boundary(editor_pid, 10.0).unwrap();
 
+    // Find a tab decoration panel to verify height
     let frame = rt.resolve(800.0, 600.0).unwrap();
-    let tab_rect = frame
+    let tab_pid = frame
         .layout()
-        .get(rt.tree().panels_by_kind("editor_tab")[0])
-        .unwrap();
+        .decoration_panels()
+        .iter()
+        .find(|d| d.role == panes::DecorationRole::Tab)
+        .expect("should have tab decorations")
+        .id;
+    let tab_rect = frame.layout().get(tab_pid).unwrap();
     // Tab bar has fixed height 30. If the tab bar were touched, this would differ.
     assert!(
         (tab_rect.h - 30.0).abs() < 1.0,
@@ -696,14 +702,26 @@ fn tabbed_resize_skips_tab_bar() {
 
 #[test]
 fn stacked_resize_adjusts_nearest_title() {
-    // Stacked layout order: editor_title, chat_title, status_title, editor(active), chat, status.
-    // Resizing editor (grow) adjusts the nearest fixed neighbor: status_title.
+    // Stacked layout order: title(editor), title(chat), title(status), editor(active), chat, status.
+    // Resizing editor (grow) adjusts the nearest fixed neighbor: the status title.
     let mut rt = Layout::stacked(["editor", "chat", "status"])
         .bar_height(20.0)
         .into_runtime()
         .unwrap();
     let editor_pid = rt.tree().panels_by_kind("editor")[0];
-    let nearest_title_pid = rt.tree().panels_by_kind("status_title")[0];
+
+    // Find title decoration PanelIds via resolved layout metadata
+    let frame = rt.resolve(800.0, 600.0).unwrap();
+    let find_title = |layout: &panes::ResolvedLayout, kind: &str| -> panes::PanelId {
+        layout
+            .decoration_panels()
+            .iter()
+            .find(|d| d.role == panes::DecorationRole::Title && d.content_kind.as_ref() == kind)
+            .map(|d| d.id)
+            .unwrap()
+    };
+    let nearest_title_pid = find_title(frame.layout(), "status");
+    let editor_title_pid = find_title(frame.layout(), "editor");
 
     let before = rt.tree().panel_constraints(nearest_title_pid).unwrap();
     assert!(
@@ -721,8 +739,7 @@ fn stacked_resize_adjusts_nearest_title() {
     );
 
     // Other titles should be untouched.
-    let editor_title = rt.tree().panels_by_kind("editor_title")[0];
-    let et = rt.tree().panel_constraints(editor_title).unwrap();
+    let et = rt.tree().panel_constraints(editor_title_pid).unwrap();
     assert!(
         (et.fixed.unwrap() - 20.0).abs() < 0.01,
         "editor_title should be untouched"

@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{Layout, LayoutTree, PaneError, grow};
 
 // -- Step 1: tree alloc returns Result --
@@ -94,6 +95,21 @@ fn master_stack_nan_ratio() {
 #[test]
 fn split_negative_ratio() {
     let err = Layout::split("a", "b").ratio(-0.5).build().unwrap_err();
+    assert!(matches!(err, PaneError::InvalidConstraint(_)));
+}
+
+#[test]
+fn master_stack_ratio_above_one() {
+    let err = Layout::master_stack(["a", "b"])
+        .master_ratio(1.1)
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, PaneError::InvalidConstraint(_)));
+}
+
+#[test]
+fn split_ratio_above_one() {
+    let err = Layout::split("a", "b").ratio(1.1).build().unwrap_err();
     assert!(matches!(err, PaneError::InvalidConstraint(_)));
 }
 

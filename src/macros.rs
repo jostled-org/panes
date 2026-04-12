@@ -141,6 +141,14 @@ macro_rules! layout {
         $crate::layout!(@root col $($children)*)
     };
 
+    // -- Root: grid --
+    (grid($($config:tt)*) { $($children:tt)* }) => {
+        $crate::Layout::build_grid(
+            $crate::layout!(@grid_config $($config)*),
+            |__gctx| { $crate::layout!(@grid_children __gctx $($children)*); },
+        )
+    };
+
     // Internal: root without gap
     (@root $dir:ident $($children:tt)*) => {
         (|| -> ::core::result::Result<$crate::Layout, $crate::PaneError> {
@@ -195,6 +203,14 @@ macro_rules! layout {
     // -- Panel bare — defaults to grow(1.0) --
     (@children $ctx:ident panel($kind:expr) $($rest:tt)*) => {
         $ctx.panel($kind);
+        $crate::layout!(@children $ctx $($rest)*);
+    };
+
+    // -- Nested grid inside row/col --
+    (@children $ctx:ident grid($($config:tt)*) { $($inner:tt)* } $($rest:tt)*) => {
+        $ctx.grid($crate::layout!(@grid_config $($config)*), |__gctx| {
+            $crate::layout!(@grid_children __gctx $($inner)*);
+        });
         $crate::layout!(@children $ctx $($rest)*);
     };
 
@@ -277,6 +293,99 @@ macro_rules! layout {
         $crate::layout!(@apply $c.size_mode($crate::SizeMode::FitContent($v)), $($rest)+)
     };
     (@apply $c:expr, size_mode: fit_content($v:expr)) => { $c.size_mode($crate::SizeMode::FitContent($v)) };
+
+    // -- @grid_config: parse the initial grid constructor keyword --
+
+    (@grid_config columns: $n:expr $(, $($rest:tt)*)?) => {
+        $crate::layout!(@grid_apply $crate::Grid::columns($n) $(, $($rest)*)?)
+    };
+    (@grid_config auto_fit: $w:expr $(, $($rest:tt)*)?) => {
+        $crate::layout!(@grid_apply $crate::Grid::auto_fit($w) $(, $($rest)*)?)
+    };
+    (@grid_config auto_fill: $w:expr $(, $($rest:tt)*)?) => {
+        $crate::layout!(@grid_apply $crate::Grid::auto_fill($w) $(, $($rest)*)?)
+    };
+
+    // -- @grid_apply: chain optional grid config methods --
+
+    (@grid_apply $g:expr) => { $g };
+    (@grid_apply $g:expr, gap: $v:expr $(, $($rest:tt)*)?) => {
+        $crate::layout!(@grid_apply $g.gap($v) $(, $($rest)*)?)
+    };
+    (@grid_apply $g:expr, auto_rows: true $(, $($rest:tt)*)?) => {
+        $crate::layout!(@grid_apply $g.auto_rows() $(, $($rest)*)?)
+    };
+
+    // -- @grid_children: dispatch for GridCtx panels --
+
+    // Base case
+    (@grid_children $gctx:ident) => {};
+
+    // Panel with span
+    (@grid_children $gctx:ident panel($kind:expr, span: $n:expr) $($rest:tt)*) => {
+        $gctx.panel_span($kind, $crate::CardSpan::Columns($n));
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Panel with full_width
+    (@grid_children $gctx:ident panel($kind:expr, full_width: true) $($rest:tt)*) => {
+        $gctx.panel_span($kind, $crate::CardSpan::FullWidth);
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Panel with grow
+    (@grid_children $gctx:ident panel($kind:expr, grow: $val:expr) $($rest:tt)*) => {
+        $gctx.panel_with($kind, $crate::grow($val));
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Panel with fixed
+    (@grid_children $gctx:ident panel($kind:expr, fixed: $val:expr) $($rest:tt)*) => {
+        $gctx.panel_with($kind, $crate::fixed($val));
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Panel bare — defaults to grow(1.0)
+    (@grid_children $gctx:ident panel($kind:expr) $($rest:tt)*) => {
+        $gctx.panel($kind);
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Nested row inside grid
+    (@grid_children $gctx:ident row(gap: $gap:expr) { $($inner:tt)* } $($rest:tt)*) => {
+        $gctx.row_gap($gap, |__ctx| {
+            $crate::layout!(@children __ctx $($inner)*);
+        });
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+    (@grid_children $gctx:ident row { $($inner:tt)* } $($rest:tt)*) => {
+        $gctx.row(|__ctx| {
+            $crate::layout!(@children __ctx $($inner)*);
+        });
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Nested col inside grid
+    (@grid_children $gctx:ident col(gap: $gap:expr) { $($inner:tt)* } $($rest:tt)*) => {
+        $gctx.col_gap($gap, |__ctx| {
+            $crate::layout!(@children __ctx $($inner)*);
+        });
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+    (@grid_children $gctx:ident col { $($inner:tt)* } $($rest:tt)*) => {
+        $gctx.col(|__ctx| {
+            $crate::layout!(@children __ctx $($inner)*);
+        });
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Nested grid inside grid
+    (@grid_children $gctx:ident grid($($config:tt)*) { $($inner:tt)* } $($rest:tt)*) => {
+        $gctx.grid($crate::layout!(@grid_config $($config)*), |__gctx| {
+            $crate::layout!(@grid_children __gctx $($inner)*);
+        });
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
 
     // -- @align: map bare identifiers to Align variants --
     (@align start) => { $crate::Align::Start };

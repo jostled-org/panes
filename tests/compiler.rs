@@ -1,9 +1,10 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::compile;
-use panes::{Constraints, Direction, LayoutTree, PaneError, fixed, grow};
+use panes::{Axis, Constraints, LayoutTree, PaneError, fixed, grow};
 
 #[test]
 fn grow_maps_to_flex_grow() {
-    let style = panes::compiler::constraints_to_style(&grow(2.0), Direction::Horizontal);
+    let style = panes::compiler::constraints_to_style(&grow(2.0), Axis::Row);
 
     assert_eq!(style.flex_grow, 2.0);
     assert_eq!(style.flex_basis, taffy::Dimension::length(0.0));
@@ -12,7 +13,7 @@ fn grow_maps_to_flex_grow() {
 
 #[test]
 fn fixed_maps_to_flex_basis() {
-    let style = panes::compiler::constraints_to_style(&fixed(200.0), Direction::Horizontal);
+    let style = panes::compiler::constraints_to_style(&fixed(200.0), Axis::Row);
 
     assert_eq!(style.flex_basis, taffy::Dimension::length(200.0));
     assert_eq!(style.flex_grow, 0.0);
@@ -24,12 +25,12 @@ fn grow_with_min_max_maps_correctly() {
     let c = grow(1.0).min(50.0).max(300.0);
 
     // Row parent → min/max on width
-    let row_style = panes::compiler::constraints_to_style(&c, Direction::Horizontal);
+    let row_style = panes::compiler::constraints_to_style(&c, Axis::Row);
     assert_eq!(row_style.min_size.width, taffy::Dimension::length(50.0));
     assert_eq!(row_style.max_size.width, taffy::Dimension::length(300.0));
 
     // Col parent → min/max on height
-    let col_style = panes::compiler::constraints_to_style(&c, Direction::Vertical);
+    let col_style = panes::compiler::constraints_to_style(&c, Axis::Col);
     assert_eq!(col_style.min_size.height, taffy::Dimension::length(50.0));
     assert_eq!(col_style.max_size.height, taffy::Dimension::length(300.0));
 }
@@ -37,7 +38,7 @@ fn grow_with_min_max_maps_correctly() {
 #[test]
 fn fixed_with_min_maps_correctly() {
     let c = fixed(100.0).min(80.0);
-    let style = panes::compiler::constraints_to_style(&c, Direction::Horizontal);
+    let style = panes::compiler::constraints_to_style(&c, Axis::Row);
 
     assert_eq!(style.flex_basis, taffy::Dimension::length(100.0));
     assert_eq!(style.min_size.width, taffy::Dimension::length(80.0));
@@ -45,8 +46,7 @@ fn fixed_with_min_maps_correctly() {
 
 #[test]
 fn default_constraints_map_to_grow_one() {
-    let style =
-        panes::compiler::constraints_to_style(&Constraints::default(), Direction::Horizontal);
+    let style = panes::compiler::constraints_to_style(&Constraints::default(), Axis::Row);
 
     assert_eq!(style.flex_grow, 1.0);
     assert_eq!(style.flex_basis, taffy::Dimension::length(0.0));

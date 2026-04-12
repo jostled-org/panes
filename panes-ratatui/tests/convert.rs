@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use panes::{Layout, LayoutBuilder, fixed};
 use rustc_hash::FxHashMap;
 
@@ -89,7 +91,7 @@ fn zero_size_panel() {
     // Should not panic, and inactive panels have zero dimension
     assert_eq!(rects.len(), 3);
     let mut zero_count = 0;
-    for (_pid, rect) in &rects {
+    for rect in rects.values() {
         if rect.width == 0 || rect.height == 0 {
             zero_count += 1;
         }

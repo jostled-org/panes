@@ -1,7 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{Layout, LayoutBuilder, Overlay, StrategyKind};
+use panes::{AnchorFailure, Axis, Layout, LayoutBuilder, Overlay, StrategyKind};
 use rustc_hash::FxHashMap;
 
 fn to_egui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, egui::Rect> {
@@ -299,4 +300,98 @@ fn get_invalid_panel_id_returns_none() {
         frame.get(invalid).is_none(),
         "should return None for unknown PanelId"
     );
+}
+
+// ---------------------------------------------------------------------------
+// 3.T1: Runtime vs stateless behavior preserved under shared frame shell
+// ---------------------------------------------------------------------------
+
+#[test]
+fn egui_runtime_frame_exposes_diff_stateless_does_not() {
+    let kinds = &["editor", "chat", "status"];
+    let area = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+
+    // Runtime path: diff is available
+    let mut rt = master_stack_runtime(kinds);
+    let rt_frame = panes_egui::resolve(&mut rt, area).unwrap();
+    assert!(rt_frame.diff().is_some(), "runtime frame must expose diff");
+    assert!(
+        rt_frame.inner().is_some(),
+        "runtime frame must expose inner"
+    );
+
+    // Stateless path: diff is absent
+    let layout = Layout::master_stack(kinds.iter().copied())
+        .master_ratio(0.5)
+        .build()
+        .unwrap();
+    let sl_frame = panes_egui::resolve_layout(&layout, area).unwrap();
+    assert!(
+        sl_frame.diff().is_none(),
+        "stateless frame must not expose diff"
+    );
+    assert!(
+        sl_frame.inner().is_none(),
+        "stateless frame must not expose inner"
+    );
+
+    // Panel iteration yields the same logical panels for both paths
+    let rt_panels: Vec<_> = rt_frame.panels().map(|e| e.kind.to_owned()).collect();
+    let sl_panels: Vec<_> = sl_frame.panels().map(|e| e.kind.to_owned()).collect();
+    assert_eq!(
+        rt_panels, sl_panels,
+        "runtime and stateless frames should yield the same panel kinds"
+    );
+}
+
+#[test]
+fn egui_runtime_and_stateless_overlay_iteration_aligned() {
+    let kinds = &["editor", "chat"];
+    let area = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+
+    // Runtime with overlay
+    let mut rt = master_stack_runtime(kinds);
+    rt.add_overlay("modal", Overlay::center().fixed(40.0, 10.0))
+        .unwrap();
+    let rt_frame = panes_egui::resolve(&mut rt, area).unwrap();
+    let rt_overlays: Vec<_> = rt_frame.overlays().collect();
+    assert_eq!(rt_overlays.len(), 1);
+    assert_eq!(rt_overlays[0].kind, "modal");
+    assert!(
+        rt_overlays[0].rect.width() > 0.0,
+        "runtime overlay rect should be non-empty"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Overlay failure pass-through
+// ---------------------------------------------------------------------------
+
+#[test]
+fn egui_overlay_failures_pass_through() {
+    // Two "editor" panels make kind-based anchor ambiguous
+    let kind_arcs: Vec<Arc<str>> = ["editor", "editor", "sidebar"]
+        .iter()
+        .map(|&s| Arc::from(s))
+        .collect();
+    let mut rt = LayoutRuntime::from_strategy(
+        StrategyKind::Sequence {
+            axis: Axis::Row,
+            gap: 0.0,
+            ratio: None,
+        },
+        &kind_arcs,
+    )
+    .unwrap();
+
+    rt.add_overlay("tooltip", Overlay::above("editor").fixed(60.0, 10.0))
+        .unwrap();
+
+    let area = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(600.0, 300.0));
+    let frame = panes_egui::resolve(&mut rt, area).unwrap();
+
+    let failures = frame.overlay_failures();
+    assert_eq!(failures.len(), 1, "should have one failure");
+    assert_eq!(failures[0].1.as_ref(), "tooltip");
+    assert_eq!(failures[0].2, AnchorFailure::KindAmbiguous);
 }

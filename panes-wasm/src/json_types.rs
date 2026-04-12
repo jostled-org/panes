@@ -33,6 +33,31 @@ pub(crate) struct DiffJson {
     pub unchanged: Box<[u32]>,
 }
 
+#[derive(Serialize)]
+pub(crate) struct OverlayDiffJson {
+    pub added: Box<[u32]>,
+    pub removed: Box<[u32]>,
+    pub moved: Box<[RectChangeJson]>,
+    pub resized: Box<[RectChangeJson]>,
+    pub unchanged: Box<[u32]>,
+    #[serde(rename = "anchorFailed")]
+    pub anchor_failed: Box<[u32]>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct BoundaryJson {
+    pub axis: &'static str,
+    pub sides: [u32; 2],
+    pub position: f64,
+}
+
+#[derive(Serialize)]
+pub(crate) struct OverlayFailureJson<'a> {
+    pub id: u32,
+    pub kind: &'a str,
+    pub reason: &'static str,
+}
+
 impl From<panes::Rect> for RectJson {
     fn from(r: panes::Rect) -> Self {
         Self {

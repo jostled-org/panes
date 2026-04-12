@@ -1,58 +1,57 @@
 use crate::{NodeId, PanelId};
 
-/// Invalid constraint parameter.
-
+/// Invalid [`Constraints`](crate::Constraints) parameter.
 #[derive(Debug, thiserror::Error)]
 pub enum ConstraintError {
-    /// A constraint value is NaN.
+    /// The named field is NaN.
     #[error("{0} is NaN")]
     IsNan(&'static str),
-    /// A constraint value is negative.
+    /// The named field is negative.
     #[error("{0} is negative")]
     IsNegative(&'static str),
-    /// A constraint value is infinite.
+    /// The named field is infinite.
     #[error("{0} is infinite")]
     IsInfinite(&'static str),
-    /// Grow and fixed constraints are mutually exclusive.
+    /// `grow` and `fixed` are mutually exclusive.
     #[error("grow and fixed are mutually exclusive")]
     GrowFixedExclusive,
-    /// Minimum exceeds maximum.
+    /// `min` exceeds `max`.
     #[error("min exceeds max")]
     MinExceedsMax,
-    /// Resize delta must be finite.
+    /// Resize delta is NaN or infinite.
     #[error("delta must be finite")]
     DeltaNotFinite,
-    /// Grid span overflows u16.
+    /// Grid span exceeds `u16::MAX`.
     #[error("grid span {0} exceeds u16 max")]
     GridSpanOverflow(usize),
+    /// A proportional value (0.0..=1.0) exceeded 1.0.
+    #[error("{0} exceeds 1.0")]
+    ExceedsOne(&'static str),
 }
 
-/// Tree structure validation failure.
-
+/// Broken tree structural invariant.
+///
+/// Returned by [`LayoutTree::validate`](crate::LayoutTree::validate) and
+/// builder finalization. Most variants indicate an internal bug rather than
+/// invalid user input.
 #[derive(Debug, thiserror::Error)]
 pub enum TreeError {
-    /// Root is not set.
     #[error("root is not set")]
     RootNotSet,
-    /// Root was already set.
     #[error("root already set")]
     RootAlreadySet,
-    /// Root node missing from arena.
+    /// Root ID points to a deallocated arena slot.
     #[error("root node {0} missing from arena")]
     RootMissing(NodeId),
-    /// Panel ID counter exhausted.
     #[error("panel ID counter exhausted")]
     PanelIdExhausted,
-    /// Overlay ID counter exhausted.
     #[error("overlay ID counter exhausted")]
     OverlayIdExhausted,
-    /// Node arena size exceeds u32 capacity.
     #[error("node arena size exceeds u32 capacity")]
     ArenaOverflow,
-    /// Node arena index exceeds u32 capacity.
     #[error("node arena index exceeds u32 capacity")]
     ArenaIndexOverflow,
-    /// A container references a missing child.
+    /// Container references a child absent from the arena.
     #[error("node {parent} references missing child {child}")]
     MissingChild {
         /// The parent node.
@@ -60,10 +59,10 @@ pub enum TreeError {
         /// The missing child node.
         child: NodeId,
     },
-    /// A node has no parent entry.
+    /// Live node has no parent-map entry.
     #[error("node {0} has no parent entry")]
     NoParentEntry(NodeId),
-    /// A node's parent is missing from the arena.
+    /// Parent ID points to a deallocated arena slot.
     #[error("parent {parent} of node {child} missing from arena")]
     ParentMissing {
         /// The missing parent node.
@@ -71,7 +70,7 @@ pub enum TreeError {
         /// The child node.
         child: NodeId,
     },
-    /// Parent-child mismatch between parent_map and children list.
+    /// Parent map and child list disagree.
     #[error("parent_map says {parent} is parent of {child}, but children list disagrees")]
     ParentChildMismatch {
         /// The parent node.
@@ -79,10 +78,24 @@ pub enum TreeError {
         /// The child node.
         child: NodeId,
     },
-    /// At least one kind required.
+    /// Child appears under two different containers.
+    #[error("child {child} appears under multiple containers: {first_parent} and {second_parent}")]
+    ChildListedMultipleTimes {
+        /// The duplicated child node.
+        child: NodeId,
+        /// The first container that listed the child.
+        first_parent: NodeId,
+        /// The second container that listed the child.
+        second_parent: NodeId,
+    },
+    /// Live node unreachable from root.
+    #[error("live node {0} is disconnected from the root")]
+    DisconnectedNode(NodeId),
+    /// Panel kind is an empty string.
+    #[error("panel kind must not be empty")]
+    EmptyKind,
     #[error("at least one kind required")]
     NoKinds,
-    /// Active index out of bounds.
     #[error("active index {active} out of bounds for {len} panels")]
     ActiveOutOfBounds {
         /// The active index.
@@ -90,34 +103,43 @@ pub enum TreeError {
         /// The number of panels.
         len: usize,
     },
-    /// Dashboard requires at least one card.
     #[error("dashboard requires at least one card")]
     DashboardNoCards,
-    /// Dashboard columns must be at least 1.
     #[error("dashboard columns must be at least 1")]
     DashboardNoColumns,
-    /// Dashboard min_column_width must be positive and finite.
     #[error("dashboard min_column_width must be positive and finite")]
     DashboardMinWidthInvalid,
-    /// Window size must be at least 1.
     #[error("window size must be at least 1")]
     WindowSizeZero,
-    /// Tree empty after rebuild.
+    /// Strategy rebuild produced zero nodes.
     #[error("empty after rebuild")]
     EmptyAfterRebuild,
-    /// No root node.
     #[error("no root")]
     NoRoot,
-    /// Tree has no serializable root for snapshot.
     #[error("no serializable root for snapshot")]
     SnapshotNoRoot,
-    /// Adaptive layout requires at least one breakpoint.
+    /// Focused panel not in the snapshot's panel sequence.
+    #[error("snapshot focused panel {0} missing from sequence")]
+    SnapshotFocusedMissingFromSequence(PanelId),
+    /// Collapsed panel not in the snapshot's panel sequence.
+    #[error("snapshot collapsed panel {0} missing from sequence")]
+    SnapshotCollapsedMissingFromSequence(PanelId),
     #[error("adaptive layout requires at least one breakpoint")]
     NoBreakpoints,
-    /// Snapshot node tree exceeds maximum recursion depth.
+    /// Duplicate minimum-width value across adaptive breakpoints.
+    #[error("adaptive breakpoint width {width}px appears more than once")]
+    DuplicateBreakpointWidth {
+        /// The duplicated minimum width.
+        width: u32,
+    },
     #[error("snapshot tree exceeds maximum depth of {0}")]
     SnapshotTooDeep(usize),
-    /// Insert index exceeds container length.
+    /// Span metadata on a non-panel grid item.
+    #[error("snapshot grid item span requires a panel node, got {0}")]
+    SnapshotSpanRequiresPanel(&'static str),
+    /// Node variant that cannot be serialized (e.g. `TaffyPassthrough`).
+    #[error("snapshot capture does not support node {0}")]
+    UnsupportedSnapshotNode(NodeId),
     #[error("insert index {index} exceeds container length {len}")]
     InsertOutOfBounds {
         /// The requested index.
@@ -125,115 +147,102 @@ pub enum TreeError {
         /// The container's child count.
         len: usize,
     },
-    /// Taffy layout engine error.
+    /// Taffy layout engine error during resolve.
     #[error("taffy error: {0}")]
     TaffyError(Box<str>),
-    /// TOML node has both 'kind' and 'type' attributes.
+    /// TOML node has both `kind` and `type`.
     #[error("node has both 'kind' and 'type'; use one or the other")]
     NodeKindAndType,
-    /// TOML node has unknown type attribute.
     #[error("unknown node type '{0}'; expected 'row' or 'col'")]
     UnknownNodeType(Box<str>),
-    /// TOML node missing both 'kind' and 'type' attributes.
     #[error("node must have either 'kind' (panel) or 'type' (container)")]
     NodeMissingKindOrType,
 }
 
-/// Invalid viewport dimensions.
-
+/// Invalid viewport dimension or scroll offset.
 #[derive(Debug, thiserror::Error)]
 pub enum ViewportError {
-    /// Dimension is NaN.
     #[error("dimension is NaN")]
     IsNan,
-    /// Dimension is negative.
     #[error("dimension is negative")]
     IsNegative,
-    /// Dimension is infinite.
     #[error("dimension is infinite")]
     IsInfinite,
-    /// Scroll value is NaN or infinite.
     #[error("scroll value is not finite")]
     ScrollNotFinite,
-    /// No saved constraints for a panel.
+    /// Panel has no saved constraints (never collapsed).
     #[error("no saved constraints for panel {0}")]
     NoSavedConstraints(PanelId),
 }
 
-/// A mutation is not supported or invalid for the current state.
-
+/// A runtime mutation that cannot be applied in the current state.
 #[derive(Debug, thiserror::Error)]
 pub enum MutationError {
-    /// No strategy set on the runtime.
+    /// No strategy attached.
     #[error("no strategy set")]
     NoStrategy,
     /// No panel is focused.
     #[error("no focused panel")]
     NoFocusedPanel,
-    /// Focused panel has no parent.
+    /// Focused panel is the root (no parent container).
     #[error("focused panel has no parent")]
     FocusedNoParent,
-    /// Parent is not a container node.
+    /// Parent node is a leaf, not a container.
     #[error("parent is not a container")]
     ParentNotContainer,
-    /// Panel has no parent.
+    /// Panel's parent not found in the tree.
     #[error("panel has no parent")]
     PanelNoParent,
-    /// Panel is the only child.
+    /// Panel is the sole child of its container.
     #[error("panel is the only child")]
     OnlyChild,
-    /// resize_boundary requires all siblings to be panels.
+    /// `resize_boundary` requires all siblings to be panel leaves.
     #[error("resize_boundary requires all siblings to be panels")]
     SiblingsNotPanels,
-    /// resize_boundary requires all siblings to use grow constraints.
+    /// `resize_boundary` requires all siblings to use grow constraints.
     #[error("resize_boundary requires all siblings to use grow constraints")]
     SiblingsNotGrow,
-    /// No collapsed slots to uncollapse.
+    /// No panels are currently collapsed.
     #[error("no collapsed slots to uncollapse")]
     NoCollapsedSlots,
-    /// Slot has no saved constraints.
+    /// Collapsed slot lost its saved constraints.
     #[error("slot has no saved constraints")]
     SlotNoSavedConstraints,
-    /// Move not supported for this layout.
+    /// Strategy does not support panel reordering.
     #[error("move not supported for this layout")]
     MoveNotSupported,
-    /// set_card_span requires a dashboard strategy.
+    /// `set_card_span` requires a dashboard strategy.
     #[error("set_card_span requires a dashboard strategy")]
     SpanNotSupported,
-    /// Spatial focus navigation is not supported for this strategy.
+    /// Strategy does not support spatial focus — use `focus_next`/`focus_prev`.
     #[error("spatial navigation not supported — use focus_next/focus_prev")]
     SpatialNavUnsupported,
 }
 
-/// Errors arising from layout operations on panels and nodes.
-
+/// Top-level error for all panes operations.
+///
+/// Wraps [`ConstraintError`], [`TreeError`], [`ViewportError`], and
+/// [`MutationError`].
 #[derive(Debug, thiserror::Error)]
 pub enum PaneError {
-    /// A panel ID does not exist in the tree.
     #[error("panel not found: {0}")]
     PanelNotFound(PanelId),
 
-    /// A constraint value is invalid (NaN, negative, mutually exclusive).
     #[error("invalid constraint: {0}")]
     InvalidConstraint(ConstraintError),
 
-    /// A node ID does not exist in the arena.
     #[error("node not found: {0}")]
     NodeNotFound(NodeId),
 
-    /// The tree structure is invalid or incomplete.
     #[error("tree validation failed: {0}")]
     InvalidTree(TreeError),
 
-    /// Viewport dimensions are invalid (NaN, negative, infinite).
     #[error("invalid viewport: {0}")]
     InvalidViewport(ViewportError),
 
-    /// A mutation is not supported for the current strategy.
     #[error("invalid mutation: {0}")]
     InvalidMutation(MutationError),
 
-    /// A sequence index is out of bounds.
     #[error("sequence index {0} out of bounds for length {1}")]
     SequenceOutOfBounds(usize, usize),
 }

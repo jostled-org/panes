@@ -5,7 +5,7 @@
 
 use panes::diff::LayoutDiff;
 use panes::runtime::{Frame as PanesFrame, LayoutRuntime};
-use panes::{Layout, OverlayEntry, PaneError, PanelEntry, PanelId, ResolvedLayout};
+use panes::{AdapterFrame, Layout, OverlayEntry, PaneError, PanelEntry, PanelId, ResolvedLayout};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::Clear;
@@ -19,51 +19,37 @@ use ratatui::widgets::Clear;
 /// Created via [`resolve`]. Provides [`diff`](Self::diff) and [`inner`](Self::inner)
 /// for access to the underlying runtime state.
 pub struct TerminalFrame<'a> {
-    kind: TerminalFrameKind<'a>,
-}
-
-enum TerminalFrameKind<'a> {
-    Runtime {
-        frame: PanesFrame,
-        rt: &'a LayoutRuntime,
-    },
-    Stateless {
-        resolved: ResolvedLayout,
-    },
+    shell: AdapterFrame<'a>,
 }
 
 impl<'a> TerminalFrame<'a> {
-    fn resolved(&self) -> &ResolvedLayout {
-        match &self.kind {
-            TerminalFrameKind::Runtime { frame, .. } => frame.layout(),
-            TerminalFrameKind::Stateless { resolved } => resolved,
-        }
-    }
-
     /// Quantized rect for a panel.
     pub fn get(&self, id: PanelId) -> Option<Rect> {
-        self.resolved().get(id).map(quantize)
+        self.shell.resolved().get(id).map(quantize)
     }
 
     /// All panels with quantized rects, in kind-grouped order.
     pub fn panels(&self) -> impl Iterator<Item = PanelEntry<'_, Rect>> {
-        self.resolved().panels().map(|e| e.map_rect(quantize))
+        self.shell.resolved().panels().map(|e| e.map_rect(quantize))
     }
 
     /// Overlays with quantized rects.
     pub fn overlays(&self) -> impl Iterator<Item = OverlayEntry<'_, Rect>> {
-        self.resolved().overlays().map(|e| e.map_rect(quantize))
+        self.shell
+            .resolved()
+            .overlays()
+            .map(|e| e.map_rect(quantize))
     }
 
     /// Panels with focus flag and quantized rects.
     ///
-    /// A panel is focused when its id matches `focused`, or when its kind is a
-    /// decoration (`_tab` / `_title` suffix) of the focused panel's kind.
+    /// A panel is focused when its id matches `focused`, or when it is a
+    /// decoration panel whose content kind matches the focused panel's kind.
     pub fn focused_panels(
         &self,
         focused: Option<PanelId>,
     ) -> impl Iterator<Item = (PanelEntry<'_, Rect>, bool)> {
-        focused_panels_impl(self.resolved(), focused)
+        focused_panels_impl(self.shell.resolved(), focused)
     }
 
     /// Clear underlying cells then render each overlay. Call after panels.
@@ -77,18 +63,19 @@ impl<'a> TerminalFrame<'a> {
 
     /// Layout diff (panel IDs, not rects). `None` for stateless resolves.
     pub fn diff(&self) -> Option<LayoutDiff<'_>> {
-        match &self.kind {
-            TerminalFrameKind::Runtime { rt, .. } => Some(rt.last_diff()),
-            TerminalFrameKind::Stateless { .. } => None,
-        }
+        self.shell.diff()
     }
 
     /// Raw panes `Frame`. `None` for stateless resolves.
     pub fn inner(&self) -> Option<&PanesFrame> {
-        match &self.kind {
-            TerminalFrameKind::Runtime { frame, .. } => Some(frame),
-            TerminalFrameKind::Stateless { .. } => None,
-        }
+        self.shell.inner()
+    }
+
+    /// Overlays that failed to anchor during the most recent resolve.
+    pub fn overlay_failures(
+        &self,
+    ) -> &[(panes::OverlayId, std::sync::Arc<str>, panes::AnchorFailure)] {
+        self.shell.overlay_failures()
     }
 }
 
@@ -100,7 +87,7 @@ impl<'a> TerminalFrame<'a> {
 pub fn resolve<'a>(rt: &'a mut LayoutRuntime, area: Rect) -> Result<TerminalFrame<'a>, PaneError> {
     let frame = rt.resolve(f32::from(area.width), f32::from(area.height))?;
     Ok(TerminalFrame {
-        kind: TerminalFrameKind::Runtime { frame, rt },
+        shell: AdapterFrame::from_runtime(frame, rt),
     })
 }
 
@@ -112,7 +99,7 @@ pub fn resolve<'a>(rt: &'a mut LayoutRuntime, area: Rect) -> Result<TerminalFram
 pub fn resolve_layout(layout: &Layout, area: Rect) -> Result<TerminalFrame<'static>, PaneError> {
     let resolved = layout.resolve(f32::from(area.width), f32::from(area.height))?;
     Ok(TerminalFrame {
-        kind: TerminalFrameKind::Stateless { resolved },
+        shell: AdapterFrame::from_stateless(resolved),
     })
 }
 
@@ -134,8 +121,8 @@ pub fn convert_at(resolved: &ResolvedLayout, origin: Rect) -> panes::__FxHashMap
         .collect()
 }
 
-/// A panel is focused when its id matches `focused`, or when its kind is a
-/// decoration (`_tab` / `_title` suffix) of the focused panel's kind.
+/// A panel is focused when its id matches `focused`, or when it is a
+/// decoration panel whose content kind matches the focused panel's kind.
 pub fn focused_panels<'a>(
     resolved: &'a ResolvedLayout,
     focused: Option<PanelId>,
@@ -156,24 +143,29 @@ fn focused_panels_impl<'a>(
     resolved: &'a ResolvedLayout,
     focused: Option<PanelId>,
 ) -> impl Iterator<Item = (PanelEntry<'a, Rect>, bool)> {
-    let focused_kind = focused.and_then(|fid| {
-        resolved
-            .kinds()
-            .find(|kind| resolved.by_kind(kind).contains(&fid))
+    let focused_kind = focused.and_then(|pid| resolved.kind_of(pid));
+
+    let content = resolved.panels().map(move |entry| {
+        let is_focused = matches!(focused, Some(fid) if entry.id == fid);
+        (entry.map_rect(quantize), is_focused)
     });
 
-    resolved.panels().map(move |e| {
-        let is_focused = match (focused, focused_kind) {
-            (Some(fid), _) if e.id == fid => true,
-            (_, Some(fk)) => e
-                .kind
-                .strip_suffix("_tab")
-                .or_else(|| e.kind.strip_suffix("_title"))
-                .is_some_and(|base| base == fk),
-            _ => false,
-        };
-        (e.map_rect(quantize), is_focused)
-    })
+    let decorations = resolved.decoration_panels().iter().filter_map(move |d| {
+        let rect = resolved.get(d.id)?;
+        let is_focused = focused_kind.is_some_and(|fk| fk == d.content_kind.as_ref());
+        let kind_index = resolved.kind_index_of(d.content_kind.as_ref())?;
+        Some((
+            PanelEntry {
+                id: d.id,
+                kind: &d.content_kind,
+                rect: quantize(rect),
+                kind_index,
+            },
+            is_focused,
+        ))
+    });
+
+    content.chain(decorations)
 }
 
 /// Clear underlying cells before rendering each overlay. Call after panels.

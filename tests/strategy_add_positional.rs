@@ -1,7 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{ActivePanelVariant, Direction, Placement, StrategyKind};
+use panes::{ActivePanelVariant, Axis, Placement, StrategyKind};
 
 fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
@@ -23,7 +24,7 @@ fn sequence_kinds(rt: &LayoutRuntime) -> Vec<String> {
 fn sequence_runtime(n: usize) -> LayoutRuntime {
     LayoutRuntime::from_strategy(
         StrategyKind::Sequence {
-            direction: Direction::Horizontal,
+            axis: Axis::Row,
             gap: 0.0,
             ratio: None,
         },
@@ -99,7 +100,7 @@ fn master_stack_add_panel_rebuilds_correctly() {
 fn master_stack_swap_after_add() {
     let mut rt = master_stack_runtime(3);
     rt.add_panel(Arc::from("new")).unwrap();
-    rt.swap_next();
+    rt.swap_next().unwrap();
     rt.tree().validate().unwrap();
 }
 
@@ -123,14 +124,17 @@ fn tabbed_add_panel_creates_tab_decoration() {
     assert_eq!(rt.sequence().len(), 3);
     rt.tree().validate().unwrap();
 
-    // The tree should contain _tab decoration panels
-    let has_tab = rt
-        .tree()
-        .panels_by_kind("logs_tab")
-        .first()
-        .copied()
-        .is_some();
-    assert!(has_tab, "tabbed add_panel should create _tab decoration");
+    // The tree should contain tab decoration panels for all content kinds
+    let frame = rt.resolve(800.0, 600.0).unwrap();
+    let logs_tab = frame
+        .layout()
+        .decoration_panels()
+        .iter()
+        .any(|d| d.role == panes::DecorationRole::Tab && d.content_kind.as_ref() == "logs");
+    assert!(
+        logs_tab,
+        "tabbed add_panel should create tab decoration for logs"
+    );
 }
 
 #[test]
@@ -147,15 +151,15 @@ fn stacked_add_panel_creates_title_decoration() {
     rt.add_panel(Arc::from("logs")).unwrap();
     rt.tree().validate().unwrap();
 
-    let has_title = rt
-        .tree()
-        .panels_by_kind("logs_title")
-        .first()
-        .copied()
-        .is_some();
+    let frame = rt.resolve(800.0, 600.0).unwrap();
+    let logs_title = frame
+        .layout()
+        .decoration_panels()
+        .iter()
+        .any(|d| d.role == panes::DecorationRole::Title && d.content_kind.as_ref() == "logs");
     assert!(
-        has_title,
-        "stacked add_panel should create _title decoration"
+        logs_title,
+        "stacked add_panel should create title decoration for logs"
     );
 }
 
@@ -221,7 +225,7 @@ fn monocle_move_preserves_visibility() {
 fn swap_next_after_add_on_all_strategies() {
     let strategies: Vec<StrategyKind> = vec![
         StrategyKind::Sequence {
-            direction: Direction::Horizontal,
+            axis: Axis::Row,
             gap: 0.0,
             ratio: None,
         },
@@ -249,7 +253,7 @@ fn swap_next_after_add_on_all_strategies() {
     for strategy in strategies {
         let mut rt = LayoutRuntime::from_strategy(strategy, &kinds(3)).unwrap();
         rt.add_panel(Arc::from("new")).unwrap();
-        rt.swap_next();
+        rt.swap_next().unwrap();
         rt.tree().validate().unwrap();
     }
 }

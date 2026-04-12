@@ -3,14 +3,17 @@
 //! Describe panels in rows, columns, and presets. panes solves the geometry
 //! via Taffy's flexbox engine and hands back a map of `PanelId → Rect`.
 
+mod adapter;
 mod breakpoint;
 mod builder;
 /// Compiles a [`LayoutTree`] into a Taffy tree for layout computation.
 pub mod compiler;
+mod decoration;
 /// Frame-to-frame diffing of resolved layouts.
 pub mod diff;
 mod error;
 mod focus;
+mod focus_outcome;
 mod layout;
 mod macros;
 mod node;
@@ -37,38 +40,41 @@ mod tree;
 mod validate;
 mod viewport;
 
+pub use adapter::AdapterFrame;
 pub use breakpoint::{AdaptiveBuilder, BreakpointEntry};
-pub use builder::{ContainerCtx, LayoutBuilder};
+pub use builder::{ContainerCtx, Grid, GridCtx, LayoutBuilder};
+pub use decoration::DecorationRole;
 pub use diff::{
     DiffResult, LayoutDiff, OverlayDiff, OverlayDiffScratch, OverlayRectChange, PanelDiffScratch,
     PanelRectChange, PanelScratch, RectChange,
 };
 pub use error::{ConstraintError, MutationError, PaneError, TreeError, ViewportError};
 pub use focus::FocusDirection;
+pub use focus_outcome::{FocusOutcome, FocusRejection};
 pub use layout::Layout;
-pub use node::{Node, NodeId, PanelId};
+pub use node::{Node, NodeId, PanelId, PanelKey};
 pub use overlay::{
-    ExtentValue, HAlign, Overlay, OverlayAnchor, OverlayDef, OverlayEntry, OverlayExtent,
-    OverlayId, SnapshotOverlay, VAlign,
+    AnchorFailure, ExtentValue, HAlign, Overlay, OverlayAnchor, OverlayDef, OverlayEntry,
+    OverlayExtent, OverlayId, SnapshotOverlay, VAlign,
 };
-pub use panel::{Align, Constraints, PanelIdGenerator, SizeMode, fixed, grow};
+pub use panel::{Align, Axis, Constraints, PanelIdGenerator, SizeMode, fixed, grow};
 pub use preset::{
-    CenteredMaster, Dashboard, Deck, Dwindle, HolyGrail, MasterStack, Monocle, PanelInputKind,
-    PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
+    ActivePanelPreset, CenteredMaster, Dashboard, Deck, Dwindle, HolyGrail, MasterStack, Monocle,
+    PanelInputKind, PresetInfo, Scrollable, Sidebar, Spiral, Split, Stacked, Tabbed,
 };
 pub use rect::Rect;
-pub use resolver::{BoundaryAxis, BoundaryHit, PanelEntry, ResolvedLayout};
+pub use resolver::{BoundaryAxis, BoundaryHit, DecorationPanelInfo, PanelEntry, ResolvedLayout};
 pub use runtime::Placement;
 pub use sequence::PanelSequence;
 pub use snapshot::{
-    LayoutSnapshot, SnapshotBreakpoint, SnapshotNode, SnapshotSlotDef, SnapshotSource,
-    StrategyConfig,
+    LayoutSnapshot, SnapshotBreakpoint, SnapshotGridItem, SnapshotNode, SnapshotSlotDef,
+    SnapshotSource, StrategyConfig,
 };
 pub use strategy::{
     ActivePanelStrategy, ActivePanelVariant, BinarySplitStrategy, BoundStrategy, CardSpan,
-    CenteredMasterStrategy, DashboardStrategy, DeckStrategy, Direction, GridColumnMode,
-    HolyGrailStrategy, MasterStackStrategy, SidebarStrategy, SlotDef, SplitStrategy, Strategy,
-    StrategyKind, WindowStrategy,
+    CenteredMasterStrategy, DashboardStrategy, DeckStrategy, GridColumnMode, HolyGrailStrategy,
+    MasterStackStrategy, SidebarStrategy, SlotDef, SplitStrategy, Strategy, StrategyKind,
+    WindowStrategy,
 };
 #[cfg(feature = "toml")]
 pub use toml_parse::TomlError;

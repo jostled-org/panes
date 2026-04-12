@@ -1,4 +1,5 @@
-use panes::{CardSpan, Layout, PanelInputKind, Rect};
+#![allow(clippy::unwrap_used, clippy::panic)]
+use panes::{CardSpan, Grid, Layout, PanelInputKind, Rect};
 
 // -- Step 1: master_stack, sidebar, split --
 
@@ -664,16 +665,26 @@ fn deck_switch_active() {
 fn tabbed_basic() {
     let resolved = Layout::tabbed(["a", "b"]).resolve(80.0, 24.0).unwrap();
 
-    // Tab bar takes 1.0 height, content fills remainder
-    let a_tab = resolved.by_kind("a_tab")[0];
+    // Tab decorations do not appear in kind-based lookup
+    assert!(resolved.by_kind("a_tab").is_empty());
+
     let a_content = resolved.by_kind("a")[0];
     let b_content = resolved.by_kind("b")[0];
 
-    assert_eq!(resolved.get(a_tab).unwrap().h, 1.0);
-    // Active content fills remaining height
+    // Active content fills remaining height (24 - 1 tab bar = 23)
     assert_eq!(resolved.get(a_content).unwrap().h, 23.0);
     // Inactive content hidden
     assert_eq!(resolved.get(b_content).unwrap().h, 0.0);
+
+    // Tab decoration panels exist with geometry via decoration_panels()
+    let tab_decorations: Vec<_> = resolved
+        .decoration_panels()
+        .iter()
+        .filter(|d| d.role == panes::DecorationRole::Tab)
+        .collect();
+    assert_eq!(tab_decorations.len(), 2);
+    let a_tab_rect = resolved.get(tab_decorations[0].id).unwrap();
+    assert_eq!(a_tab_rect.h, 1.0);
 }
 
 #[test]
@@ -694,18 +705,28 @@ fn tabbed_switch() {
 fn stacked_basic() {
     let resolved = Layout::stacked(["a", "b"]).resolve(80.0, 24.0).unwrap();
 
-    let a_title = resolved.by_kind("a_title")[0];
-    let b_title = resolved.by_kind("b_title")[0];
+    // Title decorations do not appear in kind-based lookup
+    assert!(resolved.by_kind("a_title").is_empty());
+    assert!(resolved.by_kind("b_title").is_empty());
+
     let a_content = resolved.by_kind("a")[0];
     let b_content = resolved.by_kind("b")[0];
 
-    // Both titles visible with height 1.0
-    assert_eq!(resolved.get(a_title).unwrap().h, 1.0);
-    assert_eq!(resolved.get(b_title).unwrap().h, 1.0);
-    // Active content grows to fill remaining space
+    // Active content grows to fill remaining space (24 - 2 titles = 22)
     assert_eq!(resolved.get(a_content).unwrap().h, 22.0);
     // Inactive content hidden
     assert_eq!(resolved.get(b_content).unwrap().h, 0.0);
+
+    // Title decoration panels exist with geometry
+    let title_decorations: Vec<_> = resolved
+        .decoration_panels()
+        .iter()
+        .filter(|d| d.role == panes::DecorationRole::Title)
+        .collect();
+    assert_eq!(title_decorations.len(), 2);
+    for d in &title_decorations {
+        assert_eq!(resolved.get(d.id).unwrap().h, 1.0);
+    }
 }
 
 #[test]
@@ -720,6 +741,58 @@ fn stacked_switch() {
 
     assert_eq!(resolved.get(a_content).unwrap().h, 0.0);
     assert_eq!(resolved.get(b_content).unwrap().h, 22.0);
+}
+
+// -- Decoration node identity (Step 1) --
+
+#[test]
+fn tabbed_content_kinds_resolve_without_synthesized_tab_kinds() {
+    // Use kinds that would previously collide with _tab suffix
+    let resolved = Layout::tabbed(["tab", "editor_tab", "logs"])
+        .resolve(80.0, 24.0)
+        .unwrap();
+
+    // Content panels resolve by their original kinds
+    assert_eq!(resolved.by_kind("tab").len(), 1);
+    assert_eq!(resolved.by_kind("editor_tab").len(), 1);
+    assert_eq!(resolved.by_kind("logs").len(), 1);
+
+    // No synthesized _tab kinds in the kind namespace
+    assert!(resolved.by_kind("tab_tab").is_empty());
+    assert!(resolved.by_kind("editor_tab_tab").is_empty());
+    assert!(resolved.by_kind("logs_tab").is_empty());
+
+    // Decoration panels are accessible via decoration_panels()
+    let decorations = resolved.decoration_panels();
+    assert_eq!(decorations.len(), 3);
+    for d in decorations {
+        assert_eq!(d.role, panes::DecorationRole::Tab);
+    }
+}
+
+#[test]
+fn stacked_content_kinds_resolve_without_synthesized_title_kinds() {
+    // Use kinds that would previously collide with _title suffix
+    let resolved = Layout::stacked(["title", "editor_title", "logs"])
+        .resolve(80.0, 24.0)
+        .unwrap();
+
+    // Content panels resolve by their original kinds
+    assert_eq!(resolved.by_kind("title").len(), 1);
+    assert_eq!(resolved.by_kind("editor_title").len(), 1);
+    assert_eq!(resolved.by_kind("logs").len(), 1);
+
+    // No synthesized _title kinds in the kind namespace
+    assert!(resolved.by_kind("title_title").is_empty());
+    assert!(resolved.by_kind("editor_title_title").is_empty());
+    assert!(resolved.by_kind("logs_title").is_empty());
+
+    // Decoration panels are accessible via decoration_panels()
+    let decorations = resolved.decoration_panels();
+    assert_eq!(decorations.len(), 3);
+    for d in decorations {
+        assert_eq!(d.role, panes::DecorationRole::Title);
+    }
 }
 
 #[test]
@@ -805,4 +878,191 @@ fn presets_fixed_slots_are_sidebar_holy_grail_split() {
         .collect();
     fixed.sort_unstable();
     assert_eq!(fixed, vec!["holy-grail", "sidebar", "split"]);
+}
+
+// -- Dashboard parity with shared grid primitive --
+
+#[test]
+fn tabbed_and_stacked_builders_remain_behaviorally_equivalent_under_shared_shell() {
+    let kinds = ["alpha", "beta", "gamma"];
+    let active = 1;
+    let bar_h = 2.0;
+    let gap = 4.0;
+    let vp_w = 120.0;
+    let vp_h = 60.0;
+
+    let tabbed = Layout::tabbed(kinds)
+        .active(active)
+        .bar_height(bar_h)
+        .gap(gap)
+        .resolve(vp_w, vp_h)
+        .unwrap();
+
+    let stacked = Layout::stacked(kinds)
+        .active(active)
+        .bar_height(bar_h)
+        .gap(gap)
+        .resolve(vp_w, vp_h)
+        .unwrap();
+
+    // Both have the same content panel count per kind
+    for kind in &kinds {
+        assert_eq!(tabbed.by_kind(kind).len(), 1);
+        assert_eq!(stacked.by_kind(kind).len(), 1);
+    }
+
+    // Active panel fills remaining space in both; inactive panels are hidden
+    for kind in &kinds {
+        let t_id = tabbed.by_kind(kind)[0];
+        let s_id = stacked.by_kind(kind)[0];
+        let t_rect = tabbed.get(t_id).unwrap();
+        let s_rect = stacked.get(s_id).unwrap();
+
+        // Same full width
+        assert_eq!(t_rect.w, vp_w);
+        assert_eq!(s_rect.w, vp_w);
+
+        match *kind == kinds[active] {
+            true => {
+                // Active panel has non-zero height in both
+                assert!(t_rect.h > 0.0, "tabbed active panel height should be > 0");
+                assert!(s_rect.h > 0.0, "stacked active panel height should be > 0");
+            }
+            false => {
+                // Inactive panels hidden in both
+                assert_eq!(t_rect.h, 0.0, "tabbed inactive panel should be hidden");
+                assert_eq!(s_rect.h, 0.0, "stacked inactive panel should be hidden");
+            }
+        }
+    }
+
+    // Variant-specific: tabbed has Tab decorations, stacked has Title decorations
+    let tab_decorations: Vec<_> = tabbed
+        .decoration_panels()
+        .iter()
+        .filter(|d| d.role == panes::DecorationRole::Tab)
+        .collect();
+    assert_eq!(tab_decorations.len(), kinds.len());
+
+    let title_decorations: Vec<_> = stacked
+        .decoration_panels()
+        .iter()
+        .filter(|d| d.role == panes::DecorationRole::Title)
+        .collect();
+    assert_eq!(title_decorations.len(), kinds.len());
+
+    // Both decoration heights match bar_height
+    for d in &tab_decorations {
+        assert_eq!(tabbed.get(d.id).unwrap().h, bar_h);
+    }
+    for d in &title_decorations {
+        assert_eq!(stacked.get(d.id).unwrap().h, bar_h);
+    }
+}
+
+#[test]
+fn active_panel_presets_preserve_runtime_focus_and_sequence_behavior() {
+    let kinds = ["x", "y", "z"];
+
+    let mut tabbed_rt = Layout::tabbed(kinds).into_runtime().unwrap();
+    let mut stacked_rt = Layout::stacked(kinds).into_runtime().unwrap();
+
+    // Both runtimes produce a 3-panel sequence
+    assert_eq!(tabbed_rt.sequence().len(), 3);
+    assert_eq!(stacked_rt.sequence().len(), 3);
+
+    // Initial focus: first content panel
+    let _ = tabbed_rt.resolve(80.0, 24.0).unwrap();
+    let _ = stacked_rt.resolve(80.0, 24.0).unwrap();
+
+    assert_eq!(tabbed_rt.focused_kind(), Some("x"));
+    assert_eq!(stacked_rt.focused_kind(), Some("x"));
+
+    // Focus cycling: next wraps through content panels only
+    tabbed_rt.focus_next();
+    stacked_rt.focus_next();
+    let _ = tabbed_rt.resolve(80.0, 24.0).unwrap();
+    let _ = stacked_rt.resolve(80.0, 24.0).unwrap();
+
+    assert_eq!(tabbed_rt.focused_kind(), Some("y"));
+    assert_eq!(stacked_rt.focused_kind(), Some("y"));
+
+    // Active panel: after focus_next, the newly focused panel should be visible
+    let t_frame = tabbed_rt.resolve(80.0, 24.0).unwrap();
+    let s_frame = stacked_rt.resolve(80.0, 24.0).unwrap();
+
+    let t_y = t_frame.layout().by_kind("y")[0];
+    let s_y = s_frame.layout().by_kind("y")[0];
+    assert!(t_frame.layout().get(t_y).unwrap().h > 0.0);
+    assert!(s_frame.layout().get(s_y).unwrap().h > 0.0);
+
+    // The previously active panel should now be hidden
+    let t_x = t_frame.layout().by_kind("x")[0];
+    let s_x = s_frame.layout().by_kind("x")[0];
+    assert_eq!(t_frame.layout().get(t_x).unwrap().h, 0.0);
+    assert_eq!(s_frame.layout().get(s_x).unwrap().h, 0.0);
+
+    // Prev wraps back
+    tabbed_rt.focus_prev();
+    stacked_rt.focus_prev();
+    assert_eq!(tabbed_rt.focused_kind(), Some("x"));
+    assert_eq!(stacked_rt.focused_kind(), Some("x"));
+
+    // Sequence contains only content panel kinds (no decoration panels).
+    // Verify by cycling through all positions and checking focused_kind.
+    // Reset to first panel.
+    let _ = tabbed_rt.resolve(80.0, 24.0).unwrap();
+    let _ = stacked_rt.resolve(80.0, 24.0).unwrap();
+
+    let expected_order = ["x", "y", "z"];
+    for expected in &expected_order {
+        assert_eq!(tabbed_rt.focused_kind(), Some(*expected));
+        assert_eq!(stacked_rt.focused_kind(), Some(*expected));
+        tabbed_rt.focus_next();
+        stacked_rt.focus_next();
+    }
+    // After cycling through all 3, we're back to the first
+    assert_eq!(tabbed_rt.focused_kind(), Some("x"));
+    assert_eq!(stacked_rt.focused_kind(), Some("x"));
+}
+
+#[test]
+fn dashboard_build_matches_shared_grid_primitive_behavior() {
+    // Dashboard: 4 fixed columns, gap 8, mixed spans
+    let dashboard_resolved = Layout::dashboard([
+        ("a", CardSpan::Columns(1)),
+        ("b", CardSpan::Columns(2)),
+        ("c", CardSpan::Columns(1)),
+        ("d", CardSpan::FullWidth),
+    ])
+    .columns(4)
+    .gap(8.0)
+    .auto_rows()
+    .resolve(400.0, 300.0)
+    .unwrap();
+
+    // Equivalent generic grid builder
+    let grid_layout = Layout::build_grid(Grid::columns(4).gap(8.0).auto_rows(), |g| {
+        g.panel("a");
+        g.panel_span("b", CardSpan::Columns(2));
+        g.panel("c");
+        g.panel_span("d", CardSpan::FullWidth);
+    })
+    .unwrap();
+    let grid_resolved = grid_layout.resolve(400.0, 300.0).unwrap();
+
+    // Both layouts should produce the same geometry for every panel
+    for kind in &["a", "b", "c", "d"] {
+        let dr = dashboard_resolved
+            .get(dashboard_resolved.by_kind(kind)[0])
+            .unwrap();
+        let gr = grid_resolved.get(grid_resolved.by_kind(kind)[0]).unwrap();
+        assert!(
+            (dr.x - gr.x).abs() < 1.0
+                && (dr.y - gr.y).abs() < 1.0
+                && (dr.w - gr.w).abs() < 1.0
+                && (dr.h - gr.h).abs() < 1.0,
+            "panel '{kind}' geometry differs: dashboard={dr:?}, grid={gr:?}"
+        );
+    }
 }

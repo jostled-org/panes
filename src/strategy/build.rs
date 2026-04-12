@@ -5,7 +5,43 @@ use crate::error::PaneError;
 use crate::sequence::PanelSequence;
 use crate::tree::LayoutTree;
 
-use super::{ActivePanelVariant, CardSpan, Direction, GridColumnMode, SlotDef, StrategyKind};
+use crate::panel::Axis;
+
+use super::{ActivePanelVariant, CardSpan, GridColumnMode, SlotDef, StrategyKind};
+
+fn validate_strategy(strategy: &StrategyKind) -> Result<(), PaneError> {
+    match strategy {
+        StrategyKind::Sequence { gap, ratio, .. } => {
+            crate::preset::validate_f32_param("gap", *gap)?;
+            ratio.map_or(Ok(()), |value| {
+                crate::preset::validate_share_param("ratio", value)
+            })
+        }
+        StrategyKind::MasterStack { master_ratio, gap }
+        | StrategyKind::Deck { master_ratio, gap }
+        | StrategyKind::CenteredMaster { master_ratio, gap } => {
+            crate::preset::validate_share_param("master_ratio", *master_ratio)?;
+            crate::preset::validate_f32_param("gap", *gap)
+        }
+        StrategyKind::BinarySplit { ratio, gap, .. } => {
+            crate::preset::validate_share_param("ratio", *ratio)?;
+            crate::preset::validate_f32_param("gap", *gap)
+        }
+        StrategyKind::Dashboard { columns, gap, .. } => {
+            crate::preset::validate_grid_columns(*columns)?;
+            crate::preset::validate_f32_param("gap", *gap)
+        }
+        StrategyKind::ActivePanel { bar_height, .. } => {
+            crate::preset::validate_f32_param("bar_height", *bar_height)
+        }
+        StrategyKind::Window { panel_count, gap } if *panel_count == 0 => Err(
+            PaneError::InvalidTree(crate::error::TreeError::WindowSizeZero),
+        ),
+        StrategyKind::Window { gap, .. } | StrategyKind::Slotted { gap, .. } => {
+            crate::preset::validate_f32_param("gap", *gap)
+        }
+    }
+}
 
 /// Build the initial tree for a strategy and panel kinds.
 /// Returns the tree and populates the sequence with panel IDs in order.
@@ -30,15 +66,22 @@ pub fn build_initial(
 /// of tree topology (e.g. spiral/dwindle nest panels at varying depths).
 /// Decorative panels (tabs, titles) that the preset builder generates but
 /// which aren't in the input kinds are excluded.
+///
+/// Handles repeated kinds by tracking which occurrence of each kind has been
+/// consumed: the first "editor" in `kinds` maps to `panels_by_kind("editor")[0]`,
+/// the second to `[1]`, etc.
 pub(crate) fn populate_sequence_by_kinds(
     tree: &LayoutTree,
     kinds: &[Arc<str>],
     sequence: &mut PanelSequence,
 ) {
+    let mut occurrence: rustc_hash::FxHashMap<&str, usize> = rustc_hash::FxHashMap::default();
     for kind in kinds {
-        for &pid in tree.panels_by_kind(kind) {
+        let idx = occurrence.entry(kind).or_insert(0);
+        if let Some(&pid) = tree.panels_by_kind(kind).get(*idx) {
             sequence.push(pid);
         }
+        *idx += 1;
     }
 }
 
@@ -48,7 +91,7 @@ pub(crate) fn populate_sequence_by_kinds(
 
 fn build_sequence_tree(
     kinds: &[Arc<str>],
-    direction: Direction,
+    axis: Axis,
     gap_px: f32,
     ratio: Option<f32>,
 ) -> Result<LayoutTree, PaneError> {
@@ -64,9 +107,9 @@ fn build_sequence_tree(
             }
         }
     };
-    match direction {
-        Direction::Horizontal => b.row_gap(gap_px, add)?,
-        Direction::Vertical => b.col_gap(gap_px, add)?,
+    match axis {
+        Axis::Row => b.row_gap(gap_px, add)?,
+        Axis::Col => b.col_gap(gap_px, add)?,
     }
     Ok(LayoutTree::from(b.build()?))
 }
@@ -77,7 +120,7 @@ fn build_master_stack_tree(
     gap_px: f32,
 ) -> Result<LayoutTree, PaneError> {
     match kinds.len() {
-        1 => build_sequence_tree(kinds, Direction::Horizontal, 0.0, None),
+        1 => build_sequence_tree(kinds, Axis::Row, 0.0, None),
         _ => {
             let layout = crate::preset::MasterStack::new(kinds.iter().map(Arc::clone))
                 .master_ratio(master_ratio)
@@ -156,7 +199,6 @@ pub(super) fn build_dashboard_for_mode(
     let cards = build_cards(kinds, spans);
     let mut preset = crate::preset::Dashboard::new(cards);
     preset = match columns {
-        GridColumnMode::Fixed(0) => preset.columns(kinds.len()),
         GridColumnMode::Fixed(n) => preset.columns(n),
         GridColumnMode::AutoFill { min_width } => preset.auto_fill(min_width),
         GridColumnMode::AutoFit { min_width } => preset.auto_fit(min_width),
@@ -179,14 +221,18 @@ fn build_active_panel_tree(
         ActivePanelVariant::Monocle => crate::preset::Monocle::new(kinds.iter().map(Arc::clone))
             .active(active)
             .build()?,
-        ActivePanelVariant::Tabbed => crate::preset::Tabbed::new(kinds.iter().map(Arc::clone))
-            .active(active)
-            .bar_height(bar_height)
-            .build()?,
-        ActivePanelVariant::Stacked => crate::preset::Stacked::new(kinds.iter().map(Arc::clone))
-            .active(active)
-            .bar_height(bar_height)
-            .build()?,
+        ActivePanelVariant::Tabbed => {
+            crate::preset::ActivePanelPreset::new_tabbed(kinds.iter().map(Arc::clone))
+                .active(active)
+                .bar_height(bar_height)
+                .build()?
+        }
+        ActivePanelVariant::Stacked => {
+            crate::preset::ActivePanelPreset::new_stacked(kinds.iter().map(Arc::clone))
+                .active(active)
+                .bar_height(bar_height)
+                .build()?
+        }
     };
     Ok(LayoutTree::from(layout))
 }
@@ -203,20 +249,16 @@ fn build_window_tree(
     Ok(LayoutTree::from(layout))
 }
 
-fn build_slotted_tree(
-    slots: &[SlotDef],
-    gap_px: f32,
-    direction: Direction,
-) -> Result<LayoutTree, PaneError> {
+fn build_slotted_tree(slots: &[SlotDef], gap_px: f32, axis: Axis) -> Result<LayoutTree, PaneError> {
     let mut b = LayoutBuilder::new();
     let add = |ctx: &mut crate::ContainerCtx| {
         for slot in slots {
             ctx.panel_with(Arc::clone(&slot.kind), slot.constraints);
         }
     };
-    match direction {
-        Direction::Horizontal => b.row_gap(gap_px, add)?,
-        Direction::Vertical => b.col_gap(gap_px, add)?,
+    match axis {
+        Axis::Row => b.row_gap(gap_px, add)?,
+        Axis::Col => b.col_gap(gap_px, add)?,
     }
     Ok(LayoutTree::from(b.build()?))
 }
@@ -226,12 +268,12 @@ pub(crate) fn build_tree_for_strategy(
     strategy: &StrategyKind,
     kinds: &[Arc<str>],
 ) -> Result<LayoutTree, PaneError> {
+    validate_strategy(strategy)?;
+
     match strategy {
-        StrategyKind::Sequence {
-            direction,
-            gap,
-            ratio,
-        } => build_sequence_tree(kinds, *direction, *gap, *ratio),
+        StrategyKind::Sequence { axis, gap, ratio } => {
+            build_sequence_tree(kinds, *axis, *gap, *ratio)
+        }
         StrategyKind::MasterStack { master_ratio, gap } => {
             build_master_stack_tree(kinds, *master_ratio, *gap)
         }
@@ -252,14 +294,7 @@ pub(crate) fn build_tree_for_strategy(
             variant,
             bar_height,
         } => build_active_panel_tree(kinds, *variant, *bar_height, 0),
-        StrategyKind::Window { size, .. } if *size == 0 => Err(PaneError::InvalidTree(
-            crate::error::TreeError::WindowSizeZero,
-        )),
         StrategyKind::Window { gap, .. } => build_window_tree(kinds, *gap, 0),
-        StrategyKind::Slotted {
-            slots,
-            gap,
-            direction,
-        } => build_slotted_tree(slots, *gap, *direction),
+        StrategyKind::Slotted { slots, gap, axis } => build_slotted_tree(slots, *gap, *axis),
     }
 }

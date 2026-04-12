@@ -1,16 +1,28 @@
-use std::fmt::Write as _;
+use std::fmt::{Display, Write as _};
 
-use panes::Direction;
 use panes::{
-    Align, Constraints, ExtentValue, HAlign, Layout, LayoutTree, Node, NodeId, OverlayAnchor,
-    OverlayDef, SizeMode, VAlign,
+    Align, Axis, CardSpan, Constraints, ExtentValue, GridColumnMode, HAlign, Layout, LayoutTree,
+    Node, NodeId, OverlayAnchor, OverlayDef, SizeMode, VAlign,
 };
+use thiserror::Error;
 
 struct EmitCtx {
     css: String,
     counter: u32,
     root_position_relative: bool,
     transitions: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum AdaptiveCssError {
+    #[error(
+        "adaptive breakpoints must be strictly increasing; index {index} width {width}px follows {previous_width}px"
+    )]
+    UnsortedOrDuplicate {
+        index: usize,
+        previous_width: u32,
+        width: u32,
+    },
 }
 
 /// Emit a CSS string from a `Layout` tree.
@@ -65,17 +77,11 @@ fn emit_tree(layout: &Layout, root_position_relative: bool, transitions: bool) -
         root_position_relative,
         transitions,
     };
-    emit_node(tree, root_id, Direction::Horizontal, true, &mut ctx);
+    emit_node(tree, root_id, Axis::Row, true, &mut ctx);
     ctx.css
 }
 
-fn emit_node(
-    tree: &LayoutTree,
-    nid: NodeId,
-    parent_axis: Direction,
-    is_root: bool,
-    ctx: &mut EmitCtx,
-) {
+fn emit_node(tree: &LayoutTree, nid: NodeId, parent_axis: Axis, is_root: bool, ctx: &mut EmitCtx) {
     let Some(node) = tree.node(nid) else { return };
     match node {
         Node::Panel {
@@ -89,33 +95,19 @@ fn emit_node(
                 &mut ctx.css,
             );
         }
-        Node::Row { gap, children } => {
-            emit_flex_container(
-                tree,
-                children,
-                "row",
-                *gap,
-                Direction::Horizontal,
-                is_root,
-                ctx,
-            );
+        Node::Row { children, .. } | Node::Col { children, .. } => {
+            emit_flex_container(tree, node, children, parent_axis, is_root, ctx);
         }
-        Node::Col { gap, children } => {
-            emit_flex_container(
-                tree,
-                children,
-                "column",
-                *gap,
-                Direction::Vertical,
-                is_root,
-                ctx,
-            );
-        }
-        Node::TaffyPassthrough { style, children } if style.display == taffy::Display::Grid => {
+        Node::Grid {
+            columns,
+            gap,
+            auto_rows,
+            children,
+        } => {
             write_container_selector(is_root, &mut ctx.counter, &mut ctx.css);
-            write_grid_rule(style, is_root, &mut ctx.css);
+            write_native_grid_rule(*columns, *gap, *auto_rows, is_root, &mut ctx.css);
             inject_root_extras(is_root, ctx);
-            emit_grid_children(tree, children, ctx);
+            emit_native_grid_children(tree, children, ctx);
         }
         Node::TaffyPassthrough { style, children }
             if is_scrollable_container(style, tree, children) =>
@@ -126,6 +118,7 @@ fn emit_node(
             inject_root_extras(is_root, ctx);
             emit_scrollable_children(tree, children, axis, ctx);
         }
+        Node::GridItemWrapper { .. } => {}
         Node::TaffyPassthrough { children, .. } => {
             write_container_selector(is_root, &mut ctx.counter, &mut ctx.css);
             write_passthrough_rule(is_root, &mut ctx.css);
@@ -155,7 +148,7 @@ fn inject_root_extras(is_root: bool, ctx: &mut EmitCtx) {
     ctx.css.push_str(" }\n");
 }
 
-fn emit_children(tree: &LayoutTree, children: &[NodeId], axis: Direction, ctx: &mut EmitCtx) {
+fn emit_children(tree: &LayoutTree, children: &[NodeId], axis: Axis, ctx: &mut EmitCtx) {
     for &child_id in children {
         emit_node(tree, child_id, axis, false, ctx);
     }
@@ -174,26 +167,43 @@ fn write_container_selector(is_root: bool, counter: &mut u32, css: &mut String) 
 
 fn emit_flex_container(
     tree: &LayoutTree,
+    node: &Node,
     children: &[NodeId],
-    direction: &str,
-    gap: f32,
-    axis: Direction,
+    parent_axis: Axis,
     is_root: bool,
     ctx: &mut EmitCtx,
 ) {
+    let (direction, gap, constraints, axis) = match node {
+        Node::Row {
+            gap, constraints, ..
+        } => ("row", *gap, constraints.as_ref(), Axis::Row),
+        Node::Col {
+            gap, constraints, ..
+        } => ("column", *gap, constraints.as_ref(), Axis::Col),
+        _ => return,
+    };
     write_container_selector(is_root, &mut ctx.counter, &mut ctx.css);
     let _ = write!(
         ctx.css,
         " {{ display: flex; flex-direction: {direction}; gap: {gap}px;"
     );
-    write_container_flex(is_root, &mut ctx.css);
+    write_container_flex(is_root, constraints, parent_axis, &mut ctx.css);
     inject_root_extras(is_root, ctx);
     emit_children(tree, children, axis, ctx);
 }
 
-fn write_container_flex(is_root: bool, css: &mut String) {
-    if !is_root {
-        css.push_str(" flex-grow: 1; flex-basis: 0px; flex-shrink: 1;");
+fn write_container_flex(
+    is_root: bool,
+    constraints: Option<&Constraints>,
+    parent_axis: Axis,
+    css: &mut String,
+) {
+    match (is_root, constraints) {
+        (true, _) => {}
+        (false, Some(c)) => write_constraint_flex(c, parent_axis, css),
+        (false, None) => {
+            css.push_str(" flex-grow: 1; flex-basis: 0px; flex-shrink: 1;");
+        }
     }
     css.push_str(" }\n");
 }
@@ -201,11 +211,12 @@ fn write_container_flex(is_root: bool, css: &mut String) {
 fn write_panel_rule(
     kind: &str,
     constraints: &Constraints,
-    parent_axis: Direction,
+    parent_axis: Axis,
     transitions: bool,
     css: &mut String,
 ) {
-    let _ = write!(css, "[data-pane=\"{kind}\"] {{ ");
+    write_attr_selector("data-pane", kind, css);
+    css.push_str(" { ");
     write_flex_sizing(constraints, parent_axis, css);
     write_min_max(constraints, parent_axis, css);
     write_cross_axis_constraints(constraints, css);
@@ -214,55 +225,36 @@ fn write_panel_rule(
     css.push_str(" }\n");
 }
 
-enum GridMode {
-    Fixed(usize),
-    AutoRepeat { kind: &'static str, min_px: f32 },
-}
-
-fn auto_repeat_kind(count: taffy::style::RepetitionCount) -> Option<&'static str> {
-    match count {
-        taffy::style::RepetitionCount::AutoFill => Some("auto-fill"),
-        taffy::style::RepetitionCount::AutoFit => Some("auto-fit"),
-        taffy::style::RepetitionCount::Count(_) => None,
-    }
-}
-
-fn detect_grid_mode(columns: &[taffy::style::GridTemplateComponent<String>]) -> GridMode {
-    let Some(taffy::style::GridTemplateComponent::Repeat(rep)) = columns.first() else {
-        return GridMode::Fixed(columns.len());
-    };
-    let Some(kind) = auto_repeat_kind(rep.count) else {
-        return GridMode::Fixed(columns.len());
-    };
-    let min_px = rep
-        .tracks
-        .first()
-        .map(|t| t.min_sizing_function().into_raw().value())
-        .unwrap_or(0.0);
-    GridMode::AutoRepeat { kind, min_px }
-}
-
-fn write_grid_rule(style: &taffy::Style, is_root: bool, css: &mut String) {
+/// Write CSS Grid properties from native `Node::Grid` fields.
+fn write_native_grid_rule(
+    columns: GridColumnMode,
+    gap: f32,
+    auto_rows: bool,
+    is_root: bool,
+    css: &mut String,
+) {
     css.push_str(" { display: grid;");
-    match detect_grid_mode(&style.grid_template_columns) {
-        GridMode::Fixed(cols) => {
+    match columns {
+        GridColumnMode::Fixed(cols) => {
             let _ = write!(css, " grid-template-columns: repeat({cols}, 1fr);");
         }
-        GridMode::AutoRepeat { kind, min_px } => {
+        GridColumnMode::AutoFill { min_width } => {
             let _ = write!(
                 css,
-                " grid-template-columns: repeat({kind}, minmax({min_px}px, 1fr));"
+                " grid-template-columns: repeat(auto-fill, minmax({min_width}px, 1fr));"
+            );
+        }
+        GridColumnMode::AutoFit { min_width } => {
+            let _ = write!(
+                css,
+                " grid-template-columns: repeat(auto-fit, minmax({min_width}px, 1fr));"
             );
         }
     }
-    match style.grid_auto_rows.is_empty() {
-        true => {}
-        false if is_auto_rows(&style.grid_auto_rows) => {
-            css.push_str(" grid-auto-rows: auto;");
-        }
+    match auto_rows {
+        true => css.push_str(" grid-auto-rows: auto;"),
         false => css.push_str(" grid-auto-rows: 1fr;"),
     }
-    let gap = style.gap.width.into_raw().value();
     if gap > 0.0 {
         let _ = write!(css, " gap: {gap}px;");
     }
@@ -272,87 +264,52 @@ fn write_grid_rule(style: &taffy::Style, is_root: bool, css: &mut String) {
     css.push_str(" }\n");
 }
 
-fn emit_grid_children(tree: &LayoutTree, children: &[NodeId], ctx: &mut EmitCtx) {
+/// Emit children of a native `Node::Grid`.
+fn emit_native_grid_children(tree: &LayoutTree, children: &[NodeId], ctx: &mut EmitCtx) {
     for &child_id in children {
         match tree.node(child_id) {
-            Some(Node::TaffyPassthrough { style, .. }) => {
+            Some(Node::GridItemWrapper { span, child }) => {
                 write_container_selector(false, &mut ctx.counter, &mut ctx.css);
-                write_grid_card_rule(style, &mut ctx.css);
-                emit_grid_card_panels(tree, child_id, ctx.transitions, &mut ctx.css);
+                write_native_grid_card_rule(*span, &mut ctx.css);
+                emit_grid_wrapper_child(tree, *child, ctx.transitions, &mut ctx.css);
             }
             Some(Node::Panel {
                 kind, constraints, ..
             }) => {
-                write_panel_rule(
-                    kind,
-                    constraints,
-                    Direction::Horizontal,
-                    ctx.transitions,
-                    &mut ctx.css,
-                );
+                write_panel_rule(kind, constraints, Axis::Row, ctx.transitions, &mut ctx.css);
             }
             _ => {}
         }
     }
 }
 
-fn write_grid_card_rule(style: &taffy::Style, css: &mut String) {
+/// Emit the inner child of a `GridItemWrapper` (typically a panel).
+fn emit_grid_wrapper_child(tree: &LayoutTree, child: NodeId, transitions: bool, css: &mut String) {
+    let Some(Node::Panel {
+        kind, constraints, ..
+    }) = tree.node(child)
+    else {
+        return;
+    };
+    write_panel_rule(kind, constraints, Axis::Row, transitions, css);
+}
+
+/// Write CSS for a native grid item wrapper with span from `CardSpan`.
+fn write_native_grid_card_rule(span: CardSpan, css: &mut String) {
     css.push_str(" { display: flex;");
-    match grid_column_placement(style) {
-        GridColumnPlacement::FullWidth => {
-            css.push_str(" grid-column: 1 / -1;");
-        }
-        GridColumnPlacement::Span(n) if n > 1 => {
+    match span {
+        CardSpan::FullWidth => css.push_str(" grid-column: 1 / -1;"),
+        CardSpan::Columns(n) if n > 1 => {
             let _ = write!(css, " grid-column: span {n};");
         }
-        _ => {}
+        CardSpan::Columns(_) => {}
     }
     css.push_str(" flex-grow: 1; flex-basis: 0px; flex-shrink: 1; }\n");
 }
 
-fn emit_grid_card_panels(tree: &LayoutTree, card_id: NodeId, transitions: bool, css: &mut String) {
-    let Some(node) = tree.node(card_id) else {
-        return;
-    };
-    for &grandchild in node.children() {
-        let Some(Node::Panel {
-            kind, constraints, ..
-        }) = tree.node(grandchild)
-        else {
-            continue;
-        };
-        write_panel_rule(kind, constraints, Direction::Horizontal, transitions, css);
-    }
-}
-
-enum GridColumnPlacement {
-    Span(u16),
-    FullWidth,
-}
-
-fn grid_column_placement(style: &taffy::Style) -> GridColumnPlacement {
-    match (&style.grid_column.start, &style.grid_column.end) {
-        (taffy::GridPlacement::Line(s), taffy::GridPlacement::Line(e))
-            if s.as_i16() == 1 && e.as_i16() == -1 =>
-        {
-            GridColumnPlacement::FullWidth
-        }
-        (_, taffy::GridPlacement::Span(n)) => GridColumnPlacement::Span(*n),
-        _ => GridColumnPlacement::Span(1),
-    }
-}
-
-fn is_auto_rows(tracks: &[taffy::style::TrackSizingFunction]) -> bool {
-    let auto_track = taffy::prelude::minmax(
-        taffy::style::MinTrackSizingFunction::auto(),
-        taffy::style::MaxTrackSizingFunction::auto(),
-    );
-    matches!(tracks.first(), Some(t) if *t == auto_track)
-}
-
 fn write_passthrough_rule(is_root: bool, css: &mut String) {
     css.push_str(" { display: flex;");
-    write_container_flex(is_root, css);
+    write_container_flex(is_root, None, Axis::Row, css);
 }
 
 /// A TaffyPassthrough is scrollable when it uses flex-row, nowrap, and all
@@ -399,7 +356,7 @@ fn write_scrollable_rule(axis: ScrollAxis, is_root: bool, css: &mut String) {
         }
     }
     css.push_str(" overscroll-behavior: contain;");
-    write_container_flex(is_root, css);
+    write_container_flex(is_root, None, Axis::Row, css);
 }
 
 fn emit_scrollable_children(
@@ -409,8 +366,8 @@ fn emit_scrollable_children(
     ctx: &mut EmitCtx,
 ) {
     let parent_axis = match axis {
-        ScrollAxis::X => Direction::Horizontal,
-        ScrollAxis::Y => Direction::Vertical,
+        ScrollAxis::X => Axis::Row,
+        ScrollAxis::Y => Axis::Col,
     };
     for &child_id in children {
         let Some(Node::Panel {
@@ -433,7 +390,15 @@ fn emit_scrollable_children(
     }
 }
 
-fn write_flex_sizing(constraints: &Constraints, parent_axis: Direction, css: &mut String) {
+/// Emit flex constraints for a child container with explicit constraints.
+fn write_constraint_flex(constraints: &Constraints, parent_axis: Axis, css: &mut String) {
+    write_flex_sizing(constraints, parent_axis, css);
+    write_min_max(constraints, parent_axis, css);
+    write_cross_axis_constraints(constraints, css);
+    write_align_self(constraints, css);
+}
+
+fn write_flex_sizing(constraints: &Constraints, parent_axis: Axis, css: &mut String) {
     match (constraints.grow, constraints.fixed) {
         (Some(g), _) => {
             let _ = write!(css, "flex-grow: {g}; flex-basis: 0px; flex-shrink: 1;");
@@ -448,11 +413,11 @@ fn write_flex_sizing(constraints: &Constraints, parent_axis: Direction, css: &mu
     write_size_mode(constraints.size_mode, parent_axis, css);
 }
 
-fn write_size_mode(size_mode: Option<SizeMode>, parent_axis: Direction, css: &mut String) {
+fn write_size_mode(size_mode: Option<SizeMode>, parent_axis: Axis, css: &mut String) {
     let Some(mode) = size_mode else { return };
     let prop = match parent_axis {
-        Direction::Horizontal => "width",
-        Direction::Vertical => "height",
+        Axis::Row => "width",
+        Axis::Col => "height",
     };
     match mode {
         SizeMode::MinContent => {
@@ -472,10 +437,11 @@ fn write_size_mode(size_mode: Option<SizeMode>, parent_axis: Direction, css: &mu
 
 /// Emit CSS with `@media` wrappers for adaptive breakpoints.
 ///
-/// Each entry is `(min_width_px, layout)`. Breakpoints must be sorted ascending
-/// by min_width. The first breakpoint gets only a max-width query, the last gets
+/// Each entry is `(min_width_px, layout)`. Breakpoints must be strictly increasing
+/// by `min_width`. The first breakpoint gets only a max-width query, the last gets
 /// only a min-width query, and middle breakpoints get both.
-pub fn emit_adaptive(breakpoints: &[(u32, &Layout)]) -> String {
+pub fn emit_adaptive(breakpoints: &[(u32, &Layout)]) -> Result<String, AdaptiveCssError> {
+    validate_breakpoints(breakpoints)?;
     let mut css = String::new();
     let len = breakpoints.len();
     for (i, (min_width, layout)) in breakpoints.iter().enumerate() {
@@ -505,13 +471,29 @@ pub fn emit_adaptive(breakpoints: &[(u32, &Layout)]) -> String {
             }
         }
     }
-    css
+    Ok(css)
 }
 
-fn write_min_max(constraints: &Constraints, axis: Direction, css: &mut String) {
+fn validate_breakpoints(breakpoints: &[(u32, &Layout)]) -> Result<(), AdaptiveCssError> {
+    for (index, pair) in breakpoints.windows(2).enumerate() {
+        let previous_width = pair[0].0;
+        let width = pair[1].0;
+        if width <= previous_width {
+            return Err(AdaptiveCssError::UnsortedOrDuplicate {
+                index: index + 1,
+                previous_width,
+                width,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn write_min_max(constraints: &Constraints, axis: Axis, css: &mut String) {
     let (min_prop, max_prop) = match axis {
-        Direction::Horizontal => ("min-width", "max-width"),
-        Direction::Vertical => ("min-height", "max-height"),
+        Axis::Row => ("min-width", "max-width"),
+        Axis::Col => ("min-height", "max-height"),
     };
     if let Some(min) = constraints.min {
         let _ = write!(css, " {min_prop}: {min}px;");
@@ -564,7 +546,8 @@ fn write_transition(transitions: bool, css: &mut String) {
 fn write_overlay_rule(def: &OverlayDef, z_index: usize, css: &mut String) {
     let kind = def.kind();
     write_panel_anchor_container(def.anchor(), css);
-    let _ = write!(css, "[data-pane-overlay=\"{kind}\"] {{ position: absolute;");
+    write_attr_selector("data-pane-overlay", kind, css);
+    css.push_str(" { position: absolute;");
     let _ = write!(css, " z-index: {z_index};");
     write_overlay_anchor(def.anchor(), css);
     write_overlay_extent("width", def.width(), css);
@@ -576,9 +559,36 @@ fn write_overlay_rule(def: &OverlayDef, z_index: usize, css: &mut String) {
 fn write_panel_anchor_container(anchor: &OverlayAnchor, css: &mut String) {
     match anchor {
         OverlayAnchor::Panel { kind, .. } => {
-            let _ = writeln!(css, "[data-pane=\"{kind}\"] {{ position: relative; }}");
+            write_attr_selector("data-pane", kind, css);
+            css.push_str(" { position: relative; }\n");
+        }
+        OverlayAnchor::PanelAnchor { key, .. } => {
+            write_attr_selector("data-pane-key", key, css);
+            css.push_str(" { position: relative; }\n");
         }
         OverlayAnchor::Viewport { .. } => {}
+    }
+}
+
+fn write_attr_selector(attr: &str, value: impl Display, css: &mut String) {
+    let _ = write!(css, "[{attr}=\"");
+    write_css_string(&value.to_string(), css);
+    css.push_str("\"]");
+}
+
+fn write_css_string(value: &str, css: &mut String) {
+    for ch in value.chars() {
+        match ch {
+            '\\' | '"' => {
+                css.push('\\');
+                css.push(ch);
+            }
+            '\0' => css.push_str("\\0 "),
+            '\n' => css.push_str("\\a "),
+            '\r' => css.push_str("\\d "),
+            '\u{000C}' => css.push_str("\\c "),
+            _ => css.push(ch),
+        }
     }
 }
 
@@ -591,6 +601,13 @@ fn write_overlay_anchor(anchor: &OverlayAnchor, css: &mut String) {
             margin_y,
         } => write_viewport_anchor(*h, *v, *margin_x, *margin_y, css),
         OverlayAnchor::Panel {
+            h,
+            v,
+            offset_x,
+            offset_y,
+            ..
+        }
+        | OverlayAnchor::PanelAnchor {
             h,
             v,
             offset_x,

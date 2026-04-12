@@ -14,6 +14,16 @@ pub enum SizeMode {
     FitContent(f32),
 }
 
+/// Primary axis of a container node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Axis {
+    /// Horizontal (row): children laid out left-to-right.
+    Row,
+    /// Vertical (column): children laid out top-to-bottom.
+    Col,
+}
+
 /// Cross-axis alignment for a panel within its container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -50,7 +60,14 @@ impl PanelIdGenerator {
     }
 }
 
-/// Spatial constraints for a panel within a layout.
+/// Sizing constraints for a panel or container within its parent.
+///
+/// Controls how the node participates in flex layout. `grow` and `fixed` are
+/// mutually exclusive: `grow` assigns a flex-grow weight while `fixed` sets an
+/// absolute size in pixels. Optional `min`/`max` bounds and axis-specific
+/// `min_width`/`max_width`/`min_height`/`max_height` further restrict the
+/// resolved size. `align` overrides cross-axis alignment and `size_mode`
+/// switches to CSS intrinsic sizing.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Constraints {
@@ -126,6 +143,7 @@ impl Constraints {
     }
 }
 
+/// Create grow constraints with the given flex-grow weight.
 pub fn grow(value: f32) -> Constraints {
     Constraints {
         grow: Some(value),
@@ -133,6 +151,7 @@ pub fn grow(value: f32) -> Constraints {
     }
 }
 
+/// Create fixed-size constraints with the given pixel value.
 pub fn fixed(value: f32) -> Constraints {
     Constraints {
         fixed: Some(value),

@@ -192,7 +192,7 @@ let layout = Layout::build_row_gap(8.0, |r| {
 ```
 
 Key rules:
-- The root must be a single `row` or `col`
+- The root must be a single `row`, `col`, or `grid`
 - Containers nest freely — rows inside columns, columns inside rows
 - `row_gap(n, ...)` / `col_gap(n, ...)` sets spacing; bare `row(...)` / `col(...)` uses zero gap
 - Bare `panel("kind")` defaults to `grow(1.0)`; use `panel_with("kind", constraints)` for explicit sizing
@@ -230,6 +230,48 @@ let resolved = b.build()?.resolve(1920.0, 1080.0)?;
 
 The same layout works at any resolution — pass `800.0, 600.0` and the fixed panels keep their sizes while grow panels absorb the difference.
 
+### Grid layouts
+
+`Grid` is a first-class container alongside `row` and `col`. It uses CSS Grid semantics: fixed or responsive columns, gap, auto rows, and column spans.
+
+```rust
+use panes::{Layout, Grid, CardSpan};
+
+// Fixed 3-column grid with gap
+let layout = Layout::build_grid(Grid::columns(3).gap(8.0), |g| {
+    g.panel("a");
+    g.panel("b");
+    g.panel("c");
+    g.panel_span("wide", CardSpan::FullWidth);   // spans all columns
+    g.panel_span("double", CardSpan::Columns(2)); // spans 2 columns
+})?;
+
+// Responsive columns: auto-fit with 200px minimum
+let layout = Layout::build_grid(Grid::auto_fit(200.0).gap(12.0).auto_rows(), |g| {
+    g.panel("card-1");
+    g.panel("card-2");
+    g.panel("card-3");
+})?;
+```
+
+Grids nest inside rows and columns, and rows/columns nest inside grid items:
+
+```rust
+let layout = panes::layout! {
+    row(gap: 12.0) {
+        panel("sidebar", fixed: 240.0)
+        grid(auto_fit: 200.0, gap: 12.0, auto_rows: true) {
+            panel("metric-a")
+            panel("metric-b")
+            panel("detail", span: 2)
+            panel("actions", full_width: true)
+        }
+    }
+}?;
+```
+
+Grid layouts round-trip through snapshots like rows and columns. The `SnapshotNode::Grid` variant preserves column mode, gap, auto-rows, and per-item spans.
+
 ---
 
 ## Layout Macro
@@ -251,7 +293,7 @@ let layout = layout! {
 ```
 
 Syntax:
-- Root is a single `row` or `col`, with optional `(gap: N)`
+- Root is a single `row`, `col`, or `grid(...)`, with optional `(gap: N)` for row/col
 - `panel("kind")` — defaults to `grow(1.0)`
 - `panel("kind", grow: N)` or `panel("kind", fixed: N)`
 - Optional modifiers after the primary constraint: `min:`, `max:`, `min_width:`, `max_width:`, `min_height:`, `max_height:`, `align:`
@@ -394,7 +436,7 @@ Layout::deck(["master", "a", "b", "c"])
 
 #### tabbed
 
-Tab header bar over a single visible content pane. Each panel gets a `{kind}_tab` panel in the header.
+Tab header bar over a single visible content pane. Each content kind gets a `Tab` decoration panel in the header.
 
 ```rust
 Layout::tabbed(["editor", "chat", "terminal"])
@@ -403,13 +445,13 @@ Layout::tabbed(["editor", "chat", "terminal"])
     .gap(0.0)
     .resolve(80.0, 24.0)?;
 
-// Panels created: "editor_tab", "chat_tab", "terminal_tab" (in header row)
-//                 "editor", "chat", "terminal" (content, only active visible)
+// Content panels: "editor", "chat", "terminal" (only active visible)
+// Decoration panels: one Tab per kind (in header row, via decoration_panels())
 ```
 
 #### stacked
 
-Vertical list of title bars over a single visible content pane. Each panel gets a `{kind}_title` panel.
+Vertical list of title bars over a single visible content pane. Each content kind gets a `Title` decoration panel.
 
 ```rust
 Layout::stacked(["editor", "chat", "terminal"])
@@ -699,28 +741,32 @@ rt.remove_panel(pid)?;
 // Move a panel to a new position in the sequence
 rt.move_panel(pid, 0)?;
 
-// Swap focused panel with neighbors — infallible, no-op when impossible
-rt.swap_next();
-rt.swap_prev();
+// Swap focused panel with neighbors — no-op when the strategy doesn't support it
+rt.swap_next()?;
+rt.swap_prev()?;
 
 // Sequential focus navigation
 rt.focus_next();
 rt.focus_prev();
-rt.focus(pid);  // returns bool
+
+// Focus returns FocusOutcome: Applied, Unchanged, or Rejected(reason)
+use panes::FocusOutcome;
+let outcome = rt.focus(pid);
+if outcome.is_applied() { /* focus moved */ }
 
 // Spatial focus navigation — move to nearest panel in a direction.
-// Returns Result<Option<PanelId>, PaneError>.
+// Returns Result<(Option<PanelId>, FocusOutcome), PaneError>.
 // Returns Err(SpatialNavUnsupported) for ActivePanel and Window strategies —
 // use focus_next/focus_prev for Monocle, Tabbed, Stacked, and Scrollable presets.
 use panes::FocusDirection;
-rt.focus_direction_current(FocusDirection::Left)?;
+let (target, outcome) = rt.focus_direction_current(FocusDirection::Left)?;
 rt.focus_direction_current(FocusDirection::Right)?;
 rt.focus_direction_current(FocusDirection::Up)?;
 rt.focus_direction_current(FocusDirection::Down)?;
 
 // Or pass an explicit layout (e.g. during animation)
 let frame = rt.resolve(80.0, 24.0)?;
-rt.focus_direction(frame.layout(), FocusDirection::Right)?;
+let (target, outcome) = rt.focus_direction(frame.layout(), FocusDirection::Right)?;
 
 // Query focus state
 let focused: Option<PanelId> = rt.focused();
@@ -747,7 +793,7 @@ rt.scroll_to(0.0);
 For layouts that don't fit a preset — tiling window managers, custom editor layouts, or anything that needs manual split control.
 
 ```rust
-use panes::{Layout, grow, fixed, Direction, Placement};
+use panes::{Layout, grow, fixed, Axis, Placement};
 use panes::runtime::LayoutRuntime;
 
 // Start from any tree
@@ -770,13 +816,19 @@ rt.add_panel("chat".into())?;
 ```rust
 rt.add_panel_adjacent_with(
     "sidebar".into(),
-    Direction::Horizontal,
+    Axis::Row,
     fixed(30.0),
     Placement::Before,
 )?;
 ```
 
-**Direct tree surgery:** `tree_mut()` gives full access to the tree for operations that don't map to add/remove.
+**Update constraints:** `set_constraints()` changes a panel's layout constraints without invalidating kind caches — only the compiled taffy tree is rebuilt on the next resolve.
+
+```rust
+rt.set_constraints(pid, fixed(30.0))?;
+```
+
+**Direct tree surgery:** `tree_mut()` gives full access to the tree for operations that don't map to add/remove. All caches are invalidated — use `set_constraints()` above when you only need to update constraints.
 
 ```rust
 let tree = rt.tree_mut();
@@ -862,7 +914,13 @@ if let Some(rect) = frame.layout().overlay_rect(id) {
 
 Adapter crates provide `overlays()` iterators that convert to renderer-native rects, just like `panels()`.
 
-Hidden overlays and panel-anchored overlays referencing missing panels are excluded from the resolved output.
+Hidden overlays are excluded from the resolved output. Panel-anchored overlays referencing missing or ambiguous panels appear in `overlay_failures()` with the failure reason:
+
+```rust
+for (id, kind, failure) in frame.layout().overlay_failures() {
+    println!("overlay {kind} failed: {failure:?}");
+}
+```
 
 ---
 
@@ -892,7 +950,7 @@ for change in diff.resized.iter() { /* ... */ }
 for &pid in diff.unchanged.iter() { /* ... */ }
 ```
 
-Overlay diffing works identically:
+Overlay diffing works identically, with an additional category for anchor failures:
 
 ```rust
 let overlay_diff = rt.last_overlay_diff();
@@ -900,7 +958,10 @@ for &oid in overlay_diff.added.iter() { /* new overlay appeared */ }
 for &oid in overlay_diff.removed.iter() { /* overlay disappeared */ }
 for change in overlay_diff.moved.iter() { /* overlay repositioned */ }
 for change in overlay_diff.resized.iter() { /* overlay size changed */ }
+for &oid in overlay_diff.anchor_failed.iter() { /* was resolved, now failed */ }
 ```
+
+An overlay that was resolved last frame but fails to anchor this frame appears in `anchor_failed`. An overlay that recovers (failed last frame, resolved this frame) appears in `added`. Overlays that fail across consecutive frames are not re-reported.
 
 The first frame reports all panels and overlays as `added`. Diffs borrow from internal scratch buffers and are valid until the next `resolve()` call.
 
@@ -1053,7 +1114,7 @@ terminal.draw(|frame| {
 Both return a `TerminalFrame` with the same methods:
 
 - `panels()` — all panels with quantized rects in kind-grouped order
-- `focused_panels(focused)` — panels paired with a focus bool. Decorations (`_tab` / `_title` suffix) light up automatically when their content panel is focused
+- `focused_panels(focused)` — panels paired with a focus bool. Decoration panels light up automatically when their content panel is focused
 - `overlays()` — overlay rects in z-order
 - `render_overlays(frame, render)` — clears underlying cells then calls your render function per overlay
 - `get(pid)` — quantized rect for a specific panel
@@ -1148,7 +1209,7 @@ Enable the `serde` feature to derive `Serialize` and `Deserialize` on core types
 panes = { version = "0.14", features = ["serde"] }
 ```
 
-Types with serde derives: `Rect`, `PanelId`, `NodeId`, `Constraints`, `Direction`, `ActivePanelVariant`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).
+Types with serde derives: `Rect`, `PanelId`, `NodeId`, `PanelKey`, `Constraints`, `Axis`, `ActivePanelVariant`, `DecorationRole`, `AnchorFailure`, `GridColumnMode`, `CardSpan`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotGridItem`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).
 
 This lets resolved layouts flow directly into JSON responses, IPC messages, or config files without manual conversion:
 
@@ -1192,11 +1253,11 @@ let mut rt = LayoutRuntime::from_snapshot(snapshot)?;
 
 **Strategy runtimes** snapshot the recipe — strategy config + panel kinds in sequence order. On restore, the tree is rebuilt through the preset builder, so decorative panels (tabs, titles) are recreated automatically.
 
-**Non-strategy runtimes** snapshot the tree topology — a recursive structure of rows, columns, and panels with their constraints. On restore, the tree is rebuilt via the layout builder.
+**Non-strategy runtimes** snapshot the tree topology — a recursive structure of rows, columns, grids, and panels with their constraints. Grid nodes preserve their column mode, gap, auto-rows flag, and per-item column spans. On restore, the tree is rebuilt via the layout builder.
 
 Both variants also persist:
-- **Focused panel** (by kind, not PanelId — IDs are regenerated on rebuild)
-- **Collapsed panels** (by kind — collapse state is re-applied after rebuild)
+- **Focused panel** (by kind and `PanelKey` sequence index — IDs are regenerated on rebuild, `PanelKey` provides deterministic restore when multiple panels share a kind)
+- **Collapsed panels** (by kind and `PanelKey` — same deterministic restore)
 - **Overlays** (anchor, extents, visibility)
 
 ### What doesn't persist
@@ -1220,6 +1281,8 @@ let bytes = bincode::serialize(&snapshot)?;
 ---
 
 ## Escape Hatch: Raw Taffy
+
+> **Note:** For CSS Grid layouts, prefer the first-class `Grid` builder or `grid(...)` macro syntax — they support fixed columns, `auto-fill`, `auto-fit`, column spans, and round-trip through snapshots. Use `taffy_node` only when you need Taffy properties that panes doesn't expose.
 
 When panes' spatial vocabulary doesn't cover your use case, drop down to raw Taffy styles via `taffy_node`:
 

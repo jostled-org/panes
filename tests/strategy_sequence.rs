@@ -1,7 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
-use panes::{Direction, StrategyKind};
+use panes::{Axis, FocusOutcome, FocusRejection, StrategyKind};
 
 fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
@@ -11,7 +12,7 @@ fn sequence_runtime(n: usize) -> LayoutRuntime {
     let k = kinds(n);
     LayoutRuntime::from_strategy(
         StrategyKind::Sequence {
-            direction: Direction::Horizontal,
+            axis: Axis::Row,
             gap: 0.0,
             ratio: None,
         },
@@ -93,7 +94,7 @@ fn swap_next_wraps_last_to_first() {
     let mut rt = sequence_runtime(3);
     let last = rt.sequence().get(2).unwrap();
     rt.focus(last);
-    rt.swap_next();
+    rt.swap_next().unwrap();
     assert_eq!(sequence_kinds(&rt), ["p2", "p0", "p1"]);
     assert_eq!(rt.focused_kind(), Some("p2"));
 }
@@ -101,7 +102,7 @@ fn swap_next_wraps_last_to_first() {
 #[test]
 fn swap_prev_wraps_first_to_last() {
     let mut rt = sequence_runtime(3);
-    rt.swap_prev();
+    rt.swap_prev().unwrap();
     assert_eq!(sequence_kinds(&rt), ["p1", "p2", "p0"]);
     assert_eq!(rt.focused_kind(), Some("p0"));
 }
@@ -111,7 +112,7 @@ fn swap_next_middle_reorders() {
     let mut rt = sequence_runtime(3);
     let p1 = rt.sequence().get(1).unwrap();
     rt.focus(p1);
-    rt.swap_next();
+    rt.swap_next().unwrap();
     assert_eq!(sequence_kinds(&rt), ["p0", "p2", "p1"]);
     assert_eq!(rt.focused_kind(), Some("p1"));
 }
@@ -119,9 +120,9 @@ fn swap_next_middle_reorders() {
 #[test]
 fn swap_single_panel_is_noop() {
     let mut rt = sequence_runtime(1);
-    rt.swap_next();
+    rt.swap_next().unwrap();
     assert_eq!(sequence_kinds(&rt), ["p0"]);
-    rt.swap_prev();
+    rt.swap_prev().unwrap();
     assert_eq!(sequence_kinds(&rt), ["p0"]);
 }
 
@@ -130,7 +131,7 @@ fn swap_focus_follows_panel() {
     let mut rt = sequence_runtime(4);
     let p1 = rt.sequence().get(1).unwrap();
     rt.focus(p1);
-    rt.swap_next();
+    rt.swap_next().unwrap();
     // Focus should track the swapped panel
     let focused = rt.focused().unwrap();
     assert_eq!(rt.tree().panel_kind(focused).unwrap(), "p1");
@@ -224,4 +225,21 @@ fn deck_remove_master_promotes() {
     let new_focus = rt.remove_panel(master).unwrap();
     assert!(new_focus.is_some());
     assert_eq!(rt.sequence().len(), 2);
+}
+
+#[test]
+fn deck_focus_rejects_when_sequence_and_tree_drift() {
+    let mut rt = deck_runtime(3);
+    let initial_focus = rt.focused();
+    let p2 = rt.sequence().get(2).unwrap();
+
+    rt.tree_mut().remove_panel(p2).unwrap();
+
+    let outcome = rt.focus(p2);
+
+    assert_eq!(
+        outcome,
+        FocusOutcome::Rejected(FocusRejection::StrategyRejected)
+    );
+    assert_eq!(rt.focused(), initial_focus);
 }

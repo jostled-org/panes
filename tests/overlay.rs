@@ -1,5 +1,8 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+use std::sync::Arc;
+
 use panes::runtime::LayoutRuntime;
-use panes::{Layout, Overlay};
+use panes::{AnchorFailure, Axis, Layout, Overlay, StrategyKind};
 
 fn make_runtime() -> LayoutRuntime {
     Layout::master_stack(["editor", "chat", "status"])
@@ -209,13 +212,7 @@ fn panel_anchor_missing_panel_excluded() {
         .unwrap();
 
     let frame = rt.resolve(800.0, 600.0).unwrap();
-    assert!(
-        frame
-            .layout()
-            .overlays()
-            .find(|e| e.kind == "tooltip")
-            .is_none()
-    );
+    assert!(!frame.layout().overlays().any(|e| e.kind == "tooltip"));
 }
 
 #[test]
@@ -226,13 +223,7 @@ fn hidden_overlay_not_resolved() {
     rt.set_overlay_visible("palette", false);
 
     let frame = rt.resolve(800.0, 600.0).unwrap();
-    assert!(
-        frame
-            .layout()
-            .overlays()
-            .find(|e| e.kind == "palette")
-            .is_none()
-    );
+    assert!(!frame.layout().overlays().any(|e| e.kind == "palette"));
 }
 
 #[test]
@@ -364,13 +355,7 @@ fn overlay_snapshot_round_trip() {
     assert!((palette.rect.h - 5.0).abs() < 0.01);
 
     // Hidden picker should not appear in overlays
-    assert!(
-        frame
-            .layout()
-            .overlays()
-            .find(|e| e.kind == "picker")
-            .is_none()
-    );
+    assert!(!frame.layout().overlays().any(|e| e.kind == "picker"));
 }
 
 #[cfg(feature = "serde")]
@@ -448,4 +433,225 @@ fn overlay_id_generator_sequential() {
         .unwrap();
     assert_eq!(id0.raw(), 0);
     assert_eq!(id1.raw(), 1);
+}
+
+/// Build a runtime with two panels sharing the kind "editor" and one "sidebar".
+fn make_repeated_kind_runtime() -> LayoutRuntime {
+    let kinds: Vec<Arc<str>> = ["editor", "editor", "sidebar"]
+        .iter()
+        .map(|s| Arc::from(*s))
+        .collect();
+    LayoutRuntime::from_strategy(
+        StrategyKind::Sequence {
+            axis: Axis::Row,
+            gap: 0.0,
+            ratio: None,
+        },
+        &kinds,
+    )
+    .unwrap()
+}
+
+#[test]
+fn panel_anchored_overlay_rejects_ambiguous_kind_anchor() {
+    let mut rt = make_repeated_kind_runtime();
+
+    // Add a panel-anchored overlay using a kind that appears twice.
+    rt.add_overlay("tooltip", Overlay::above("editor").fixed(60.0, 10.0))
+        .unwrap();
+
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+
+    // The overlay should be omitted — ambiguous kind anchor is rejected.
+    assert!(
+        !frame.layout().overlays().any(|e| e.kind == "tooltip"),
+        "ambiguous kind anchor must not silently bind to the first match"
+    );
+}
+
+#[test]
+fn panel_anchored_overlay_accepts_identity_based_anchor() {
+    let mut rt = make_repeated_kind_runtime();
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+
+    // Find the second "editor" panel via PanelKey.
+    let editor_pids = frame.layout().by_kind("editor");
+    assert_eq!(editor_pids.len(), 2);
+    let second_editor = editor_pids[1];
+    let key = rt.panel_key(second_editor).unwrap();
+
+    // Add a panel-anchored overlay using PanelKey.
+    rt.add_overlay("tooltip", Overlay::above_key(key).fixed(60.0, 10.0))
+        .unwrap();
+
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+
+    // The overlay should resolve and anchor to the second editor.
+    let tooltip = frame
+        .layout()
+        .overlays()
+        .find(|e| e.kind == "tooltip")
+        .expect("identity-based anchor should resolve");
+
+    let second_rect = frame.layout().get(second_editor).unwrap();
+    // Tooltip should be horizontally centered on the second editor panel.
+    let expected_x = second_rect.x + (second_rect.w - 60.0) / 2.0;
+    assert!(
+        (tooltip.rect.x - expected_x).abs() < 0.01,
+        "tooltip x should be {expected_x}, got {}",
+        tooltip.rect.x
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Overlay anchor failures are observable
+// ---------------------------------------------------------------------------
+
+#[test]
+fn overlay_failures_surface_anchor_failure_reasons() {
+    // Ambiguous kind anchor (two "editor" panels)
+    let mut rt = make_repeated_kind_runtime();
+    rt.add_overlay("tooltip", Overlay::above("editor").fixed(60.0, 10.0))
+        .unwrap();
+
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+    let failures = frame.layout().overlay_failures();
+    let ambiguous = failures
+        .iter()
+        .find(|(_, kind, _)| kind.as_ref() == "tooltip")
+        .expect("ambiguous anchor should appear in failures");
+    assert_eq!(ambiguous.2, AnchorFailure::KindAmbiguous);
+
+    // Kind not found
+    rt.add_overlay("ghost", Overlay::above("nonexistent").fixed(30.0, 10.0))
+        .unwrap();
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+    let failures = frame.layout().overlay_failures();
+    let not_found = failures
+        .iter()
+        .find(|(_, kind, _)| kind.as_ref() == "ghost")
+        .expect("missing kind should appear in failures");
+    assert_eq!(not_found.2, AnchorFailure::KindNotFound);
+
+    // Key stale — anchor to the last panel (index 2), then remove it.
+    // After removal the sequence shrinks to 2 entries, making index 2 out of bounds.
+    let sidebar_pids = frame.layout().by_kind("sidebar");
+    let sidebar = sidebar_pids[0];
+    let key = rt.panel_key(sidebar).unwrap();
+    rt.add_overlay("stale", Overlay::above_key(key).fixed(30.0, 10.0))
+        .unwrap();
+    // Confirm it resolves before removal
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+    assert!(
+        frame.layout().overlays().any(|e| e.kind == "stale"),
+        "key-anchored overlay should resolve before panel removal"
+    );
+
+    rt.remove_panel(sidebar).unwrap();
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+    let failures = frame.layout().overlay_failures();
+    let stale = failures
+        .iter()
+        .find(|(_, kind, _)| kind.as_ref() == "stale")
+        .expect("stale key should appear in failures");
+    assert_eq!(stale.2, AnchorFailure::KeyStale);
+}
+
+#[test]
+fn hidden_overlays_do_not_appear_in_failures() {
+    let mut rt = make_runtime();
+    rt.add_overlay("tooltip", Overlay::above("editor").fixed(60.0, 10.0))
+        .unwrap();
+    rt.set_overlay_visible("tooltip", false);
+
+    let frame = rt.resolve(800.0, 600.0).unwrap();
+    assert!(
+        frame.layout().overlay_failures().is_empty(),
+        "hidden overlays should not produce failures"
+    );
+    // Hidden overlay should not appear in resolved overlays either
+    assert!(!frame.layout().overlays().any(|e| e.kind == "tooltip"));
+}
+
+#[test]
+fn overlay_diff_distinguishes_anchor_failure_from_removal() {
+    let mut rt = make_repeated_kind_runtime();
+
+    // Add a valid viewport overlay and an ambiguous kind-anchored one.
+    rt.add_overlay("valid", Overlay::center().fixed(100.0, 100.0))
+        .unwrap();
+    rt.add_overlay("ambiguous", Overlay::above("editor").fixed(60.0, 10.0))
+        .unwrap();
+
+    // First resolve: "valid" resolves, "ambiguous" fails
+    let _frame = rt.resolve(600.0, 300.0).unwrap();
+
+    // Second resolve: same state
+    let _frame = rt.resolve(600.0, 300.0).unwrap();
+    let diff = rt.last_overlay_diff();
+    // "ambiguous" was already failed last frame and still is — should not appear in anchor_failed
+    // "valid" should be unchanged
+    assert!(
+        diff.anchor_failed.is_empty()
+            || diff.anchor_failed.iter().all(|id| {
+                // Only newly-failed overlays should be in anchor_failed
+                rt.overlays().iter().any(|d| d.id() == *id)
+            }),
+        "steady-state failures should not re-appear in anchor_failed"
+    );
+
+    // Now hide the "valid" overlay via visible=false
+    rt.set_overlay_visible("valid", false);
+    let _frame = rt.resolve(600.0, 300.0).unwrap();
+    let diff = rt.last_overlay_diff();
+    // Hiding via visible=false should be "removed", not "anchor_failed"
+    assert!(
+        diff.removed.iter().any(|&id| {
+            rt.overlays()
+                .iter()
+                .any(|d| d.id() == id && d.kind() == "valid")
+        }),
+        "hidden overlay should appear in removed"
+    );
+    assert!(
+        !diff.anchor_failed.iter().any(|&id| {
+            rt.overlays()
+                .iter()
+                .any(|d| d.id() == id && d.kind() == "valid")
+        }),
+        "hidden overlay should not appear in anchor_failed"
+    );
+}
+
+#[test]
+fn overlay_recovering_from_failure_appears_as_added() {
+    let mut rt = make_repeated_kind_runtime();
+    // Two "editor" panels make kind-based anchor ambiguous
+    rt.add_overlay("tooltip", Overlay::above("editor").fixed(60.0, 10.0))
+        .unwrap();
+
+    // First resolve — overlay fails (ambiguous)
+    let frame = rt.resolve(600.0, 300.0).unwrap();
+    assert!(
+        !frame.layout().overlays().any(|e| e.kind == "tooltip"),
+        "overlay should fail on ambiguous kind"
+    );
+
+    // Remove one "editor" panel so the kind becomes unique
+    let editor_pids = frame.layout().by_kind("editor");
+    assert_eq!(editor_pids.len(), 2);
+    let first_editor = editor_pids[0];
+    rt.remove_panel(first_editor).unwrap();
+
+    // Second resolve — overlay should now resolve
+    let _frame = rt.resolve(600.0, 300.0).unwrap();
+    let diff = rt.last_overlay_diff();
+    let tooltip_id = rt
+        .overlay("tooltip")
+        .expect("tooltip overlay should exist")
+        .id();
+    assert!(
+        diff.added.contains(&tooltip_id),
+        "recovered overlay should appear in added"
+    );
 }

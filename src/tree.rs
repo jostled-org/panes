@@ -1,9 +1,12 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
+use std::{cell::Cell, thread_local};
 
-use crate::error::{PaneError, TreeError};
+use crate::decoration::{DecorationMeta, DecorationRole};
+use crate::error::{MutationError, PaneError, TreeError};
 use crate::node::Node;
 use crate::node::PanelId;
+use crate::strategy::{CardSpan, GridColumnMode};
 use crate::{Constraints, NodeId, PanelIdGenerator};
 
 /// Relative position for inserting or moving nodes within a container.
@@ -33,9 +36,24 @@ pub struct LayoutTree {
     kind_index: FxHashMap<Arc<str>, Vec<PanelId>>,
     panel_to_node: FxHashMap<PanelId, NodeId>,
     parent_map: FxHashMap<NodeId, NodeId>,
+    /// Decoration metadata keyed by the decoration panel's `PanelId`.
+    decorations: FxHashMap<PanelId, DecorationMeta>,
     dirty: bool,
     live_count: usize,
-    window_size: usize,
+    window_panel_count: usize,
+}
+
+thread_local! {
+    static DEBUG_NODE_ALLOC_FAILURE_REMAINING: Cell<usize> = const { Cell::new(usize::MAX) };
+}
+
+#[doc(hidden)]
+pub struct DebugNodeAllocFailureGuard;
+
+impl Drop for DebugNodeAllocFailureGuard {
+    fn drop(&mut self) {
+        DEBUG_NODE_ALLOC_FAILURE_REMAINING.with(|remaining| remaining.set(usize::MAX));
+    }
 }
 
 impl LayoutTree {
@@ -49,14 +67,16 @@ impl LayoutTree {
             kind_index: FxHashMap::default(),
             panel_to_node: FxHashMap::default(),
             parent_map: FxHashMap::default(),
+            decorations: FxHashMap::default(),
             dirty: true,
             live_count: 0,
-            window_size: 1,
+            window_panel_count: 1,
         }
     }
 
     /// Allocate a new node in the arena, returning its `NodeId`.
     fn alloc(&mut self, node: Node) -> Result<NodeId, PaneError> {
+        Self::debug_maybe_fail_node_alloc()?;
         let id = match self.free_list.pop() {
             Some(id) => {
                 self.nodes[id.raw() as usize] = Some(node);
@@ -75,25 +95,94 @@ impl LayoutTree {
         Ok(id)
     }
 
+    fn debug_maybe_fail_node_alloc() -> Result<(), PaneError> {
+        DEBUG_NODE_ALLOC_FAILURE_REMAINING.with(|remaining| match remaining.get() {
+            usize::MAX => Ok(()),
+            0 => Err(PaneError::InvalidTree(TreeError::ArenaOverflow)),
+            value => {
+                remaining.set(value - 1);
+                Ok(())
+            }
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn debug_fail_nth_node_alloc(
+        successful_allocations_before_failure: usize,
+    ) -> DebugNodeAllocFailureGuard {
+        DEBUG_NODE_ALLOC_FAILURE_REMAINING
+            .with(|remaining| remaining.set(successful_allocations_before_failure));
+        DebugNodeAllocFailureGuard
+    }
+
+    /// Shared panel allocation: validate, generate id, create node, alloc, register.
+    fn alloc_panel(
+        &mut self,
+        kind: Arc<str>,
+        constraints: Constraints,
+    ) -> Result<(PanelId, NodeId), PaneError> {
+        constraints.validate()?;
+        let pid = self.panel_gen.next_id()?;
+        let node = Node::Panel {
+            id: pid,
+            kind,
+            constraints,
+        };
+        let nid = self.alloc(node)?;
+        self.panel_to_node.insert(pid, nid);
+        self.dirty = true;
+        Ok((pid, nid))
+    }
+
     /// Add a panel node. Returns the generated `PanelId` and the arena `NodeId`.
+    ///
+    /// The kind string must not be empty.
     pub fn add_panel(
         &mut self,
         kind: impl Into<Arc<str>>,
         constraints: Constraints,
     ) -> Result<(PanelId, NodeId), PaneError> {
-        constraints.validate()?;
-        let pid = self.panel_gen.next_id()?;
         let kind: Arc<str> = kind.into();
-        let node = Node::Panel {
-            id: pid,
-            kind: Arc::clone(&kind),
-            constraints,
-        };
-        let nid = self.alloc(node)?;
+        validate_kind(&kind)?;
+        let (pid, nid) = self.alloc_panel(Arc::clone(&kind), constraints)?;
         self.kind_index.entry(kind).or_default().push(pid);
-        self.panel_to_node.insert(pid, nid);
-        self.dirty = true;
         Ok((pid, nid))
+    }
+
+    /// Add a decoration panel node. Like `add_panel` but stores decoration
+    /// metadata and does NOT add the panel to the kind index.
+    pub(crate) fn add_decoration_panel(
+        &mut self,
+        content_kind: Arc<str>,
+        constraints: Constraints,
+        role: DecorationRole,
+    ) -> Result<(PanelId, NodeId), PaneError> {
+        let (pid, nid) = self.alloc_panel(Arc::clone(&content_kind), constraints)?;
+        self.decorations
+            .insert(pid, DecorationMeta { role, content_kind });
+        Ok((pid, nid))
+    }
+
+    /// Whether this panel is a decoration (tab bar, title bar).
+    pub fn is_decoration(&self, pid: PanelId) -> bool {
+        self.decorations.contains_key(&pid)
+    }
+
+    /// Decoration metadata for a panel, if it is a decoration.
+    pub(crate) fn decoration_meta(&self, pid: PanelId) -> Option<&DecorationMeta> {
+        self.decorations.get(&pid)
+    }
+
+    /// The decoration role for a panel, if it is a decoration.
+    pub fn decoration_role(&self, pid: PanelId) -> Option<DecorationRole> {
+        self.decorations.get(&pid).map(|m| m.role)
+    }
+
+    /// All decoration entries. Used by the resolver to propagate metadata.
+    pub(crate) fn decoration_entries(
+        &self,
+    ) -> impl Iterator<Item = (PanelId, &DecorationMeta)> + '_ {
+        self.decorations.iter().map(|(&pid, meta)| (pid, meta))
     }
 
     /// Record parent links for all children of a node in the arena.
@@ -115,7 +204,24 @@ impl LayoutTree {
 
     /// Add a row container with the given gap and children.
     pub fn add_row(&mut self, gap: f32, children: Vec<NodeId>) -> Result<NodeId, PaneError> {
-        let id = self.alloc(Node::Row { gap, children })?;
+        self.add_row_constrained(gap, None, children)
+    }
+
+    /// Add a row container with optional constraints, gap, and children.
+    pub fn add_row_constrained(
+        &mut self,
+        gap: f32,
+        constraints: Option<Constraints>,
+        children: Vec<NodeId>,
+    ) -> Result<NodeId, PaneError> {
+        if let Some(ref c) = constraints {
+            c.validate()?;
+        }
+        let id = self.alloc(Node::Row {
+            gap,
+            constraints,
+            children,
+        })?;
         Self::record_children_from(&mut self.parent_map, &self.nodes, id);
         self.dirty = true;
         Ok(id)
@@ -123,7 +229,24 @@ impl LayoutTree {
 
     /// Add a column container with the given gap and children.
     pub fn add_col(&mut self, gap: f32, children: Vec<NodeId>) -> Result<NodeId, PaneError> {
-        let id = self.alloc(Node::Col { gap, children })?;
+        self.add_col_constrained(gap, None, children)
+    }
+
+    /// Add a column container with optional constraints, gap, and children.
+    pub fn add_col_constrained(
+        &mut self,
+        gap: f32,
+        constraints: Option<Constraints>,
+        children: Vec<NodeId>,
+    ) -> Result<NodeId, PaneError> {
+        if let Some(ref c) = constraints {
+            c.validate()?;
+        }
+        let id = self.alloc(Node::Col {
+            gap,
+            constraints,
+            children,
+        })?;
         Self::record_children_from(&mut self.parent_map, &self.nodes, id);
         self.dirty = true;
         Ok(id)
@@ -140,6 +263,37 @@ impl LayoutTree {
             children: children.into_boxed_slice(),
         })?;
         Self::record_children_from(&mut self.parent_map, &self.nodes, id);
+        self.dirty = true;
+        Ok(id)
+    }
+
+    /// Add a grid container node directly.
+    pub(crate) fn add_grid(
+        &mut self,
+        columns: GridColumnMode,
+        gap: f32,
+        auto_rows: bool,
+        children: Vec<NodeId>,
+    ) -> Result<NodeId, PaneError> {
+        let id = self.alloc(Node::Grid {
+            columns,
+            gap,
+            auto_rows,
+            children,
+        })?;
+        Self::record_children_from(&mut self.parent_map, &self.nodes, id);
+        self.dirty = true;
+        Ok(id)
+    }
+
+    /// Add a grid item wrapper node with a column span.
+    pub(crate) fn add_grid_item(
+        &mut self,
+        span: CardSpan,
+        child: NodeId,
+    ) -> Result<NodeId, PaneError> {
+        let id = self.alloc(Node::GridItemWrapper { span, child })?;
+        self.parent_map.insert(child, id);
         self.dirty = true;
         Ok(id)
     }
@@ -193,16 +347,17 @@ impl LayoutTree {
 
     /// How many panels the active window shows at once.
     /// Default is 1. Scrollable sets this to 2.
-    pub fn window_size(&self) -> usize {
-        self.window_size
+    pub fn window_panel_count(&self) -> usize {
+        self.window_panel_count
     }
 
-    /// Set the active window size. Returns an error if `size` is zero.
-    pub fn set_window_size(&mut self, size: usize) -> Result<(), PaneError> {
-        match size {
+    /// Set how many panels are visible at once in the active window.
+    /// Returns an error if `panel_count` is zero.
+    pub fn set_window_panel_count(&mut self, panel_count: usize) -> Result<(), PaneError> {
+        match panel_count {
             0 => Err(PaneError::InvalidTree(TreeError::WindowSizeZero)),
             _ => {
-                self.window_size = size;
+                self.window_panel_count = panel_count;
                 Ok(())
             }
         }
@@ -343,6 +498,39 @@ impl LayoutTree {
         }
     }
 
+    /// Drop an unattached non-panel node from the arena.
+    pub(crate) fn remove_orphan_node(&mut self, node_id: NodeId) -> Result<(), PaneError> {
+        match self.parent(node_id)? {
+            Some(parent) => Err(PaneError::InvalidTree(TreeError::ParentChildMismatch {
+                parent,
+                child: node_id,
+            })),
+            None => self.drop_unattached_non_panel(node_id),
+        }
+    }
+
+    fn drop_unattached_non_panel(&mut self, node_id: NodeId) -> Result<(), PaneError> {
+        let node = self.node(node_id).ok_or(PaneError::NodeNotFound(node_id))?;
+        match node {
+            Node::Panel { .. } => Err(PaneError::NodeNotFound(node_id)),
+            Node::Row { .. }
+            | Node::Col { .. }
+            | Node::Grid { .. }
+            | Node::GridItemWrapper { .. }
+            | Node::TaffyPassthrough { .. } => {
+                let child_ids: Vec<_> = node.children().to_vec();
+                for child_id in child_ids {
+                    self.parent_map.remove(&child_id);
+                }
+                self.nodes[node_id.raw() as usize] = None;
+                self.free_list.push(node_id);
+                self.live_count = self.live_count.saturating_sub(1);
+                self.dirty = true;
+                Ok(())
+            }
+        }
+    }
+
     /// Detach a node from its parent container. Returns the parent id.
     pub(crate) fn detach(&mut self, node_id: NodeId) -> Option<NodeId> {
         let parent_id = self.parent_map.remove(&node_id)?;
@@ -350,6 +538,12 @@ impl LayoutTree {
             children.retain(|&c| c != node_id);
         }
         Some(parent_id)
+    }
+
+    /// Restore a child's parent link after rollback.
+    pub(crate) fn restore_parent(&mut self, node_id: NodeId, parent_id: NodeId) {
+        self.parent_map.insert(node_id, parent_id);
+        self.dirty = true;
     }
 
     /// Insert a child into a container at the given index, updating parent_map.
@@ -371,6 +565,7 @@ impl LayoutTree {
             false => {
                 children.insert(idx, child);
                 self.parent_map.insert(child, container);
+                self.dirty = true;
                 Ok(())
             }
         }
@@ -394,9 +589,42 @@ impl LayoutTree {
             .ok_or(PaneError::NodeNotFound(anchor_nid))
     }
 
+    /// Find the insertion index after moving a node out of its current parent.
+    fn move_index(
+        &self,
+        node_id: NodeId,
+        container_id: NodeId,
+        anchor: PanelId,
+        offset: usize,
+    ) -> Result<usize, PaneError> {
+        if self.parent(node_id)? != Some(container_id) {
+            return self.anchor_index(container_id, anchor, offset);
+        }
+
+        let anchor_nid = self.resolve_panel(anchor)?;
+        let children = self
+            .children(container_id)
+            .map_err(|_| PaneError::NodeNotFound(container_id))?;
+        let mut insertion_index = 0;
+
+        for &child_id in children {
+            match (child_id == node_id, child_id == anchor_nid) {
+                (true, _) => continue,
+                (_, true) => return Ok(insertion_index + offset),
+                (false, false) => insertion_index += 1,
+            }
+        }
+
+        Err(PaneError::NodeNotFound(anchor_nid))
+    }
+
     /// Remove a panel from the tree entirely.
     pub fn remove_panel(&mut self, pid: PanelId) -> Result<(), PaneError> {
         let nid = self.resolve_panel(pid)?;
+
+        if self.root == Some(nid) {
+            self.root = None;
+        }
 
         // Remove from parent's children
         self.detach(nid);
@@ -408,8 +636,9 @@ impl LayoutTree {
         };
         self.remove_from_kind_index(&kind, pid);
 
-        // Remove from panel-to-node map and arena
+        // Remove from panel-to-node map, decorations, and arena
         self.panel_to_node.remove(&pid);
+        self.decorations.remove(&pid);
         self.nodes[nid.raw() as usize] = None;
         self.free_list.push(nid);
         self.live_count = self.live_count.saturating_sub(1);
@@ -422,6 +651,14 @@ impl LayoutTree {
     pub fn move_panel(&mut self, pid: PanelId, position: Position) -> Result<(), PaneError> {
         let nid = self.resolve_panel(pid)?;
         let (anchor, offset) = position.anchor_and_offset();
+        let source_parent = self
+            .parent(nid)?
+            .ok_or(PaneError::InvalidMutation(MutationError::PanelNoParent))?;
+        let source_index = self
+            .children(source_parent)?
+            .iter()
+            .position(|&child_id| child_id == nid)
+            .ok_or(PaneError::NodeNotFound(nid))?;
 
         let target_container = self
             .panel_to_node
@@ -429,14 +666,19 @@ impl LayoutTree {
             .and_then(|&anid| self.parent_map.get(&anid).copied())
             .ok_or(PaneError::PanelNotFound(anchor))?;
 
+        let idx = self.move_index(nid, target_container, anchor, offset)?;
+
         // Detach from current parent
         self.detach(nid);
 
-        // Find insertion index in target container
-        let idx = self.anchor_index(target_container, anchor, offset)?;
-
         self.dirty = true;
-        self.insert_child_at(target_container, idx, nid)
+        match self.insert_child_at(target_container, idx, nid) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.insert_child_at(source_parent, source_index, nid)?;
+                Err(error)
+            }
+        }
     }
 
     /// Check structural integrity of the tree.
@@ -462,7 +704,8 @@ impl LayoutTree {
             .collect::<Result<_, _>>()?;
 
         self.validate_children(&live)?;
-        self.validate_parents(root_id, &live)
+        self.validate_parent_links(root_id, &live)?;
+        self.validate_reachability(root_id, &live)
     }
 
     /// Every child referenced by a container must exist in the arena.
@@ -482,7 +725,11 @@ impl LayoutTree {
     }
 
     /// Every non-root live node must have a parent that lists it as a child.
-    fn validate_parents(&self, root_id: NodeId, live: &FxHashSet<NodeId>) -> Result<(), PaneError> {
+    fn validate_parent_links(
+        &self,
+        root_id: NodeId,
+        live: &FxHashSet<NodeId>,
+    ) -> Result<(), PaneError> {
         for &nid in live {
             if nid == root_id {
                 continue;
@@ -509,6 +756,49 @@ impl LayoutTree {
         Ok(())
     }
 
+    /// Every live node must be reachable from the root exactly once.
+    fn validate_reachability(
+        &self,
+        root_id: NodeId,
+        live: &FxHashSet<NodeId>,
+    ) -> Result<(), PaneError> {
+        let mut visited = FxHashSet::default();
+        let mut child_owners = FxHashMap::default();
+        let mut stack = vec![root_id];
+
+        while let Some(node_id) = stack.pop() {
+            if !visited.insert(node_id) {
+                continue;
+            }
+
+            let node = self
+                .node(node_id)
+                .ok_or(PaneError::InvalidTree(TreeError::RootMissing(node_id)))?;
+
+            for &child_id in node.children() {
+                if let Some(first_parent) = child_owners.insert(child_id, node_id) {
+                    return Err(PaneError::InvalidTree(
+                        TreeError::ChildListedMultipleTimes {
+                            child: child_id,
+                            first_parent,
+                            second_parent: node_id,
+                        },
+                    ));
+                }
+
+                stack.push(child_id);
+            }
+        }
+
+        for &node_id in live {
+            if !visited.contains(&node_id) {
+                return Err(PaneError::InvalidTree(TreeError::DisconnectedNode(node_id)));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Insert a node into a container at a position relative to an anchor.
     pub fn insert_node(
         &mut self,
@@ -532,6 +822,13 @@ impl LayoutTree {
         let mut result = crate::compiler::compile(self)?;
         crate::compiler::compute_layout(&mut result, width, height)?;
         crate::resolver::resolve(&result, self)
+    }
+}
+
+fn validate_kind(kind: &str) -> Result<(), PaneError> {
+    match kind.is_empty() {
+        true => Err(PaneError::InvalidTree(TreeError::EmptyKind)),
+        false => Ok(()),
     }
 }
 

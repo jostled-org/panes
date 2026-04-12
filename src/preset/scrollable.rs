@@ -57,10 +57,10 @@ impl Scrollable {
     }
 }
 
-/// Derive the window start so that `focus` is visible in a window of `size` panels.
-fn window_start_from_focus(focus: usize, len: usize, size: usize) -> usize {
-    let start = (focus + 1).saturating_sub(size);
-    start.min(len.saturating_sub(size))
+/// Derive the window start so that `focus` is visible in a window of `panel_count` panels.
+fn window_start_from_focus(focus: usize, len: usize, panel_count: usize) -> usize {
+    let start = (focus + 1).saturating_sub(panel_count);
+    start.min(len.saturating_sub(panel_count))
 }
 
 /// Show panels at `window` and `window + 1`; hide everything else.
@@ -78,7 +78,7 @@ fn add_scroll_panels(ctx: &mut crate::ContainerCtx, kinds: &[Arc<str>], window: 
 super::impl_preset!(
     Scrollable,
     runtime(kinds, |this| crate::strategy::StrategyKind::Window {
-        size: 2,
+        panel_count: 2,
         gap: this.gap,
     })
 );

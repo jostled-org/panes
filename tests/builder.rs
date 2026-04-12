@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::{compile, compute_layout};
 use panes::resolver::resolve;
 use panes::{Layout, LayoutBuilder, LayoutTree, Rect, fixed, grow};
@@ -362,6 +363,29 @@ fn builder_closure_error_propagation() {
         })
         .unwrap_err();
     assert!(matches!(err, panes::PaneError::InvalidConstraint(_)));
+}
+
+#[test]
+fn builder_stops_inline_allocations_after_first_error() {
+    let mut b = LayoutBuilder::new();
+    let err = b
+        .row(|r| {
+            r.panel_with("bad", grow(-1.0));
+            r.panel("orphan");
+        })
+        .unwrap_err();
+    assert!(matches!(err, panes::PaneError::InvalidConstraint(_)));
+
+    b.row(|r| {
+        r.panel("ok");
+    })
+    .unwrap();
+
+    let layout = b.build().unwrap();
+    let resolved = layout.resolve(80.0, 24.0).unwrap();
+
+    assert_eq!(resolved.by_kind("ok").len(), 1);
+    assert_eq!(resolved.by_kind("orphan").len(), 0);
 }
 
 #[test]

@@ -4,6 +4,7 @@ use super::resolve::validate_extent;
 use super::types::{
     ExtentValue, HAlign, OverlayAnchor, OverlayDef, OverlayExtent, OverlayId, VAlign,
 };
+use crate::node::PanelKey;
 
 /// Builder for constructing overlay definitions.
 ///
@@ -77,6 +78,20 @@ impl Overlay {
         }
     }
 
+    fn panel_key(key: PanelKey, h: HAlign, v: VAlign) -> Self {
+        Self {
+            anchor: OverlayAnchor::PanelAnchor {
+                key,
+                h,
+                v,
+                offset_x: 0.0,
+                offset_y: 0.0,
+            },
+            width: OverlayExtent::default(),
+            height: OverlayExtent::default(),
+        }
+    }
+
     overlay_ctors!(viewport center ()       => "Centered in the viewport.", HAlign::Center, VAlign::Center, 0.0, 0.0);
     overlay_ctors!(viewport top (margin)    => "Top-center with vertical margin.", HAlign::Center, VAlign::Top, 0.0);
     overlay_ctors!(viewport bottom (margin) => "Bottom-center with vertical margin.", HAlign::Center, VAlign::Bottom, 0.0);
@@ -85,15 +100,41 @@ impl Overlay {
     overlay_ctors!(viewport bottom_left (mx, my)  => "Bottom-left corner with margins.", HAlign::Left, VAlign::Bottom);
     overlay_ctors!(viewport bottom_right (mx, my) => "Bottom-right corner with margins.", HAlign::Right, VAlign::Bottom);
 
-    overlay_ctors!(panel above    => "Anchored above a panel (by kind).", HAlign::Center, VAlign::Top);
-    overlay_ctors!(panel below    => "Anchored below a panel (by kind).", HAlign::Center, VAlign::Bottom);
-    overlay_ctors!(panel left_of  => "Anchored to the left of a panel (by kind).", HAlign::Left, VAlign::Center);
-    overlay_ctors!(panel right_of => "Anchored to the right of a panel (by kind).", HAlign::Right, VAlign::Center);
+    overlay_ctors!(panel above    => "Anchored above a panel (by kind). Rejects ambiguous kinds.", HAlign::Center, VAlign::Top);
+    overlay_ctors!(panel below    => "Anchored below a panel (by kind). Rejects ambiguous kinds.", HAlign::Center, VAlign::Bottom);
+    overlay_ctors!(panel left_of  => "Anchored to the left of a panel (by kind). Rejects ambiguous kinds.", HAlign::Left, VAlign::Center);
+    overlay_ctors!(panel right_of => "Anchored to the right of a panel (by kind). Rejects ambiguous kinds.", HAlign::Right, VAlign::Center);
 
-    /// Set an offset (for panel-anchored overlays).
+    /// Anchored above a panel identified by its stable [`PanelKey`].
+    pub fn above_key(key: PanelKey) -> Self {
+        Self::panel_key(key, HAlign::Center, VAlign::Top)
+    }
+
+    /// Anchored below a panel identified by its stable [`PanelKey`].
+    pub fn below_key(key: PanelKey) -> Self {
+        Self::panel_key(key, HAlign::Center, VAlign::Bottom)
+    }
+
+    /// Anchored to the left of a panel identified by its stable [`PanelKey`].
+    pub fn left_of_key(key: PanelKey) -> Self {
+        Self::panel_key(key, HAlign::Left, VAlign::Center)
+    }
+
+    /// Anchored to the right of a panel identified by its stable [`PanelKey`].
+    pub fn right_of_key(key: PanelKey) -> Self {
+        Self::panel_key(key, HAlign::Right, VAlign::Center)
+    }
+
+    /// Set the anchor displacement.
+    ///
+    /// For panel-anchored overlays, this sets the panel-relative offset.
+    /// For viewport-anchored overlays, this rewrites the viewport margins.
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         match &mut self.anchor {
             OverlayAnchor::Panel {
+                offset_x, offset_y, ..
+            }
+            | OverlayAnchor::PanelAnchor {
                 offset_x, offset_y, ..
             } => {
                 *offset_x = x;
@@ -140,13 +181,19 @@ impl Overlay {
         self
     }
 
-    /// Percentage of viewport width (0.0–100.0).
+    /// Percentage of viewport width.
+    ///
+    /// Values above `100.0` are allowed and produce widths larger than the
+    /// viewport before any optional clamp is applied.
     pub fn percent_width(mut self, pct: f32) -> Self {
         self.width.value = ExtentValue::Percent(pct);
         self
     }
 
-    /// Percentage of viewport height (0.0–100.0).
+    /// Percentage of viewport height.
+    ///
+    /// Values above `100.0` are allowed and produce heights larger than the
+    /// viewport before any optional clamp is applied.
     pub fn percent_height(mut self, pct: f32) -> Self {
         self.height.value = ExtentValue::Percent(pct);
         self
@@ -185,6 +232,9 @@ impl Overlay {
                 check_f32_finite(*margin_y).map_err(|e| map("overlay_margin_y", e))?;
             }
             OverlayAnchor::Panel {
+                offset_x, offset_y, ..
+            }
+            | OverlayAnchor::PanelAnchor {
                 offset_x, offset_y, ..
             } => {
                 check_f32_finite(*offset_x).map_err(|e| map("overlay_offset_x", e))?;
