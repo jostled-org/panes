@@ -1,6 +1,6 @@
 [package]
 name = "panes-css"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2024"
 description = "CSS transpiler for the panes layout engine"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ keywords = ["layout", "css", "flexbox", "grid"]
 categories = ["gui", "web-programming"]
 
 [dependencies]
-panes = { version = "0.18", path = ".." }
+panes = { version = "0.19", path = ".." }
 taffy = { version = "0.10", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "content_size"] }
 thiserror = "2"
 

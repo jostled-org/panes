@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/jostled-org/panes/compare/panes-v0.18.5...panes-v0.19.0) - 2026-04-13
+
+### Added
+
+- [**breaking**] grid containers, decoration panels, focus outcome API, and validation hardening
+
+### Other
+
+- add pedant override for wasm json_types and gitignore memory/
+
 ## [0.18.5](https://github.com/jostled-org/panes/compare/panes-v0.18.4...panes-v0.18.5) - 2026-04-07
 
 ### Fixed
