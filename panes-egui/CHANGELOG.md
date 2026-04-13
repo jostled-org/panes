@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/jostled-org/panes/compare/panes-egui-v0.4.12...panes-egui-v0.5.0) - 2026-04-13
+
+### Added
+
+- [**breaking**] grid containers, decoration panels, focus outcome API, and validation hardening
+
 ## [0.4.12](https://github.com/jostled-org/panes/compare/panes-egui-v0.4.11...panes-egui-v0.4.12) - 2026-04-07
 
 ### Other
