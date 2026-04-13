@@ -119,3 +119,9 @@ check_mixed_concerns = false
 # EmitCtx, GridMode, GridColumnPlacement are all CSS emission internals.
 [overrides."**/emit.rs"]
 check_mixed_concerns = false
+
+# WASM JSON DTOs: all serialization types for the JS boundary.
+# Groups are disconnected because they serve different endpoints
+# (panels, diffs, boundaries, failures) but share the same concern.
+[overrides."**/json_types.rs"]
+check_mixed_concerns = false
