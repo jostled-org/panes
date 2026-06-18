@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "panes"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "criterion",
  "ratatui",
@@ -681,7 +681,7 @@ dependencies = [
 
 [[package]]
 name = "panes-css"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "criterion",
  "panes",
@@ -691,7 +691,7 @@ dependencies = [
 
 [[package]]
 name = "panes-egui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "criterion",
  "egui",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "panes-ratatui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "criterion",
  "panes",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "panes-wasm"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "criterion",
  "panes",

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/jostled-org/panes/compare/panes-css-v0.8.0...panes-css-v0.9.0) - 2026-06-18
+
+### Other
+
+- *(deps)* [**breaking**] update dependencies and migrate taffy to 0.11
+
 ## [0.8.0](https://github.com/jostled-org/panes/compare/panes-css-v0.7.3...panes-css-v0.8.0) - 2026-04-13
 
 ### Added
