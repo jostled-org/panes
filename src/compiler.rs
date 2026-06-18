@@ -89,9 +89,9 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Sty
     };
 
     let align_self = match constraints.align {
-        Some(Align::Start) => Some(taffy::AlignSelf::Start),
-        Some(Align::Center) => Some(taffy::AlignSelf::Center),
-        Some(Align::End) => Some(taffy::AlignSelf::End),
+        Some(Align::Start) => Some(taffy::AlignSelf::START),
+        Some(Align::Center) => Some(taffy::AlignSelf::CENTER),
+        Some(Align::End) => Some(taffy::AlignSelf::END),
         Some(Align::Stretch) | None => None,
     };
 
