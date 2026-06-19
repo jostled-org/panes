@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/jostled-org/panes/compare/panes-v0.19.0...panes-v0.20.0) - 2026-06-18
+
+### Other
+
+- add check subcommand to pedant invocation
+- *(deps)* [**breaking**] update dependencies and migrate taffy to 0.11
+
 ## [0.19.0](https://github.com/jostled-org/panes/compare/panes-v0.18.5...panes-v0.19.0) - 2026-04-13
 
 ### Added
