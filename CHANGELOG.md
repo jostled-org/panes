@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/jostled-org/panes/compare/panes-v0.20.0...panes-v0.21.0) - 2026-07-22
+
+### Other
+
+- flatten nesting to satisfy pedant max-depth
+- *(deps)* [**breaking**] update dependencies, taffy to 0.12, egui to 0.35
+
 ## [0.20.0](https://github.com/jostled-org/panes/compare/panes-v0.19.0...panes-v0.20.0) - 2026-06-18
 
 ### Other
