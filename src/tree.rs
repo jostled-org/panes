@@ -712,13 +712,12 @@ impl LayoutTree {
     fn validate_children(&self, live: &FxHashSet<NodeId>) -> Result<(), PaneError> {
         for &nid in live {
             let Some(node) = self.node(nid) else { continue };
-            for &child in node.children() {
-                if !live.contains(&child) {
-                    return Err(PaneError::InvalidTree(TreeError::MissingChild {
-                        parent: nid,
-                        child,
-                    }));
-                }
+            let missing = node.children().iter().find(|child| !live.contains(child));
+            if let Some(&child) = missing {
+                return Err(PaneError::InvalidTree(TreeError::MissingChild {
+                    parent: nid,
+                    child,
+                }));
             }
         }
         Ok(())
@@ -775,19 +774,7 @@ impl LayoutTree {
                 .node(node_id)
                 .ok_or(PaneError::InvalidTree(TreeError::RootMissing(node_id)))?;
 
-            for &child_id in node.children() {
-                if let Some(first_parent) = child_owners.insert(child_id, node_id) {
-                    return Err(PaneError::InvalidTree(
-                        TreeError::ChildListedMultipleTimes {
-                            child: child_id,
-                            first_parent,
-                            second_parent: node_id,
-                        },
-                    ));
-                }
-
-                stack.push(child_id);
-            }
+            record_child_owners(node_id, node.children(), &mut child_owners, &mut stack)?;
         }
 
         for &node_id in live {
@@ -823,6 +810,29 @@ impl LayoutTree {
         crate::compiler::compute_layout(&mut result, width, height)?;
         crate::resolver::resolve(&result, self)
     }
+}
+
+/// Record each child's owner during reachability traversal, erroring on
+/// children listed by more than one parent. Pushes children onto the stack.
+fn record_child_owners(
+    node_id: NodeId,
+    children: &[NodeId],
+    child_owners: &mut FxHashMap<NodeId, NodeId>,
+    stack: &mut Vec<NodeId>,
+) -> Result<(), PaneError> {
+    for &child_id in children {
+        if let Some(first_parent) = child_owners.insert(child_id, node_id) {
+            return Err(PaneError::InvalidTree(
+                TreeError::ChildListedMultipleTimes {
+                    child: child_id,
+                    first_parent,
+                    second_parent: node_id,
+                },
+            ));
+        }
+        stack.push(child_id);
+    }
+    Ok(())
 }
 
 fn validate_kind(kind: &str) -> Result<(), PaneError> {

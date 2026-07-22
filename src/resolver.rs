@@ -193,12 +193,10 @@ fn build_panel_kind_indices(
             continue;
         };
         let idx16 = idx as u16;
-        for &pid in pids.iter() {
-            let slot = pid.raw() as usize;
-            if slot < buf.len() {
-                buf[slot] = Some(idx16);
-            }
-        }
+        pids.iter()
+            .map(|pid| pid.raw() as usize)
+            .filter(|&slot| slot < capacity)
+            .for_each(|slot| buf[slot] = Some(idx16));
     }
     buf.into()
 }
@@ -568,6 +566,16 @@ fn set_panel_rect(
     Ok(())
 }
 
+/// Push children onto the DFS stack in reverse so they pop in document order.
+fn push_children_reversed(
+    stack: &mut Vec<(NodeId, f32, f32)>,
+    children: &[NodeId],
+    abs_x: f32,
+    abs_y: f32,
+) {
+    stack.extend(children.iter().rev().map(|&c| (c, abs_x, abs_y)));
+}
+
 /// Iterative DFS that populates rects (and optionally kinds). Reuses the stack across frames.
 fn resolve_iterative(
     tree: &LayoutTree,
@@ -623,9 +631,7 @@ fn resolve_iterative(
                     &layout.size,
                     &mut scratch.boundary_buf,
                 );
-                for &child_id in children.iter().rev() {
-                    scratch.stack.push((child_id, abs_x, abs_y));
-                }
+                push_children_reversed(&mut scratch.stack, children, abs_x, abs_y);
             }
             Some(Node::Col { children, .. }) => {
                 emit_boundaries(
@@ -637,22 +643,16 @@ fn resolve_iterative(
                     &layout.size,
                     &mut scratch.boundary_buf,
                 );
-                for &child_id in children.iter().rev() {
-                    scratch.stack.push((child_id, abs_x, abs_y));
-                }
+                push_children_reversed(&mut scratch.stack, children, abs_x, abs_y);
             }
             Some(Node::Grid { children, .. }) => {
-                for &child_id in children.iter().rev() {
-                    scratch.stack.push((child_id, abs_x, abs_y));
-                }
+                push_children_reversed(&mut scratch.stack, children, abs_x, abs_y);
             }
             Some(Node::GridItemWrapper { child, .. }) => {
                 scratch.stack.push((*child, abs_x, abs_y));
             }
             Some(Node::TaffyPassthrough { children, .. }) => {
-                for &child_id in children.iter().rev() {
-                    scratch.stack.push((child_id, abs_x, abs_y));
-                }
+                push_children_reversed(&mut scratch.stack, children, abs_x, abs_y);
             }
             None => return Err(PaneError::NodeNotFound(node_id)),
         }
