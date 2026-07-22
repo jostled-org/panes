@@ -128,7 +128,7 @@ use crate::strategy::GridColumnMode;
 /// Convert a [`GridColumnMode`] to taffy grid template columns.
 pub(crate) fn columns_to_taffy(columns: GridColumnMode) -> Vec<GridTemplateComponent<String>> {
     match columns {
-        GridColumnMode::Fixed(n) => vec![fr(1.0); n],
+        GridColumnMode::Fixed(n) => vec![fr(1.0_f32); n],
         GridColumnMode::AutoFill { min_width } => vec![auto_repeat_track("auto-fill", min_width)],
         GridColumnMode::AutoFit { min_width } => vec![auto_repeat_track("auto-fit", min_width)],
     }
@@ -151,7 +151,7 @@ pub(crate) fn simple_grid_style(mode: GridColumnMode, gap: f32, auto_rows: bool)
             MinTrackSizingFunction::auto(),
             MaxTrackSizingFunction::auto(),
         )],
-        false => vec![fr(1.0)],
+        false => vec![fr(1.0_f32)],
     };
     taffy::Style {
         display: taffy::Display::Grid,
