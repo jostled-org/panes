@@ -1,6 +1,6 @@
 [package]
 name = "panes-ratatui"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Ratatui adapter for the panes layout engine"
 license = "MIT OR Apache-2.0"
@@ -10,11 +10,11 @@ keywords = ["layout", "ratatui", "tui", "terminal"]
 categories = ["gui"]
 
 [dependencies]
-panes = { version = "0.20", path = ".." }
+panes = { version = "0.21", path = ".." }
 ratatui = { version = "0.30", default-features = false }
 
 [dev-dependencies]
-panes = { version = "0.20", path = ".." }
+panes = { version = "0.21", path = ".." }
 rustc-hash = "2"
 criterion = { version = "0.8", features = ["html_reports"] }
 
