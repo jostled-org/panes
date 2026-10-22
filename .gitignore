@@ -3,14 +3,11 @@
 *.swo
 .DS_Store
 logs/
-docs/.codebase-snapshot.md
 .manifest.toml
-docs/specs/
-docs/plans/
-docs/scripts/
-docs/planning_guidelines.md
-docs/introspection_guidelines.md
-docs/design-rationale.md
-docs/testing.md
 .mcp.json
 memory/
+
+# Documents stay local; project-docs keeps them. Publish one with a !docs/ negation.
+docs/**
+!docs/GUIDE.md
+!docs/UPGRADING-0.19.md
