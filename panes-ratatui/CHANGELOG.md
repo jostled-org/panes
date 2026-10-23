@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.5.2...panes-ratatui-v0.5.3) - 2026-10-23
+
+### Other
+
+- updated the following local packages: panes
+
 ## [0.5.2](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.5.1...panes-ratatui-v0.5.2) - 2026-07-22
 
 ### Other

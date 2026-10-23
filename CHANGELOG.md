@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/jostled-org/panes/compare/panes-v0.21.0...panes-v0.22.0) - 2026-10-23
+
+### Other
+
+- *(deps)* [**breaking**] update dependencies, taffy to 0.15, egui to 0.37
+- ignore docs by default and publish public guides by negation
+
 ## [0.21.0](https://github.com/jostled-org/panes/compare/panes-v0.20.0...panes-v0.21.0) - 2026-07-22
 
 ### Other
