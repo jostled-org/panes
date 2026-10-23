@@ -571,9 +571,8 @@ For responsive layout across preset families, use `Layout::adaptive()` to switch
 
 Enable the `toml` feature:
 
-```toml
-[dependencies]
-panes = { version = "0.14", features = ["toml"] }
+```
+cargo add panes --features toml
 ```
 
 Then load layouts from TOML strings or files:
@@ -1081,9 +1080,8 @@ let entries: Vec<_> = resolved
 
 ### panes-ratatui
 
-```toml
-[dependencies]
-panes-ratatui = "0.4"
+```
+cargo add panes panes-ratatui
 ```
 
 panes computes layout in continuous f32 space. Ratatui renders in u16 terminal cells. `panes_ratatui::resolve()` bridges the gap — it resolves and quantizes in one step, so you never see f32 rects:
@@ -1142,9 +1140,8 @@ The free functions (`panels()`, `convert()`, `focused_panels()`, etc.) remain av
 
 ### panes-egui
 
-```toml
-[dependencies]
-panes-egui = "0.4"
+```
+cargo add panes panes-egui
 ```
 
 ```rust
@@ -1162,9 +1159,8 @@ Direct f32 mapping.
 
 ### panes-css
 
-```toml
-[dependencies]
-panes-css = "0.4"
+```
+cargo add panes panes-css
 ```
 
 ```rust
@@ -1183,9 +1179,8 @@ Grid-based presets (`dashboard`) emit `display: grid` with `grid-template-column
 
 ### panes-wasm
 
-```toml
-[dependencies]
-panes-wasm = "0.4"
+```
+cargo add panes panes-wasm
 ```
 
 ```rust
@@ -1204,9 +1199,8 @@ let rects: FxHashMap<PanelId, WasmRect> = panes_wasm::convert(&resolved);
 
 Enable the `serde` feature to derive `Serialize` and `Deserialize` on core types:
 
-```toml
-[dependencies]
-panes = { version = "0.14", features = ["serde"] }
+```
+cargo add panes --features serde
 ```
 
 Types with serde derives: `Rect`, `PanelId`, `NodeId`, `PanelKey`, `Constraints`, `Axis`, `ActivePanelVariant`, `DecorationRole`, `AnchorFailure`, `GridColumnMode`, `CardSpan`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotGridItem`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).
