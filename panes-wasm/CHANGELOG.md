@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3](https://github.com/jostled-org/panes/compare/panes-wasm-v0.6.2...panes-wasm-v0.6.3) - 2026-10-23
+
+### Other
+
+- updated the following local packages: panes
+
 ## [0.6.2](https://github.com/jostled-org/panes/compare/panes-wasm-v0.6.1...panes-wasm-v0.6.2) - 2026-07-22
 
 ### Other
