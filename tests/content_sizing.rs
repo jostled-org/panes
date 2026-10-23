@@ -248,9 +248,9 @@ fn size_mode_min_content_resolves() {
     let la = panel_layout(&result, &tree, pa).unwrap();
     let lb = panel_layout(&result, &tree, pb).unwrap();
 
-    // Taffy 0.9 maps MinContent to auto sizing. Without a measure function
-    // there is no intrinsic content, so Taffy treats the panel identically
-    // to a grow panel — both split the container evenly.
+    // An empty leaf has zero min-content size, so its min-content flex basis
+    // is 0 and it grows like a plain grow panel — both split the container
+    // evenly.
     // We verify concrete geometry (not just "nonzero") to catch regressions.
     assert_eq!(
         la.size.width, 400.0,
@@ -264,5 +264,73 @@ fn size_mode_min_content_resolves() {
         la.size.height + lb.size.height,
         400.0,
         "panels should fill the container height"
+    );
+}
+
+/// Row root (400 wide) holding a `grow(0)` column with `size_mode`, then a
+/// `grow(1)` filler. The column wraps two 100px measured panels in a wrapping
+/// row, so its min-content width is 100 and its max-content width is 200.
+/// Returns the resolved widths of the column content and the filler.
+fn resolve_size_mode_column(mode: SizeMode) -> (f32, f32) {
+    let mut tree = LayoutTree::new();
+    let (pa, a) = tree.add_panel("a", grow(1.0)).unwrap();
+    let (pb, b) = tree.add_panel("b", grow(1.0)).unwrap();
+    let wrap = tree
+        .add_taffy_node(
+            taffy::Style {
+                flex_wrap: taffy::FlexWrap::Wrap,
+                ..Default::default()
+            },
+            vec![a, b],
+        )
+        .unwrap();
+    let col = tree
+        .add_col_constrained(0.0, Some(grow(0.0).size_mode(mode)), vec![wrap])
+        .unwrap();
+    let (pc, c) = tree.add_panel("filler", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![col, c]).unwrap();
+    tree.set_root(root);
+
+    let mut rt = LayoutRuntime::new(tree);
+    rt.set_panel_size(pa, 100.0, 50.0).unwrap();
+    rt.set_panel_size(pb, 100.0, 50.0).unwrap();
+    let frame = rt.resolve(400.0, 200.0).unwrap();
+    let layout = frame.layout();
+
+    let ra = layout.get(pa).unwrap();
+    let rb = layout.get(pb).unwrap();
+    let content_right = (ra.x + ra.w).max(rb.x + rb.w);
+    let filler = layout.get(pc).unwrap();
+    (content_right, filler.w)
+}
+
+#[test]
+fn size_mode_min_content_sizes_container_to_min_content() {
+    let (_, filler_w) = resolve_size_mode_column(SizeMode::MinContent);
+    assert_eq!(filler_w, 300.0, "min-content column should be 100 wide");
+}
+
+#[test]
+fn size_mode_max_content_sizes_container_to_max_content() {
+    let (content_right, filler_w) = resolve_size_mode_column(SizeMode::MaxContent);
+    assert_eq!(filler_w, 200.0, "max-content column should be 200 wide");
+    assert_eq!(content_right, 200.0, "panels should sit side by side");
+}
+
+#[test]
+fn size_mode_fit_content_clamps_between_min_and_max_content() {
+    let (_, filler_w) = resolve_size_mode_column(SizeMode::FitContent(150.0));
+    assert_eq!(
+        filler_w, 250.0,
+        "fit-content(150px) column should be 150 wide"
+    );
+}
+
+#[test]
+fn size_mode_fit_content_limit_below_min_content_uses_min_content() {
+    let (_, filler_w) = resolve_size_mode_column(SizeMode::FitContent(40.0));
+    assert_eq!(
+        filler_w, 300.0,
+        "fit-content(40px) column should floor at 100"
     );
 }

@@ -394,10 +394,7 @@ fn decoration_role_returns_indexed_role_for_decoration_panel() {
     let frame = rt.resolve(80.0, 24.0).unwrap();
     let resolved = frame.layout();
 
-    let decoration = resolved
-        .decoration_panels()
-        .first()
-        .expect("tabbed layout should expose decorations");
+    let decoration = resolved.decoration_panels().first().unwrap();
 
     assert_eq!(
         resolved.decoration_role(decoration.id),

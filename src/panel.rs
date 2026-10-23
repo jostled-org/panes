@@ -4,7 +4,8 @@ use crate::validate::{check_f32_non_negative, float_invalid_to_constraint};
 
 /// Content-based sizing mode for a panel.
 ///
-/// Overrides `flex-basis` when set, emitting CSS intrinsic-sizing keywords.
+/// When set, overrides `flex-basis` and the main-axis size with the matching
+/// intrinsic-sizing keyword. Native layout and CSS output use the same keyword.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
@@ -82,7 +83,7 @@ pub struct Constraints {
     pub min_height: Option<f32>,
     pub max_height: Option<f32>,
     pub align: Option<Align>,
-    /// Overrides flex-basis in CSS emission.
+    /// Overrides flex-basis and the main-axis size with an intrinsic-sizing keyword.
     pub size_mode: Option<SizeMode>,
 }
 

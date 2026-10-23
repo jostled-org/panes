@@ -43,7 +43,7 @@ impl CenteredMaster {
     }
 
     fn build_centered(&self) -> Result<Layout, PaneError> {
-        let (left_kinds, right_kinds) = split_alternating(&self.kinds[1..]);
+        let (left_kinds, right_kinds) = self.split_side_kinds();
         let mut b = LayoutBuilder::new();
         let ratio = self.master_ratio;
         let side_ratio = (1.0 - ratio) / 2.0;
@@ -62,24 +62,25 @@ impl CenteredMaster {
 
         b.build()
     }
+
+    /// Split the non-master kinds into left and right lists by alternation.
+    /// Even indices (0, 2, 4...) go left, odd indices (1, 3, 5...) go right.
+    fn split_side_kinds(&self) -> (KindSlice, KindSlice) {
+        let side = &self.kinds[1..];
+        let cap = side.len().div_ceil(2);
+        let mut left = Vec::with_capacity(cap);
+        let mut right = Vec::with_capacity(cap);
+        for (i, item) in side.iter().enumerate() {
+            match i % 2 {
+                0 => left.push(Arc::clone(item)),
+                _ => right.push(Arc::clone(item)),
+            }
+        }
+        (left.into_boxed_slice(), right.into_boxed_slice())
+    }
 }
 
 type KindSlice = Box<[Arc<str>]>;
-
-/// Split items into left and right lists by alternation.
-/// Even indices (0, 2, 4...) go left, odd indices (1, 3, 5...) go right.
-fn split_alternating(items: &[Arc<str>]) -> (KindSlice, KindSlice) {
-    let cap = items.len().div_ceil(2);
-    let mut left = Vec::with_capacity(cap);
-    let mut right = Vec::with_capacity(cap);
-    for (i, item) in items.iter().enumerate() {
-        match i % 2 {
-            0 => left.push(Arc::clone(item)),
-            _ => right.push(Arc::clone(item)),
-        }
-    }
-    (left.into_boxed_slice(), right.into_boxed_slice())
-}
 
 super::impl_preset!(
     CenteredMaster,

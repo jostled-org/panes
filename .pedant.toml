@@ -53,26 +53,34 @@ patterns = [
     "eprintln!",
 ]
 
-# Relax rules for tests
-[overrides."tests/**"]
+# Relax rules for tests in every workspace member
+[overrides."**/tests/**"]
 max_depth = 5
 forbid_unsafe = false
 
-[overrides."tests/**".forbid_calls]
+[overrides."**/tests/**".forbid_calls]
 enabled = false
 
-[overrides."tests/**".forbid_macros]
+[overrides."**/tests/**".forbid_macros]
+enabled = false
+
+# Clippy denies unwrap_used and panic workspace-wide, so test crates need
+# allow(clippy::*) to opt out.
+[overrides."**/tests/**".forbid_attributes]
 enabled = false
 
 # Relax rules for benchmarks (same rationale as tests)
-[overrides."benches/**"]
+[overrides."**/benches/**"]
 max_depth = 5
 forbid_unsafe = false
 
-[overrides."benches/**".forbid_calls]
+[overrides."**/benches/**".forbid_calls]
 enabled = false
 
-[overrides."benches/**".forbid_macros]
+[overrides."**/benches/**".forbid_macros]
+enabled = false
+
+[overrides."**/benches/**".forbid_attributes]
 enabled = false
 
 # Project-specific overrides
@@ -80,35 +88,35 @@ enabled = false
 # PanelIdGenerator generates PanelId; Constraints configures panels.
 # Both are panel concerns — structural connection is through PanelId,
 # which pedant can't trace through newtypes.
-[overrides."**/panel.rs"]
+[overrides."**/src/panel.rs"]
 check_mixed_concerns = false
 
 # PanelEntry is a resolver output type — same domain as ResolvedLayout.
 # x, y are spatial coordinates in layout resolution.
-[overrides."**/resolver.rs"]
+[overrides."**/src/resolver.rs"]
 check_mixed_concerns = false
-[overrides."**/resolver.rs".check_naming]
+[overrides."**/src/resolver.rs".check_naming]
 enabled = false
 
 # x, y are spatial coordinates in overlay positioning.
-[overrides."**/overlay/builder.rs"]
+[overrides."**/src/overlay/builder.rs"]
 check_mixed_concerns = false
-[overrides."**/overlay/builder.rs".check_naming]
+[overrides."**/src/overlay/builder.rs".check_naming]
 enabled = false
 
-[overrides."**/overlay/resolve.rs".check_naming]
+[overrides."**/src/overlay/resolve.rs".check_naming]
 enabled = false
 
 # OverlayEntry is an overlay output type — same domain as OverlayDef/OverlayAnchor.
-[overrides."**/overlay/types.rs"]
+[overrides."**/src/overlay/types.rs"]
 check_mixed_concerns = false
 
 # GridColumnMode configures StrategyKind dashboard variants — same domain.
-[overrides."**/strategy/types.rs"]
+[overrides."**/src/strategy/types.rs"]
 check_mixed_concerns = false
 
 # LayoutDiff and OverlayDiff are both frame-to-frame diff types — same concern.
-[overrides."**/diff.rs"]
+[overrides."**/src/diff.rs"]
 check_mixed_concerns = false
 
 # ContainerCtx is the builder's internal cursor — same concern as LayoutBuilder.
@@ -117,11 +125,11 @@ check_mixed_concerns = false
 check_mixed_concerns = false
 
 # EmitCtx, GridMode, GridColumnPlacement are all CSS emission internals.
-[overrides."**/emit.rs"]
+[overrides."**/src/emit.rs"]
 check_mixed_concerns = false
 
 # WASM JSON DTOs: all serialization types for the JS boundary.
 # Groups are disconnected because they serve different endpoints
 # (panels, diffs, boundaries, failures) but share the same concern.
-[overrides."**/json_types.rs"]
+[overrides."**/src/json_types.rs"]
 check_mixed_concerns = false

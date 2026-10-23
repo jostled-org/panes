@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::compile;
-use panes::{Axis, Constraints, LayoutTree, PaneError, fixed, grow};
+use panes::{Axis, Constraints, LayoutTree, PaneError, SizeMode, fixed, grow};
 
 #[test]
 fn grow_maps_to_flex_grow() {
@@ -26,13 +26,25 @@ fn grow_with_min_max_maps_correctly() {
 
     // Row parent → min/max on width
     let row_style = panes::compiler::constraints_to_style(&c, Axis::Row);
-    assert_eq!(row_style.min_size.width, taffy::Dimension::length(50.0));
-    assert_eq!(row_style.max_size.width, taffy::Dimension::length(300.0));
+    assert_eq!(
+        row_style.min_size.width,
+        taffy::LengthPercentageAuto::length(50.0)
+    );
+    assert_eq!(
+        row_style.max_size.width,
+        taffy::LengthPercentageAuto::length(300.0)
+    );
 
     // Col parent → min/max on height
     let col_style = panes::compiler::constraints_to_style(&c, Axis::Col);
-    assert_eq!(col_style.min_size.height, taffy::Dimension::length(50.0));
-    assert_eq!(col_style.max_size.height, taffy::Dimension::length(300.0));
+    assert_eq!(
+        col_style.min_size.height,
+        taffy::LengthPercentageAuto::length(50.0)
+    );
+    assert_eq!(
+        col_style.max_size.height,
+        taffy::LengthPercentageAuto::length(300.0)
+    );
 }
 
 #[test]
@@ -41,7 +53,10 @@ fn fixed_with_min_maps_correctly() {
     let style = panes::compiler::constraints_to_style(&c, Axis::Row);
 
     assert_eq!(style.flex_basis, taffy::Dimension::length(100.0));
-    assert_eq!(style.min_size.width, taffy::Dimension::length(80.0));
+    assert_eq!(
+        style.min_size.width,
+        taffy::LengthPercentageAuto::length(80.0)
+    );
 }
 
 #[test]
@@ -50,6 +65,51 @@ fn default_constraints_map_to_grow_one() {
 
     assert_eq!(style.flex_grow, 1.0);
     assert_eq!(style.flex_basis, taffy::Dimension::length(0.0));
+    assert_eq!(style.flex_shrink, 1.0);
+}
+
+#[test]
+fn size_mode_maps_to_taffy_sizing_keywords_on_main_axis() {
+    let cases = [
+        (SizeMode::MinContent, taffy::Dimension::min_content()),
+        (SizeMode::MaxContent, taffy::Dimension::max_content()),
+        (
+            SizeMode::FitContent(300.0),
+            taffy::Dimension::fit_content_px(300.0),
+        ),
+    ];
+
+    for (mode, keyword) in cases {
+        let c = grow(1.0).size_mode(mode);
+
+        let row_style = panes::compiler::constraints_to_style(&c, Axis::Row);
+        assert_eq!(row_style.flex_basis, keyword, "{mode:?} row flex_basis");
+        assert_eq!(row_style.size.width, keyword, "{mode:?} row width");
+        assert_eq!(
+            row_style.size.height,
+            taffy::Dimension::auto(),
+            "{mode:?} row height"
+        );
+
+        let col_style = panes::compiler::constraints_to_style(&c, Axis::Col);
+        assert_eq!(col_style.flex_basis, keyword, "{mode:?} col flex_basis");
+        assert_eq!(col_style.size.height, keyword, "{mode:?} col height");
+        assert_eq!(
+            col_style.size.width,
+            taffy::Dimension::auto(),
+            "{mode:?} col width"
+        );
+    }
+}
+
+#[test]
+fn size_mode_keeps_flex_grow_and_shrink() {
+    let style = panes::compiler::constraints_to_style(
+        &grow(2.0).size_mode(SizeMode::MinContent),
+        Axis::Row,
+    );
+
+    assert_eq!(style.flex_grow, 2.0);
     assert_eq!(style.flex_shrink, 1.0);
 }
 
@@ -107,24 +167,24 @@ fn compile_row_with_two_panels() {
 #[test]
 fn compile_col_with_gap() {
     let mut tree = LayoutTree::new();
-    let (_, x) = tree.add_panel("x", fixed(100.0)).unwrap();
-    let (_, y) = tree.add_panel("y", grow(1.0)).unwrap();
-    let root = tree.add_col(4.0, vec![x, y]).unwrap();
+    let (_, header) = tree.add_panel("header", fixed(100.0)).unwrap();
+    let (_, body) = tree.add_panel("body", grow(1.0)).unwrap();
+    let root = tree.add_col(4.0, vec![header, body]).unwrap();
     tree.set_root(root);
 
-    let result = compile(&tree).unwrap();
+    let compiled = compile(&tree).unwrap();
 
-    let root_style = result.taffy_tree.style(result.root).unwrap();
+    let root_style = compiled.taffy_tree.style(compiled.root).unwrap();
     assert_eq!(root_style.flex_direction, taffy::FlexDirection::Column);
     assert_eq!(root_style.gap.height, taffy::LengthPercentage::length(4.0));
 
-    let children = result.taffy_tree.children(result.root).unwrap();
-    let s0 = result.taffy_tree.style(children[0]).unwrap();
-    assert_eq!(s0.flex_basis, taffy::Dimension::length(100.0));
-    assert_eq!(s0.flex_grow, 0.0);
+    let children = compiled.taffy_tree.children(compiled.root).unwrap();
+    let header_style = compiled.taffy_tree.style(children[0]).unwrap();
+    assert_eq!(header_style.flex_basis, taffy::Dimension::length(100.0));
+    assert_eq!(header_style.flex_grow, 0.0);
 
-    let s1 = result.taffy_tree.style(children[1]).unwrap();
-    assert_eq!(s1.flex_grow, 1.0);
+    let body_style = compiled.taffy_tree.style(children[1]).unwrap();
+    assert_eq!(body_style.flex_grow, 1.0);
 }
 
 #[test]
@@ -192,8 +252,14 @@ fn compile_min_max_axis_awareness() {
     let result = compile(&row_tree).unwrap();
     let children = result.taffy_tree.children(result.root).unwrap();
     let style = result.taffy_tree.style(children[0]).unwrap();
-    assert_eq!(style.min_size.width, taffy::Dimension::length(50.0));
-    assert_eq!(style.max_size.width, taffy::Dimension::length(300.0));
+    assert_eq!(
+        style.min_size.width,
+        taffy::LengthPercentageAuto::length(50.0)
+    );
+    assert_eq!(
+        style.max_size.width,
+        taffy::LengthPercentageAuto::length(300.0)
+    );
 
     // Col parent → min/max on height
     let mut col_tree = LayoutTree::new();
@@ -206,8 +272,14 @@ fn compile_min_max_axis_awareness() {
     let result = compile(&col_tree).unwrap();
     let children = result.taffy_tree.children(result.root).unwrap();
     let style = result.taffy_tree.style(children[0]).unwrap();
-    assert_eq!(style.min_size.height, taffy::Dimension::length(50.0));
-    assert_eq!(style.max_size.height, taffy::Dimension::length(300.0));
+    assert_eq!(
+        style.min_size.height,
+        taffy::LengthPercentageAuto::length(50.0)
+    );
+    assert_eq!(
+        style.max_size.height,
+        taffy::LengthPercentageAuto::length(300.0)
+    );
 }
 
 // --- Step 3: End-to-End Compilation and Compute ---

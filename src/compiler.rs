@@ -1,6 +1,6 @@
 use crate::error::{PaneError, TreeError, ViewportError};
 use crate::node::{Node, NodeId, PanelId};
-use crate::panel::{Align, Axis, Constraints};
+use crate::panel::{Align, Axis, Constraints, SizeMode};
 use crate::tree::LayoutTree;
 use crate::validate::{FloatInvalid, check_f32_non_negative};
 
@@ -23,10 +23,22 @@ struct CompileCtx<'a> {
 
 /// Merge an axis-relative dimension with an absolute cross-axis override.
 /// The absolute constraint takes precedence when set.
-fn merge_dim(axis_dim: taffy::Dimension, absolute_dim: taffy::Dimension) -> taffy::Dimension {
-    match absolute_dim == taffy::Dimension::auto() {
+fn merge_dim(
+    axis_dim: taffy::LengthPercentageAuto,
+    absolute_dim: taffy::LengthPercentageAuto,
+) -> taffy::LengthPercentageAuto {
+    match absolute_dim == taffy::LengthPercentageAuto::auto() {
         true => axis_dim,
         false => absolute_dim,
+    }
+}
+
+/// Map a panes `SizeMode` to the equivalent Taffy sizing keyword.
+fn size_mode_dimension(mode: SizeMode) -> taffy::Dimension {
+    match mode {
+        SizeMode::MinContent => taffy::Dimension::min_content(),
+        SizeMode::MaxContent => taffy::Dimension::max_content(),
+        SizeMode::FitContent(limit) => taffy::Dimension::fit_content_px(limit),
     }
 }
 
@@ -38,32 +50,47 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Sty
         (None, None) => (1.0, taffy::Dimension::length(0.0), 1.0),
     };
 
-    // SizeMode overrides flex_basis: Taffy 0.9 lacks intrinsic-sizing variants,
-    // so we approximate with auto. The CSS emitter outputs the real keyword.
-    let flex_basis = match constraints.size_mode {
-        Some(_) => taffy::Dimension::auto(),
-        None => flex_basis,
+    // SizeMode sets both flex_basis and the main-axis size to the sizing
+    // keyword, matching the CSS emitter's output.
+    let size_keyword = constraints.size_mode.map(size_mode_dimension);
+    let flex_basis = size_keyword.unwrap_or(flex_basis);
+    let size = match (axis, size_keyword) {
+        (_, None) => taffy::Size::auto(),
+        (Axis::Row, Some(keyword)) => taffy::Size {
+            width: keyword,
+            height: taffy::Dimension::auto(),
+        },
+        (Axis::Col, Some(keyword)) => taffy::Size {
+            width: taffy::Dimension::auto(),
+            height: keyword,
+        },
     };
 
-    let min_dim = constraints
-        .min
-        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
-    let max_dim = constraints
-        .max
-        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
+    let min_dim = constraints.min.map_or(
+        taffy::LengthPercentageAuto::auto(),
+        taffy::LengthPercentageAuto::length,
+    );
+    let max_dim = constraints.max.map_or(
+        taffy::LengthPercentageAuto::auto(),
+        taffy::LengthPercentageAuto::length,
+    );
 
-    let cross_min_w = constraints
-        .min_width
-        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
-    let cross_max_w = constraints
-        .max_width
-        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
-    let cross_min_h = constraints
-        .min_height
-        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
-    let cross_max_h = constraints
-        .max_height
-        .map_or(taffy::Dimension::auto(), taffy::Dimension::length);
+    let cross_min_w = constraints.min_width.map_or(
+        taffy::LengthPercentageAuto::auto(),
+        taffy::LengthPercentageAuto::length,
+    );
+    let cross_max_w = constraints.max_width.map_or(
+        taffy::LengthPercentageAuto::auto(),
+        taffy::LengthPercentageAuto::length,
+    );
+    let cross_min_h = constraints.min_height.map_or(
+        taffy::LengthPercentageAuto::auto(),
+        taffy::LengthPercentageAuto::length,
+    );
+    let cross_max_h = constraints.max_height.map_or(
+        taffy::LengthPercentageAuto::auto(),
+        taffy::LengthPercentageAuto::length,
+    );
 
     let (min_size, max_size) = match axis {
         Axis::Row => (
@@ -99,6 +126,7 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Sty
         flex_grow,
         flex_basis,
         flex_shrink,
+        size,
         min_size,
         max_size,
         align_self,
