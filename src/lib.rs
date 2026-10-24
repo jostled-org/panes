@@ -72,9 +72,9 @@ pub use snapshot::{
 };
 pub use strategy::{
     ActivePanelStrategy, ActivePanelVariant, BinarySplitStrategy, BoundStrategy, CardSpan,
-    CenteredMasterStrategy, DashboardStrategy, DeckStrategy, GridColumnMode, HolyGrailStrategy,
-    MasterStackStrategy, SidebarStrategy, SlotDef, SplitStrategy, Strategy, StrategyKind,
-    WindowStrategy,
+    CenteredMasterStrategy, ColumnSpan, DashboardStrategy, DeckStrategy, GridColumnMode,
+    HolyGrailStrategy, MasterStackStrategy, SidebarStrategy, SlotDef, SplitStrategy, Strategy,
+    StrategyKind, WindowStrategy,
 };
 #[cfg(feature = "toml")]
 pub use toml_parse::TomlError;

@@ -1,4 +1,8 @@
-# pedant project config — inherits nothing from global, must be complete
+# Pedant style rules for the Sumavia workspace.
+# Every crate forbids unsafe code. A fallback value (`unwrap_or`, `map_or` and their kin) hides why a value is absent,
+# and `split_at` panics off a character boundary:
+# absence is handled explicitly, by construction, an error or a match that names the default.
+# Every other rule matches the shared global profile.
 
 max_depth = 2
 check_nested_if = true
@@ -19,6 +23,7 @@ check_inline_tests = true
 [check_naming]
 enabled = true
 
+# Forbidden attributes
 [forbid_attributes]
 enabled = true
 patterns = [
@@ -27,6 +32,7 @@ patterns = [
     "allow(clippy::*)",
 ]
 
+# Forbidden types
 [forbid_types]
 enabled = true
 patterns = [
@@ -35,13 +41,21 @@ patterns = [
     "Box<dyn*Error*>",
 ]
 
+# Forbidden calls
 [forbid_calls]
 enabled = true
 patterns = [
     ".unwrap()",
     ".expect(*)",
+    ".unwrap_or(*)",
+    ".unwrap_or_else(*)",
+    ".unwrap_or_default()",
+    ".map_or(*)",
+    ".map_or_else(*)",
+    ".split_at(*)",
 ]
 
+# Forbidden macros
 [forbid_macros]
 enabled = true
 patterns = [
@@ -53,10 +67,18 @@ patterns = [
     "eprintln!",
 ]
 
-# Relax rules for tests in every workspace member
+# Relax rules for tests
+[overrides."tests/**"]
+max_depth = 5
+
+[overrides."tests/**".forbid_calls]
+enabled = false
+
+[overrides."tests/**".forbid_macros]
+enabled = false
+
 [overrides."**/tests/**"]
 max_depth = 5
-forbid_unsafe = false
 
 [overrides."**/tests/**".forbid_calls]
 enabled = false
@@ -64,15 +86,34 @@ enabled = false
 [overrides."**/tests/**".forbid_macros]
 enabled = false
 
-# Clippy denies unwrap_used and panic workspace-wide, so test crates need
-# allow(clippy::*) to opt out.
-[overrides."**/tests/**".forbid_attributes]
+[overrides."**/test_*.rs"]
+max_depth = 5
+
+[overrides."**/test_*.rs".forbid_calls]
 enabled = false
 
-# Relax rules for benchmarks (same rationale as tests)
+[overrides."**/test_*.rs".forbid_macros]
+enabled = false
+
+[overrides."**/tests.rs"]
+max_depth = 5
+
+[overrides."**/tests.rs".forbid_calls]
+enabled = false
+
+[overrides."**/tests.rs".forbid_macros]
+enabled = false
+
+# Skip generated code entirely
+[overrides."**/generated.rs"]
+enabled = false
+
+[overrides."target/**"]
+enabled = false
+
+# Relax rules for benchmarks: they measure, so they unwrap and print.
 [overrides."**/benches/**"]
 max_depth = 5
-forbid_unsafe = false
 
 [overrides."**/benches/**".forbid_calls]
 enabled = false
@@ -80,6 +121,8 @@ enabled = false
 [overrides."**/benches/**".forbid_macros]
 enabled = false
 
+# Clippy denies unwrap_used and panic workspace-wide, and clippy.toml's
+# test exemptions do not reach benches, so benches keep allow(clippy::*).
 [overrides."**/benches/**".forbid_attributes]
 enabled = false
 
@@ -122,10 +165,6 @@ check_mixed_concerns = false
 # ContainerCtx is the builder's internal cursor — same concern as LayoutBuilder.
 # This pattern must not match overlay/builder.rs (handled above).
 [overrides."src/builder.rs"]
-check_mixed_concerns = false
-
-# EmitCtx, GridMode, GridColumnPlacement are all CSS emission internals.
-[overrides."**/src/emit.rs"]
 check_mixed_concerns = false
 
 # WASM JSON DTOs: all serialization types for the JS boundary.

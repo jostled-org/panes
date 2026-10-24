@@ -123,11 +123,24 @@ fn remove_slotted(
     viewport.saved_constraints.insert(pid, current);
     tree.set_constraints(pid, fixed(0.0))?;
     viewport.collapsed.insert(pid);
-    // Panel may not be in sequence (e.g. decoration panels), fall back to index 0.
-    let removed_idx = sequence.remove(pid).unwrap_or(0);
+    let removed_idx = remove_from_sequence(sequence, pid);
     let new_focus = sequence.neighbor_after_removal(removed_idx);
     viewport.focus = new_focus;
     Ok(new_focus)
+}
+
+/// Index reported for a removed panel that was not in the sequence.
+const OUTSIDE_SEQUENCE_INDEX: usize = 0;
+
+/// Remove `pid` from the sequence and return its former index.
+///
+/// Panels outside the sequence (e.g. decoration panels) report
+/// [`OUTSIDE_SEQUENCE_INDEX`].
+fn remove_from_sequence(sequence: &mut PanelSequence, pid: PanelId) -> usize {
+    match sequence.remove(pid) {
+        Some(index) => index,
+        None => OUTSIDE_SEQUENCE_INDEX,
+    }
 }
 
 fn remove_via_rebuild(
@@ -137,8 +150,7 @@ fn remove_via_rebuild(
     viewport: &mut ViewportState,
     pid: PanelId,
 ) -> Result<Option<PanelId>, PaneError> {
-    // Panel may not be in sequence (e.g. decoration panels), fall back to index 0.
-    let removed_idx = sequence.remove(pid).unwrap_or(0);
+    let removed_idx = remove_from_sequence(sequence, pid);
     match sequence.is_empty() {
         true => {
             viewport.focus = None;
@@ -249,7 +261,7 @@ pub(crate) fn collect_kinds_from_sequence(
 // apply_set_card_span
 // ---------------------------------------------------------------------------
 
-/// Change a dashboard card's column span and rebuild the grid tree.
+/// Change a dashboard card's column and row span and rebuild the grid tree.
 ///
 /// Returns the updated `StrategyKind` so the caller can replace `self.strategy`.
 pub fn apply_set_card_span(
@@ -280,7 +292,7 @@ fn update_spans(old: &[CardSpan], index: usize, span: CardSpan) -> Arc<[CardSpan
     let len = old.len().max(index + 1);
     let mut new_spans: Vec<CardSpan> = Vec::with_capacity(len);
     new_spans.extend_from_slice(old);
-    new_spans.resize(len, CardSpan::Columns(1));
+    new_spans.resize(len, CardSpan::default());
     new_spans[index] = span;
     new_spans.into()
 }

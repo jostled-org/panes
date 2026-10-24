@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{Layout, LayoutTree, PaneError, grow};
 
 // -- Step 1: tree alloc returns Result --

@@ -1,5 +1,4 @@
 #![cfg(feature = "toml")]
-#![allow(clippy::unwrap_used, clippy::panic)]
 
 use panes::{Layout, LayoutBuilder, TomlError};
 
@@ -779,6 +778,58 @@ span = "full-width"
 }
 
 #[test]
+fn dashboard_row_span_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+columns = 2
+
+[[layout.panels]]
+kind = "chart"
+rows = 2
+
+[[layout.panels]]
+kind = "stats"
+
+[[layout.panels]]
+kind = "events"
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(200.0, 200.0).unwrap();
+    let chart = resolved.get(resolved.by_kind("chart")[0]).unwrap();
+    let events = resolved.get(resolved.by_kind("events")[0]).unwrap();
+    assert!(
+        (chart.h - 200.0).abs() < 0.5,
+        "chart spans both rows: {chart:?}"
+    );
+    assert!(
+        (events.x - 100.0).abs() < 0.5 && (events.y - 100.0).abs() < 0.5,
+        "events sits below stats: {events:?}"
+    );
+}
+
+#[test]
+fn dashboard_full_width_with_rows_from_toml() {
+    let toml = r#"
+[layout]
+strategy = "dashboard"
+columns = 2
+
+[[layout.panels]]
+kind = "banner"
+span = "full-width"
+rows = 2
+
+[[layout.panels]]
+kind = "footer"
+"#;
+    let layout = Layout::from_toml(toml).unwrap();
+    let resolved = layout.resolve(200.0, 300.0).unwrap();
+    let banner = resolved.get(resolved.by_kind("banner")[0]).unwrap();
+    assert!((banner.w - 200.0).abs() < 0.5 && (banner.h - 200.0).abs() < 0.5);
+}
+
+#[test]
 fn dashboard_invalid_span_string_errors() {
     let toml = r#"
 [layout]
@@ -1042,6 +1093,7 @@ kind = "panel"
 
 // -- Equivalence tests: TOML-parsed vs Rust API --
 
+#[cfg(test)]
 fn assert_rects_equal(toml_layout: &Layout, api_layout: &Layout, kinds: &[&str], w: f32, h: f32) {
     let toml_resolved = toml_layout.resolve(w, h).unwrap();
     let api_resolved = api_layout.resolve(w, h).unwrap();

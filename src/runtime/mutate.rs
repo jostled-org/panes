@@ -50,19 +50,19 @@ impl LayoutRuntime {
     }
 
     /// Convert a Placement to a sequence index.
+    ///
+    /// Without a focused panel in the sequence, every placement appends.
     pub(crate) fn placement_to_index(&self, placement: Placement) -> usize {
-        match placement {
-            Placement::Before => self
-                .viewport
-                .focus
-                .and_then(|pid| self.sequence.index_of(pid))
-                .unwrap_or(self.sequence.len()),
-            Placement::After => self
-                .viewport
-                .focus
-                .and_then(|pid| self.sequence.index_of(pid).map(|i| i + 1))
-                .unwrap_or(self.sequence.len()),
-            Placement::End => self.sequence.len(),
+        let focus_index = self
+            .viewport
+            .focus
+            .and_then(|pid| self.sequence.index_of(pid));
+        match (placement, focus_index) {
+            (Placement::Before, Some(index)) => index,
+            (Placement::After, Some(index)) => index + 1,
+            (Placement::Before | Placement::After, None) | (Placement::End, _) => {
+                self.sequence.len()
+            }
         }
     }
 
@@ -97,11 +97,30 @@ impl LayoutRuntime {
         moved_pid
     }
 
-    /// Change a dashboard card's column span and rebuild the grid.
+    /// Change a grid card's column and row span.
     ///
-    /// Returns an error if the runtime has no strategy or the strategy
-    /// is not a dashboard variant.
+    /// With a strategy: the strategy must be a dashboard; the grid is rebuilt
+    /// from the updated spans.
+    ///
+    /// Without a strategy: the panel must sit in a grid. Its span changes in
+    /// place, so focus and scroll state are kept.
     pub fn set_card_span(
+        &mut self,
+        pid: PanelId,
+        span: crate::strategy::CardSpan,
+    ) -> Result<(), PaneError> {
+        match strategy_ref(&self.strategy_source, &self.breakpoints, self.active_bp_idx) {
+            Some(_) => self.set_strategy_card_span(pid, span),
+            None => {
+                self.tree.set_grid_span(pid, span)?;
+                self.invalidate_topology();
+                Ok(())
+            }
+        }
+    }
+
+    /// Rebuild a dashboard strategy's grid with one card's span changed.
+    fn set_strategy_card_span(
         &mut self,
         pid: PanelId,
         span: crate::strategy::CardSpan,

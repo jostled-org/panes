@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{CardSpan, Grid, Layout, LayoutBuilder, LayoutTree, PaneError, TreeError, fixed};
 use std::sync::Arc;
 
@@ -186,7 +185,7 @@ fn build_grid_with_span_resolves_wider_items() {
         g.panel("a");
         g.panel("b");
         g.panel("c");
-        g.panel_span("wide", CardSpan::FullWidth);
+        g.panel_span("wide", CardSpan::full_width());
     })
     .unwrap();
 
@@ -324,7 +323,7 @@ fn grid_layout_resolves_identical_geometry_after_refactor() {
         g.panel("a");
         g.panel("b");
         g.panel("c");
-        g.panel_span("wide", CardSpan::FullWidth);
+        g.panel_span("wide", CardSpan::full_width());
         g.panel("d");
     })
     .unwrap();
@@ -409,7 +408,7 @@ fn grid_item_wrapper_allocation_failure_does_not_leave_orphaned_panel_state() {
     let err = builder
         .grid(Grid::columns(1), |g| {
             let _alloc_failure = LayoutTree::debug_fail_nth_node_alloc(1);
-            g.panel_span("orphan", CardSpan::FullWidth);
+            g.panel_span("orphan", CardSpan::full_width());
         })
         .unwrap_err();
 
@@ -435,9 +434,9 @@ fn grid_item_wrapper_allocation_failure_does_not_leave_orphaned_panel_state() {
 fn grid_runtime_accepts_panel_insertion_after_construction() {
     // Build a grid layout through the runtime (dashboard takes (kind, span) tuples)
     let mut rt = Layout::dashboard([
-        ("a", CardSpan::Columns(1)),
-        ("b", CardSpan::Columns(1)),
-        ("c", CardSpan::Columns(1)),
+        ("a", CardSpan::columns(1)),
+        ("b", CardSpan::columns(1)),
+        ("c", CardSpan::columns(1)),
     ])
     .columns(2)
     .gap(4.0)

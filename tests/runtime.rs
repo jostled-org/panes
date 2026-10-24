@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 mod helpers;
 
 use std::sync::Arc;

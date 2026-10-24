@@ -1,8 +1,7 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use panes::{Layout, LayoutBuilder, fixed};
 use rustc_hash::FxHashMap;
 
+#[cfg(test)]
 fn to_ratatui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, ratatui::layout::Rect> {
     let resolved = layout.resolve(w, h).unwrap();
     panes_ratatui::convert(&resolved)

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::CardSpan;
 use crate::panel::{Axis, Constraints};
 
 /// Sub-variant for single-visible-panel layouts.
@@ -21,23 +22,6 @@ pub struct SlotDef {
     pub kind: Arc<str>,
     /// Constraints for this slot when visible.
     pub constraints: Constraints,
-}
-
-/// Column span for a dashboard card.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum CardSpan {
-    /// Span a fixed number of columns.
-    Columns(usize),
-    /// Span all columns regardless of how many the viewport produces.
-    /// Emits `grid-column: 1 / -1` in CSS.
-    FullWidth,
-}
-
-impl From<usize> for CardSpan {
-    fn from(n: usize) -> Self {
-        Self::Columns(n)
-    }
 }
 
 /// Column mode for CSS Grid-based presets.
@@ -125,13 +109,13 @@ pub enum StrategyKind {
         gap: f32,
     },
 
-    /// CSS-grid dashboard with per-card column spans (dashboard, grid, columns).
+    /// CSS-grid dashboard with per-card column and row spans (dashboard, grid, columns).
     Dashboard {
         /// Column mode (fixed count, auto-fill, or auto-fit).
         columns: GridColumnMode,
         /// Gap between panels.
         gap: f32,
-        /// Column span per card, in order.
+        /// Column and row span per card, in order.
         spans: Arc<[CardSpan]>,
         /// When true, rows size to their tallest card instead of equal `1fr`.
         auto_rows: bool,

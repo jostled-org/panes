@@ -1,8 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{Align, CardSpan, Layout, LayoutBuilder, Overlay, SizeMode, fixed, grow};
 
 /// Build a scrollable-pattern layout: a root row containing a TaffyPassthrough
 /// with row direction, nowrap, and fixed-width panel children.
+#[cfg(test)]
 fn scrollable_layout(kinds: &[&str], width: f32) -> Layout {
     let mut b = LayoutBuilder::new();
     b.row(|r| {
@@ -367,8 +367,8 @@ fn dashboard_fixed_css_emits_grid_via_emit() {
 #[test]
 fn dashboard_full_width_card_emits_1_to_neg1() {
     let layout = Layout::dashboard([
-        ("sidebar", CardSpan::Columns(1)),
-        ("content", CardSpan::FullWidth),
+        ("sidebar", CardSpan::columns(1)),
+        ("content", CardSpan::full_width()),
     ])
     .auto_fill(200.0)
     .build()
@@ -384,8 +384,8 @@ fn dashboard_full_width_card_emits_1_to_neg1() {
 #[test]
 fn dashboard_full_width_with_fixed_columns() {
     let layout = Layout::dashboard([
-        ("narrow", CardSpan::Columns(1)),
-        ("wide", CardSpan::FullWidth),
+        ("narrow", CardSpan::columns(1)),
+        ("wide", CardSpan::full_width()),
     ])
     .columns(4)
     .build()
@@ -401,9 +401,9 @@ fn dashboard_full_width_with_fixed_columns() {
 #[test]
 fn dashboard_span_and_full_width_coexist() {
     let layout = Layout::dashboard([
-        ("a", CardSpan::Columns(2)),
-        ("b", CardSpan::FullWidth),
-        ("c", CardSpan::Columns(1)),
+        ("a", CardSpan::columns(2)),
+        ("b", CardSpan::full_width()),
+        ("c", CardSpan::columns(1)),
     ])
     .columns(4)
     .gap(4.0)
@@ -633,6 +633,7 @@ fn css_non_scrollable_omits_scroll() {
 }
 
 /// Helper: build a runtime with overlays, return the layout and overlay defs.
+#[cfg(test)]
 fn layout_with_overlays(overlays: Vec<(&str, Overlay)>) -> (Layout, Vec<panes::OverlayDef>) {
     let mut rt = Layout::master_stack(["a", "b"]).into_runtime().unwrap();
     for (kind, builder) in overlays {
@@ -870,5 +871,67 @@ fn css_emit_no_transitions_by_default() {
     assert!(
         !css.contains("--pane-transition"),
         "emit() should not include --pane-transition by default, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_row_span_emits_grid_row() {
+    let layout = Layout::dashboard([("chart", (1, 2)), ("stats", (1, 1)), ("events", (1, 1))])
+        .columns(2)
+        .build()
+        .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("[data-pane-node=\"1\"] { display: flex; grid-row: span 2;"),
+        "row-span card should emit grid-row: span 2, got: {css}"
+    );
+    assert_eq!(
+        css.matches("grid-row").count(),
+        1,
+        "single-row cards should not emit grid-row, got: {css}"
+    );
+}
+
+#[test]
+fn dashboard_column_and_row_span_coexist() {
+    let layout = Layout::dashboard([
+        ("chart", CardSpan::columns(2).with_rows(3)),
+        ("banner", CardSpan::full_width().with_rows(2)),
+    ])
+    .columns(4)
+    .build()
+    .unwrap();
+    let css = panes_css::emit(&layout);
+
+    assert!(
+        css.contains("grid-column: span 2; grid-row: span 3;"),
+        "column and row spans should both emit, got: {css}"
+    );
+    assert!(
+        css.contains("grid-column: 1 / -1; grid-row: span 2;"),
+        "full-width row span should emit both, got: {css}"
+    );
+}
+
+#[test]
+fn runtime_tree_span_change_reflected_in_css() {
+    let layout = panes::layout! {
+        grid(columns: 2) {
+            panel("chart")
+            panel("stats")
+        }
+    }
+    .unwrap();
+    let mut rt = panes::runtime::LayoutRuntime::new(layout.into());
+    let stats = rt.tree().panels_by_kind("stats")[0];
+
+    rt.set_card_span(stats, CardSpan::columns(2).with_rows(2))
+        .unwrap();
+
+    let css = panes_css::emit(rt.tree());
+    assert!(
+        css.contains("grid-column: span 2; grid-row: span 2;"),
+        "emit should reflect the new span, got: {css}"
     );
 }

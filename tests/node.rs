@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{NodeId, PanelId, PanelIdGenerator};
 use std::collections::HashSet;
 

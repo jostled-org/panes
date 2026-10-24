@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -8,34 +7,28 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
 }
 
-fn dashboard_fixed_runtime(n: usize, columns: usize) -> LayoutRuntime {
-    let k = kinds(n);
-    let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); n].into();
+#[cfg(test)]
+fn dashboard_runtime(panel_count: usize, columns: GridColumnMode) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
+    let spans: Arc<[CardSpan]> = vec![CardSpan::columns(1); panel_count].into();
     LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
-            columns: GridColumnMode::Fixed(columns),
+            columns,
             gap: 0.0,
             spans,
             auto_rows: false,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
 
-fn dashboard_auto_fill_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
-    let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); n].into();
-    LayoutRuntime::from_strategy(
-        StrategyKind::Dashboard {
-            columns: GridColumnMode::AutoFill { min_width: 200.0 },
-            gap: 0.0,
-            spans,
-            auto_rows: false,
-        },
-        &k,
-    )
-    .unwrap()
+fn dashboard_fixed_runtime(panel_count: usize, columns: usize) -> LayoutRuntime {
+    dashboard_runtime(panel_count, GridColumnMode::Fixed(columns))
+}
+
+fn dashboard_auto_fill_runtime(panel_count: usize) -> LayoutRuntime {
+    dashboard_runtime(panel_count, GridColumnMode::AutoFill { min_width: 200.0 })
 }
 
 #[test]

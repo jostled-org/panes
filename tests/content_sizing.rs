@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::{compile, compute_layout, panel_layout};
 use panes::runtime::LayoutRuntime;
 use panes::{Align, Layout, LayoutTree, PaneError, SizeMode, fixed, grow};
@@ -271,6 +270,7 @@ fn size_mode_min_content_resolves() {
 /// `grow(1)` filler. The column wraps two 100px measured panels in a wrapping
 /// row, so its min-content width is 100 and its max-content width is 200.
 /// Returns the resolved widths of the column content and the filler.
+#[cfg(test)]
 fn resolve_size_mode_column(mode: SizeMode) -> (f32, f32) {
     let mut tree = LayoutTree::new();
     let (pa, a) = tree.add_panel("a", grow(1.0)).unwrap();

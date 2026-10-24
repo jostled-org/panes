@@ -6,6 +6,7 @@ mod focus;
 mod holy_grail;
 mod mutate;
 mod sidebar;
+mod span;
 mod types;
 
 pub use build::build_initial;
@@ -20,5 +21,6 @@ pub use holy_grail::HolyGrailStrategy;
 pub(crate) use mutate::collect_kinds_from_sequence;
 pub use mutate::{apply_add, apply_move, apply_remove, apply_set_card_span};
 pub use sidebar::SidebarStrategy;
+pub use span::{CardSpan, ColumnSpan};
 pub use types::GridColumnMode;
-pub use types::{ActivePanelVariant, CardSpan, SlotDef, StrategyKind};
+pub use types::{ActivePanelVariant, SlotDef, StrategyKind};

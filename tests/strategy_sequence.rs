@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -8,15 +7,16 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
 }
 
-fn sequence_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn sequence_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::Sequence {
             axis: Axis::Row,
             gap: 0.0,
             ratio: None,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
@@ -80,6 +80,7 @@ fn sequence_focus_prev_wraps() {
 // -- swap_next / swap_prev --
 
 /// Helper: collect kinds in sequence order.
+#[cfg(test)]
 fn sequence_kinds(rt: &LayoutRuntime) -> Vec<String> {
     (0..rt.sequence().len())
         .map(|i| {
@@ -139,14 +140,15 @@ fn swap_focus_follows_panel() {
 
 // -- MasterStack --
 
-fn master_stack_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn master_stack_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::MasterStack {
             master_ratio: 0.5,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
@@ -170,14 +172,15 @@ fn master_stack_remove_master_promotes_next() {
 
 // -- CenteredMaster --
 
-fn centered_master_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn centered_master_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::CenteredMaster {
             master_ratio: 0.5,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
@@ -192,14 +195,15 @@ fn centered_master_add_panel() {
 
 // -- Deck --
 
-fn deck_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn deck_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::Deck {
             master_ratio: 0.5,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }

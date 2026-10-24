@@ -200,7 +200,7 @@ impl Strategy {
         }
     }
 
-    /// Dashboard strategy: CSS-grid layout with per-card column spans.
+    /// Dashboard strategy: CSS-grid layout with per-card column and row spans.
     pub fn dashboard() -> DashboardStrategy {
         DashboardStrategy {
             columns: GridColumnMode::Fixed(4),

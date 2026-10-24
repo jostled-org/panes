@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -8,6 +7,7 @@ use panes::{Axis, LayoutTree, Node, Placement, grow};
 // Non-strategy runtimes: direct tree topology via add_panel_adjacent_with
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn build_tree_runtime(count: usize, direction: Axis) -> LayoutRuntime {
     let mut tree = LayoutTree::new();
     let mut pids = Vec::new();

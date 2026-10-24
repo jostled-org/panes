@@ -13,9 +13,10 @@ fn validate_strategy(strategy: &StrategyKind) -> Result<(), PaneError> {
     match strategy {
         StrategyKind::Sequence { gap, ratio, .. } => {
             crate::preset::validate_f32_param("gap", *gap)?;
-            ratio.map_or(Ok(()), |value| {
-                crate::preset::validate_share_param("ratio", value)
-            })
+            ratio
+                .map(|value| crate::preset::validate_share_param("ratio", value))
+                .transpose()?;
+            Ok(())
         }
         StrategyKind::MasterStack { master_ratio, gap }
         | StrategyKind::Deck { master_ratio, gap }
@@ -180,13 +181,16 @@ fn build_cards(kinds: &[Arc<str>], spans: &[CardSpan]) -> Box<[(Arc<str>, CardSp
     kinds
         .iter()
         .enumerate()
-        .map(|(i, k)| {
-            (
-                Arc::clone(k),
-                spans.get(i).copied().unwrap_or(CardSpan::Columns(1)),
-            )
-        })
+        .map(|(i, k)| (Arc::clone(k), span_at(spans, i)))
         .collect()
+}
+
+/// Span for card `index`. Cards past the end of `spans` take one cell.
+fn span_at(spans: &[CardSpan], index: usize) -> CardSpan {
+    match spans.get(index) {
+        Some(span) => *span,
+        None => CardSpan::default(),
+    }
 }
 
 pub(super) fn build_dashboard_for_mode(

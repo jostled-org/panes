@@ -1,8 +1,7 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use panes::{Layout, LayoutBuilder};
 use rustc_hash::FxHashMap;
 
+#[cfg(test)]
 fn to_wasm(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, panes_wasm::WasmRect> {
     let resolved = layout.resolve(w, h).unwrap();
     panes_wasm::convert(&resolved)

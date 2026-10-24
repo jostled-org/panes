@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -8,14 +7,15 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
 }
 
-fn monocle_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn monocle_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::ActivePanel {
             variant: ActivePanelVariant::Monocle,
             bar_height: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
@@ -324,14 +324,15 @@ fn window_focus_slide_updates_visibility_without_topology_rebuild() {
     );
 }
 
-fn window_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn window_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::Window {
             panel_count: 2,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }

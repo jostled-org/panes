@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::compile;
 use panes::{Axis, Constraints, LayoutTree, PaneError, SizeMode, fixed, grow};
 
@@ -115,6 +114,7 @@ fn size_mode_keeps_flex_grow_and_shrink() {
 
 // --- Step 2: Tree Compilation ---
 
+#[cfg(test)]
 fn build_single_panel_tree() -> LayoutTree {
     let mut tree = LayoutTree::new();
     let (_, nid) = tree.add_panel("a", grow(1.0)).unwrap();

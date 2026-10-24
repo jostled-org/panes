@@ -1,11 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
 use panes::{ActivePanelVariant, Layout, Overlay, StrategyKind};
 use ratatui::layout::Rect;
 
+#[cfg(test)]
 fn master_stack_runtime(kinds: &[&str]) -> LayoutRuntime {
     let kind_arcs: Vec<Arc<str>> = kinds.iter().map(|&k| Arc::from(k)).collect();
     LayoutRuntime::from_strategy(
@@ -103,6 +102,7 @@ fn resolve_diff_available_on_runtime_path() {
 
 // -- Step 2 tests --
 
+#[cfg(test)]
 fn master_stack_layout(kinds: &[&str]) -> Layout {
     Layout::master_stack(kinds.iter().copied())
         .master_ratio(0.5)
@@ -173,6 +173,7 @@ fn resolve_layout_matches_resolve_rects() {
 
 // -- Step 3 tests --
 
+#[cfg(test)]
 fn tabbed_runtime(kinds: &[&str]) -> LayoutRuntime {
     let kind_arcs: Vec<Arc<str>> = kinds.iter().map(|&k| Arc::from(k)).collect();
     LayoutRuntime::from_strategy(

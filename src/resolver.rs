@@ -65,10 +65,14 @@ impl BoundaryIndex {
                 .cmp(&b.axis.cmp_order())
                 .then(a.position.total_cmp(&b.position))
         });
-        let vertical_count = segments
+        // Vertical segments sort first; with no horizontal one, all are vertical.
+        let vertical_count = match segments
             .iter()
             .position(|s| s.axis == BoundaryAxis::Horizontal)
-            .unwrap_or(segments.len());
+        {
+            Some(first_horizontal) => first_horizontal,
+            None => segments.len(),
+        };
         BoundaryIndex {
             segments,
             vertical_count,
@@ -340,7 +344,10 @@ impl ResolvedLayout {
             .iter()
             .enumerate()
             .flat_map(move |(kind_index, kind)| {
-                let pids = self.kinds.get(kind).map(|b| b.as_ref()).unwrap_or(&[]);
+                let pids: &[PanelId] = match self.kinds.get(kind) {
+                    Some(ids) => ids,
+                    None => &[],
+                };
                 pids.iter().filter_map(move |&pid| {
                     self.get(pid).map(|rect| PanelEntry {
                         id: pid,
@@ -523,7 +530,11 @@ impl ResolvedLayout {
                 continue;
             };
             let pid = PanelId::from_raw(raw);
-            let to_rect = other.get(pid).unwrap_or(from_rect);
+            // A panel missing from `other` holds still.
+            let to_rect = match other.get(pid) {
+                Some(rect) => rect,
+                None => from_rect,
+            };
             rects[i] = Some(from_rect.lerp(*to_rect, t));
         }
 

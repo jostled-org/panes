@@ -31,7 +31,7 @@ impl DashboardStrategy {
         auto_rows -> auto_rows = true
     );
 
-    /// Bind cards with explicit column spans.
+    /// Bind cards with explicit column and row spans.
     pub fn with_cards(
         self,
         cards: impl IntoIterator<Item = (impl Into<Arc<str>>, impl Into<CardSpan>)>,
@@ -52,7 +52,7 @@ impl DashboardStrategy {
         panels: impl IntoIterator<Item = impl Into<Arc<str>>>,
     ) -> BoundStrategy {
         let panels: Box<[Arc<str>]> = panels.into_iter().map(Into::into).collect();
-        let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); panels.len()].into();
+        let spans: Arc<[CardSpan]> = vec![CardSpan::default(); panels.len()].into();
         let kind = self.to_strategy_kind(spans);
         BoundStrategy::new(kind, panels, None)
     }

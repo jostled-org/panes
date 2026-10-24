@@ -11,3 +11,4 @@ memory/
 docs/**
 !docs/GUIDE.md
 !docs/UPGRADING-0.19.md
+!docs/UPGRADING-0.23.md

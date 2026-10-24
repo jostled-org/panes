@@ -1,4 +1,5 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
+#[cfg(feature = "serde")]
+use panes::CardSpan;
 #[cfg(feature = "serde")]
 use panes::LayoutSnapshot;
 use panes::runtime::LayoutRuntime;
@@ -11,6 +12,7 @@ use panes::{
 // Shared setup helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn strategy_runtime_with_focus() -> LayoutRuntime {
     let mut rt = Layout::master_stack(["editor", "chat", "status"])
         .master_ratio(0.6)
@@ -21,10 +23,12 @@ fn strategy_runtime_with_focus() -> LayoutRuntime {
     rt
 }
 
+#[cfg(test)]
 fn tabbed_runtime() -> LayoutRuntime {
     Layout::tabbed(["a", "b", "c"]).into_runtime().unwrap()
 }
 
+#[cfg(test)]
 fn collapsed_runtime() -> LayoutRuntime {
     let mut rt = Layout::master_stack(["a", "b", "c"])
         .gap(1.0)
@@ -40,6 +44,7 @@ fn collapsed_runtime() -> LayoutRuntime {
     rt
 }
 
+#[cfg(test)]
 fn cross_axis_layout() -> Layout {
     panes::layout! {
         col(gap: 2.0) {
@@ -50,6 +55,7 @@ fn cross_axis_layout() -> Layout {
     .unwrap()
 }
 
+#[cfg(test)]
 fn alignment_layout() -> Layout {
     panes::layout! {
         row {
@@ -59,6 +65,7 @@ fn alignment_layout() -> Layout {
     .unwrap()
 }
 
+#[cfg(test)]
 fn size_mode_layout() -> Layout {
     panes::layout! {
         row {
@@ -184,19 +191,19 @@ fn snapshot_restore_preserves_root_container_constraints() {
     let restored_snap = restored.snapshot().unwrap();
 
     match restored_snap.source() {
-        SnapshotSource::Tree { root } => match root {
-            panes::SnapshotNode::Row {
-                gap,
-                constraints,
-                children,
-            } => {
-                assert_eq!(*gap, 6.0);
-                assert_eq!(*constraints, Some(root_constraints));
-                assert_eq!(children.len(), 2);
-            }
-            _ => panic!("expected row root"),
-        },
-        _ => panic!("expected Tree source"),
+        SnapshotSource::Tree {
+            root:
+                panes::SnapshotNode::Row {
+                    gap,
+                    constraints,
+                    children,
+                },
+        } => {
+            assert_eq!(*gap, 6.0);
+            assert_eq!(*constraints, Some(root_constraints));
+            assert_eq!(children.len(), 2);
+        }
+        other => panic!("expected Tree source with a row root, got {other:?}"),
     }
 }
 
@@ -867,11 +874,13 @@ mod serde_tests {
     use super::*;
     use serde_json::Value;
 
+    #[cfg(test)]
     fn json_round_trip(snap: &LayoutSnapshot) -> LayoutSnapshot {
         let json = serde_json::to_string(snap).unwrap();
         serde_json::from_str(&json).unwrap()
     }
 
+    #[cfg(test)]
     fn spanned_non_panel_snapshot(node: Value) -> LayoutSnapshot {
         let layout = panes::layout! {
             grid(columns: 2, gap: 8.0) {
@@ -889,6 +898,7 @@ mod serde_tests {
         serde_json::from_value(value).unwrap()
     }
 
+    #[cfg(test)]
     fn assert_spanned_non_panel_snapshot_errors(node: Value, expected_kind: &'static str) {
         let err = match LayoutRuntime::from_snapshot(spanned_non_panel_snapshot(node)) {
             Ok(_) => panic!("expected invalid spanned non-panel snapshot to fail"),
@@ -1126,5 +1136,96 @@ mod serde_tests {
         assert!(json.contains("editor"));
         assert!(json.contains("chat"));
         assert!(json.contains("master_ratio"));
+    }
+
+    #[cfg(test)]
+    fn tall_chart_geometry_holds(rt: &mut LayoutRuntime) {
+        let frame = rt.resolve(200.0, 200.0).unwrap();
+        let layout = frame.layout();
+        let rect = |kind: &str| *layout.get(layout.by_kind(kind)[0]).unwrap();
+        let chart = rect("chart");
+        let events = rect("events");
+        assert!(
+            (chart.h - 200.0).abs() < 0.5,
+            "chart should span both rows: {chart:?}"
+        );
+        assert!(
+            (events.x - 100.0).abs() < 0.5 && (events.y - 100.0).abs() < 0.5,
+            "events should sit below stats in column 2: {events:?}"
+        );
+    }
+
+    #[test]
+    fn row_span_json_round_trip() {
+        let rt = Layout::dashboard([("chart", (1, 2)), ("stats", (1, 1)), ("events", (1, 1))])
+            .columns(2)
+            .into_runtime()
+            .unwrap();
+        let restored = json_round_trip(&rt.snapshot().unwrap());
+
+        tall_chart_geometry_holds(&mut LayoutRuntime::from_snapshot(restored).unwrap());
+    }
+
+    #[test]
+    fn legacy_strategy_spans_deserialize() {
+        let rt = Layout::dashboard([("wide", 1), ("full", 1), ("narrow", 1)])
+            .columns(4)
+            .into_runtime()
+            .unwrap();
+        let mut value = serde_json::to_value(rt.snapshot().unwrap()).unwrap();
+        value["source"]["Strategy"]["strategy"]["Dashboard"]["spans"] =
+            serde_json::json!([{ "Columns": 2 }, "FullWidth", { "Columns": 1 }]);
+
+        let snap: LayoutSnapshot = serde_json::from_value(value).unwrap();
+        match snap.source() {
+            SnapshotSource::Strategy {
+                strategy: StrategyConfig::Dashboard { spans, .. },
+                ..
+            } => assert_eq!(
+                &**spans,
+                &[
+                    CardSpan::columns(2),
+                    CardSpan::full_width(),
+                    CardSpan::columns(1)
+                ]
+            ),
+            other => panic!("expected Dashboard strategy, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_tree_span_deserializes() {
+        let layout = panes::layout! {
+            grid(columns: 2) {
+                panel("wide", full_width: true)
+            }
+        }
+        .unwrap();
+        let mut value =
+            serde_json::to_value(LayoutRuntime::from(layout).snapshot().unwrap()).unwrap();
+        value["source"]["Tree"]["root"]["Grid"]["children"][0]["span"] =
+            serde_json::json!({ "Columns": 2 });
+
+        let snap: LayoutSnapshot = serde_json::from_value(value).unwrap();
+        let mut rt = LayoutRuntime::from_snapshot(snap).unwrap();
+        let frame = rt.resolve(200.0, 100.0).unwrap();
+        let wide = frame.layout().by_kind("wide")[0];
+        assert!((frame.layout().get(wide).unwrap().w - 200.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn card_span_rows_default_to_one() {
+        let span: CardSpan =
+            serde_json::from_value(serde_json::json!({ "columns": { "Count": 3 } })).unwrap();
+        assert_eq!(span, CardSpan::columns(3));
+    }
+
+    #[test]
+    fn card_span_serializes_both_axes() {
+        let value = serde_json::to_value(CardSpan::full_width().with_rows(2)).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({ "columns": "FullWidth", "rows": 2 })
+        );
     }
 }

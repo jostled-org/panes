@@ -321,15 +321,33 @@ macro_rules! layout {
     // Base case
     (@grid_children $gctx:ident) => {};
 
+    // Panel with span and rows
+    (@grid_children $gctx:ident panel($kind:expr, span: $n:expr, rows: $r:expr) $($rest:tt)*) => {
+        $gctx.panel_span($kind, $crate::CardSpan::columns($n).with_rows($r));
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Panel with full_width and rows
+    (@grid_children $gctx:ident panel($kind:expr, full_width: true, rows: $r:expr) $($rest:tt)*) => {
+        $gctx.panel_span($kind, $crate::CardSpan::full_width().with_rows($r));
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
     // Panel with span
     (@grid_children $gctx:ident panel($kind:expr, span: $n:expr) $($rest:tt)*) => {
-        $gctx.panel_span($kind, $crate::CardSpan::Columns($n));
+        $gctx.panel_span($kind, $crate::CardSpan::columns($n));
         $crate::layout!(@grid_children $gctx $($rest)*);
     };
 
     // Panel with full_width
     (@grid_children $gctx:ident panel($kind:expr, full_width: true) $($rest:tt)*) => {
-        $gctx.panel_span($kind, $crate::CardSpan::FullWidth);
+        $gctx.panel_span($kind, $crate::CardSpan::full_width());
+        $crate::layout!(@grid_children $gctx $($rest)*);
+    };
+
+    // Panel with rows
+    (@grid_children $gctx:ident panel($kind:expr, rows: $r:expr) $($rest:tt)*) => {
+        $gctx.panel_span($kind, $crate::CardSpan::columns(1).with_rows($r));
         $crate::layout!(@grid_children $gctx $($rest)*);
     };
 

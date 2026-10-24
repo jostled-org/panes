@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::StrategyKind;
@@ -8,15 +7,16 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
 }
 
-fn dwindle_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn dwindle_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::BinarySplit {
             spiral: false,
             ratio: 0.5,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
@@ -48,15 +48,16 @@ fn spiral_focus_order_matches_input() {
     assert_eq!(visited, vec!["a", "b", "c", "d", "e"]);
 }
 
-fn spiral_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn spiral_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::BinarySplit {
             spiral: true,
             ratio: 0.5,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }

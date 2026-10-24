@@ -42,6 +42,14 @@ fn size_mode_dimension(mode: SizeMode) -> taffy::Dimension {
     }
 }
 
+/// A set bound becomes a length; an unset bound stays `auto`.
+fn length_or_auto(bound: Option<f32>) -> taffy::LengthPercentageAuto {
+    match bound {
+        Some(value) => taffy::LengthPercentageAuto::length(value),
+        None => taffy::LengthPercentageAuto::auto(),
+    }
+}
+
 /// Map panes `Constraints` to a Taffy `Style` for a child along the given axis.
 pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Style {
     let (flex_grow, flex_basis, flex_shrink) = match (constraints.grow, constraints.fixed) {
@@ -53,7 +61,10 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Sty
     // SizeMode sets both flex_basis and the main-axis size to the sizing
     // keyword, matching the CSS emitter's output.
     let size_keyword = constraints.size_mode.map(size_mode_dimension);
-    let flex_basis = size_keyword.unwrap_or(flex_basis);
+    let flex_basis = match size_keyword {
+        Some(keyword) => keyword,
+        None => flex_basis,
+    };
     let size = match (axis, size_keyword) {
         (_, None) => taffy::Size::auto(),
         (Axis::Row, Some(keyword)) => taffy::Size {
@@ -66,31 +77,13 @@ pub fn constraints_to_style(constraints: &Constraints, axis: Axis) -> taffy::Sty
         },
     };
 
-    let min_dim = constraints.min.map_or(
-        taffy::LengthPercentageAuto::auto(),
-        taffy::LengthPercentageAuto::length,
-    );
-    let max_dim = constraints.max.map_or(
-        taffy::LengthPercentageAuto::auto(),
-        taffy::LengthPercentageAuto::length,
-    );
+    let min_dim = length_or_auto(constraints.min);
+    let max_dim = length_or_auto(constraints.max);
 
-    let cross_min_w = constraints.min_width.map_or(
-        taffy::LengthPercentageAuto::auto(),
-        taffy::LengthPercentageAuto::length,
-    );
-    let cross_max_w = constraints.max_width.map_or(
-        taffy::LengthPercentageAuto::auto(),
-        taffy::LengthPercentageAuto::length,
-    );
-    let cross_min_h = constraints.min_height.map_or(
-        taffy::LengthPercentageAuto::auto(),
-        taffy::LengthPercentageAuto::length,
-    );
-    let cross_max_h = constraints.max_height.map_or(
-        taffy::LengthPercentageAuto::auto(),
-        taffy::LengthPercentageAuto::length,
-    );
+    let cross_min_w = length_or_auto(constraints.min_width);
+    let cross_max_w = length_or_auto(constraints.max_width);
+    let cross_min_h = length_or_auto(constraints.min_height);
+    let cross_max_h = length_or_auto(constraints.max_height);
 
     let (min_size, max_size) = match axis {
         Axis::Row => (

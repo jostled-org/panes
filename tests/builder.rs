@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::{compile, compute_layout};
 use panes::resolver::resolve;
 use panes::{Layout, LayoutBuilder, LayoutTree, Rect, fixed, grow};

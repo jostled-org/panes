@@ -406,7 +406,7 @@ impl Grid {
 
 /// Closure context passed into `grid()` closures for accumulating grid children.
 ///
-/// Supports plain panels, panels with column spans, and nested row/col/grid
+/// Supports plain panels, panels with column and row spans, and nested row/col/grid
 /// containers. Errors are deferred: the first failure is stored and all
 /// subsequent operations become no-ops. The stored error surfaces when the
 /// parent builder method returns.
@@ -430,13 +430,13 @@ impl GridCtx<'_> {
         })
     }
 
-    /// Add a grid item panel with a column span and `grow(1.0)` default constraints.
+    /// Add a grid item panel with a span and `grow(1.0)` default constraints.
     /// Returns its [`PanelId`].
     pub fn panel_span(&mut self, kind: impl Into<Arc<str>>, span: CardSpan) -> PanelId {
         self.panel_with_span(kind, crate::panel::grow(1.0), span)
     }
 
-    /// Add a grid item panel with explicit constraints and a column span.
+    /// Add a grid item panel with explicit constraints and a span.
     /// Returns its [`PanelId`].
     pub fn panel_with_span(
         &mut self,

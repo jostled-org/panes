@@ -24,6 +24,9 @@ pub enum ConstraintError {
     /// Grid span exceeds `u16::MAX`.
     #[error("grid span {0} exceeds u16 max")]
     GridSpanOverflow(usize),
+    /// Grid span is zero on either axis.
+    #[error("grid span must be at least 1")]
+    GridSpanZero,
     /// A proportional value (0.0..=1.0) exceeded 1.0.
     #[error("{0} exceeds 1.0")]
     ExceedsOne(&'static str),
@@ -214,6 +217,9 @@ pub enum MutationError {
     /// `set_card_span` requires a dashboard strategy.
     #[error("set_card_span requires a dashboard strategy")]
     SpanNotSupported,
+    /// `set_card_span` on a tree runtime requires the panel to sit in a grid.
+    #[error("panel {0} is not a grid item")]
+    NotGridItem(PanelId),
     /// Strategy does not support spatial focus — use `focus_next`/`focus_prev`.
     #[error("spatial navigation not supported — use focus_next/focus_prev")]
     SpatialNavUnsupported,

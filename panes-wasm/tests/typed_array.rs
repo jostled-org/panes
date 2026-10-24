@@ -1,7 +1,15 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use panes::{Layout, Overlay};
 use panes_wasm::WasmRuntime;
+
+/// Name of a boundary axis code from the typed-array buffer.
+#[cfg(test)]
+fn axis_name(code: f64) -> &'static str {
+    match code as u32 {
+        0 => "vertical",
+        1 => "horizontal",
+        _ => panic!("unexpected axis code {code}"),
+    }
+}
 
 #[test]
 fn panels_buf_matches_panels_json() {
@@ -192,11 +200,7 @@ fn wasm_fast_paths_remain_authoritative_for_panel_and_boundary_queries() {
         match (json_hit, buf_hit.is_empty()) {
             (Some(json_str), false) => {
                 let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-                let expected_axis = match buf_hit[0] as u32 {
-                    0 => "vertical",
-                    1 => "horizontal",
-                    _ => panic!("unexpected axis code"),
-                };
+                let expected_axis = axis_name(buf_hit[0]);
                 assert_eq!(
                     json["axis"].as_str().unwrap(),
                     expected_axis,
@@ -281,11 +285,7 @@ fn wasm_json_helpers_remain_consistent_with_fast_path_outputs() {
     match (json_hit, buf_hit.is_empty()) {
         (Some(json_str), false) => {
             let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-            let expected_axis = match buf_hit[0] as u32 {
-                0 => "vertical",
-                1 => "horizontal",
-                _ => panic!("unexpected axis code"),
-            };
+            let expected_axis = axis_name(buf_hit[0]);
             assert_eq!(json["axis"].as_str().unwrap(), expected_axis);
             let sides = json["sides"].as_array().unwrap();
             assert_eq!(sides[0].as_u64().unwrap() as f64, buf_hit[1]);

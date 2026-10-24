@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::resolver::BoundaryAxis;
 use panes::runtime::LayoutRuntime;
 use panes::{Layout, Overlay};

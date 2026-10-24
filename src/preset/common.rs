@@ -184,44 +184,55 @@ pub(crate) fn validate_grid_columns(columns: GridColumnMode) -> Result<(), PaneE
     }
 }
 
-/// Validate that a grid span fits in a u16 (taffy grid placement limit).
+/// Validate that both axes of a grid span are non-zero and fit in a u16
+/// (taffy grid placement limit).
 pub(crate) fn validate_grid_span(span: crate::strategy::CardSpan) -> Result<(), PaneError> {
-    match span {
-        crate::strategy::CardSpan::Columns(n) => {
-            u16::try_from(n).map_err(|_| {
-                PaneError::InvalidConstraint(crate::error::ConstraintError::GridSpanOverflow(n))
-            })?;
-            Ok(())
-        }
-        crate::strategy::CardSpan::FullWidth => Ok(()),
+    match span.columns {
+        crate::strategy::ColumnSpan::Count(n) => validate_span_count(n)?,
+        crate::strategy::ColumnSpan::FullWidth => {}
+    }
+    validate_span_count(span.rows)
+}
+
+fn validate_span_count(n: usize) -> Result<(), PaneError> {
+    use crate::error::ConstraintError;
+    match n {
+        0 => Err(PaneError::InvalidConstraint(ConstraintError::GridSpanZero)),
+        _ => u16::try_from(n)
+            .map(|_| ())
+            .map_err(|_| PaneError::InvalidConstraint(ConstraintError::GridSpanOverflow(n))),
     }
 }
 
-/// Build a taffy style for a grid item with column span placement.
+/// Build a taffy style for a grid item with column and row span placement.
 ///
 /// Callers must validate the span via `validate_grid_span` before calling.
 /// The builder validates at construction; the compiler processes pre-validated nodes.
 pub(crate) fn grid_item_style(span: crate::strategy::CardSpan) -> taffy::Style {
-    use crate::strategy::CardSpan;
+    use crate::strategy::ColumnSpan;
     use taffy::prelude::TaffyGridLine;
 
-    let grid_column = match span {
-        CardSpan::FullWidth => taffy::Line {
+    let grid_column = match span.columns {
+        ColumnSpan::FullWidth => taffy::Line {
             start: taffy::GridPlacement::from_line_index(1),
             end: taffy::GridPlacement::from_line_index(-1),
         },
-        CardSpan::Columns(n) => {
-            // Builder validated this fits in u16 at construction time.
-            let span_u16 = n as u16;
-            taffy::Line {
-                start: taffy::GridPlacement::Auto,
-                end: taffy::GridPlacement::Span(span_u16),
-            }
-        }
+        ColumnSpan::Count(n) => span_line(n),
     };
     taffy::Style {
         grid_column,
+        grid_row: span_line(span.rows),
         ..Default::default()
+    }
+}
+
+/// Auto-placed line spanning `n` tracks.
+fn span_line(n: usize) -> taffy::Line<taffy::GridPlacement> {
+    // Builder validated this fits in u16 at construction time.
+    let span_u16 = n as u16;
+    taffy::Line {
+        start: taffy::GridPlacement::Auto,
+        end: taffy::GridPlacement::Span(span_u16),
     }
 }
 

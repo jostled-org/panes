@@ -69,12 +69,13 @@ let layout = layout! {
 ```
 
 ```rust
-// Grid — responsive card layout with column spans
+// Grid — responsive card layout with column and row spans
 let layout = layout! {
     grid(auto_fit: 200.0, gap: 12.0) {
         panel("metric-a")
         panel("metric-b")
         panel("detail", span: 2)
+        panel("chart", rows: 2)
         panel("banner", full_width: true)
     }
 }?;

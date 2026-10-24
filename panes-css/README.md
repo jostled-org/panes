@@ -37,6 +37,19 @@ Output:
 
 Panels use `[data-pane="kind"]` selectors. Containers use `[data-pane-node="N"]`. The root uses `[data-pane-root]`. Dashboard layouts emit CSS Grid.
 
+## Matching markup
+
+`skeleton()` lists the elements that `emit()` styles, in document order. Each entry has its selector, tree node, and parent index. Build your markup from it, and the container numbers match by construction:
+
+```rust
+for element in panes_css::skeleton(&layout).iter() {
+    let (name, value) = element.selector.attribute(); // e.g. ("data-pane-node", "3")
+    // render an element with name="value" under the element at element.parent
+}
+```
+
+`emit()` and `skeleton()` accept a `Layout` or a `LayoutTree`, so `panes_css::emit(runtime.tree())` works for runtimes too.
+
 ## License
 
 MIT or Apache 2.0, at your option. See [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-APACHE](../LICENSE-APACHE).

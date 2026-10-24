@@ -1,9 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
 use panes::{Axis, SlotDef, StrategyKind, fixed, grow};
 
+#[cfg(test)]
 fn sidebar_runtime() -> LayoutRuntime {
     let slots: Arc<[SlotDef]> = vec![
         SlotDef {

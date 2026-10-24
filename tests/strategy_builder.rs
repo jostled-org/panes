@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -8,6 +7,7 @@ use panes::{Axis, GridColumnMode, PaneError, Strategy, StrategyKind, TreeError};
 // Factory → with_panels → into_runtime → resolve
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn assert_all_panels_resolve(name: &str, mut rt: LayoutRuntime, w: f32, h: f32, kinds: &[&str]) {
     let frame = rt.resolve(w, h).unwrap();
     for kind in kinds {

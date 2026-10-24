@@ -232,7 +232,7 @@ The same layout works at any resolution — pass `800.0, 600.0` and the fixed pa
 
 ### Grid layouts
 
-`Grid` is a first-class container alongside `row` and `col`. It uses CSS Grid semantics: fixed or responsive columns, gap, auto rows, and column spans.
+`Grid` is a first-class container alongside `row` and `col`. It uses CSS Grid semantics: fixed or responsive columns, gap, auto rows, and column and row spans.
 
 ```rust
 use panes::{Layout, Grid, CardSpan};
@@ -242,8 +242,9 @@ let layout = Layout::build_grid(Grid::columns(3).gap(8.0), |g| {
     g.panel("a");
     g.panel("b");
     g.panel("c");
-    g.panel_span("wide", CardSpan::FullWidth);   // spans all columns
-    g.panel_span("double", CardSpan::Columns(2)); // spans 2 columns
+    g.panel_span("wide", CardSpan::full_width());              // spans all columns
+    g.panel_span("double", CardSpan::columns(2));              // spans 2 columns
+    g.panel_span("tall", CardSpan::columns(1).with_rows(2));   // spans 2 rows
 })?;
 
 // Responsive columns: auto-fit with 200px minimum
@@ -264,11 +265,14 @@ let layout = panes::layout! {
             panel("metric-a")
             panel("metric-b")
             panel("detail", span: 2)
+            panel("chart", rows: 2)
             panel("actions", full_width: true)
         }
     }
 }?;
 ```
+
+Grid panels take `span: N`, `full_width: true`, `rows: N`, or a column form followed by rows: `panel("chart", span: 2, rows: 2)` or `panel("banner", full_width: true, rows: 2)`.
 
 Grid layouts round-trip through snapshots like rows and columns. The `SnapshotNode::Grid` variant preserves column mode, gap, auto-rows, and per-item spans.
 
@@ -504,7 +508,7 @@ Layout::holy_grail("header", "footer", "left", "main", "right")
 
 #### dashboard
 
-CSS Grid with per-card column spans, responsive reflow, and full-width cards.
+CSS Grid with per-card column and row spans, responsive reflow, and full-width cards.
 
 ```rust
 use panes::CardSpan;
@@ -517,10 +521,16 @@ Layout::dashboard([("metrics", 2), ("chart", 2), ("log", 1), ("alerts", 1)])
 
 // Full-width card spanning all columns (grid-column: 1 / -1)
 Layout::dashboard([
-    ("sidebar", CardSpan::Columns(1)),
-    ("content", CardSpan::FullWidth),
+    ("sidebar", CardSpan::columns(1)),
+    ("content", CardSpan::full_width()),
 ])
     .auto_fill(200.0)
+    .resolve(800.0, 600.0)?;
+
+// (columns, rows): chart fills column 1 across two rows,
+// stats and events stack in column 2 (grid-row: span 2)
+Layout::dashboard([("chart", (1, 2)), ("stats", (1, 1)), ("events", (1, 1))])
+    .columns(2)
     .resolve(800.0, 600.0)?;
 ```
 
@@ -539,7 +549,7 @@ Layout::scrollable(["project-a", "project-b", "project-c"])
 
 Presets fall into two families based on their CSS layout model.
 
-**Grid-based** (`dashboard`) uses CSS Grid under the hood. It supports responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`, per-card column spans, and full-width cards. Panels are placed in a flat grid and wrap to new rows as viewport width changes.
+**Grid-based** (`dashboard`) uses CSS Grid under the hood. It supports responsive column reflow via `.auto_fill(min_width)` and `.auto_fit(min_width)`, per-card column and row spans, and full-width cards. Panels are placed in a flat grid and wrap to new rows as viewport width changes.
 
 ```rust
 use panes::CardSpan;
@@ -554,7 +564,7 @@ Layout::dashboard([("a", 1), ("b", 1), ("c", 1)])
     .build()?;
 
 // Full-width card spanning all columns
-Layout::dashboard([("header", CardSpan::FullWidth), ("main", CardSpan::Columns(1))])
+Layout::dashboard([("header", CardSpan::full_width()), ("main", CardSpan::columns(1))])
     .auto_fit(200.0)
     .build()?;
 ```
@@ -650,6 +660,10 @@ span = 1
 [[layout.panels]]
 kind = "banner"
 span = "full-width"   # spans all columns (grid-column: 1 / -1)
+
+[[layout.panels]]
+kind = "events"
+rows = 2              # spans two rows (grid-row: span 2); default 1
 ```
 
 Dashboard also supports `min_column_width` and `column_mode`:
@@ -840,6 +854,13 @@ tree.set_constraints(pid, fixed(30.0))?;
 ```rust
 rt.resize_boundary(pid, 0.1)?;   // give 10% more space
 rt.resize_boundary(pid, -0.05)?; // give 5% less
+```
+
+**Grid card spans:** Changes a grid card's column and row span. Works in both modes. A dashboard strategy rebuilds its grid. A direct tree changes the span in place, so focus and scroll state stay. In direct mode the panel must sit in a grid, or the call returns `MutationError::NotGridItem`.
+
+```rust
+rt.set_card_span(pid, CardSpan::columns(2).with_rows(2))?;
+let css = panes_css::emit(rt.tree()); // reflects the new span
 ```
 
 Use `from_tree_and_sequence` when you need focus navigation ordering:
@@ -1173,9 +1194,24 @@ Include overlay positioning rules by passing `OverlayDef` slices:
 let css: String = panes_css::emit_with_overlays(&layout, rt.overlays());
 ```
 
-Transpiles the layout tree into CSS flexbox/grid declarations. The browser acts as the solver — Taffy is not invoked. Panels use `[data-pane="kind"]` selectors, containers use `[data-pane-node="N"]`, and the root uses `[data-pane-root]`. Overlays use `[data-pane-overlay="kind"]` with absolute positioning relative to the root.
+Transpiles the layout tree into CSS flexbox/grid declarations. The browser acts as the solver — Taffy is not invoked. Panels use `[data-pane="kind"]` selectors, containers use `[data-pane-node="N"]`, and the root uses `[data-pane-root]`. Overlays use `[data-pane-overlay="kind"]` with absolute positioning relative to the root. Every `emit*` function except `emit_adaptive` accepts a `Layout` or a `LayoutTree`, so `panes_css::emit(rt.tree())` emits a runtime's current tree.
 
-Grid-based presets (`dashboard`) emit `display: grid` with `grid-template-columns`. `CardSpan::FullWidth` emits `grid-column: 1 / -1`. When using `auto_fill` or `auto_fit`, the output uses `repeat(auto-fill, minmax(...))` or `repeat(auto-fit, minmax(...))` for responsive reflow. Flexbox-based presets emit `display: flex` with `flex-direction`.
+The page's markup must match the selectors. `panes_css::skeleton(&layout)` lists the elements that `emit` styles, in document order. Each entry has its `selector`, its tree `node`, and the index of its `parent` entry. `selector.attribute()` gives the attribute to put on the element. Render one element per entry, nest it under its parent, and the CSS matches by construction. You do not have to repeat the numbering yourself:
+
+```rust
+use panes_css::PaneSelector;
+
+for element in panes_css::skeleton(&layout).iter() {
+    let (name, value) = element.selector.attribute();
+    match element.selector {
+        PaneSelector::Panel { id, kind } => { /* panel content for `id` */ }
+        PaneSelector::Root | PaneSelector::Node(_) => { /* container */ }
+    }
+    // open an element with `name="value"` inside the element at `element.parent`
+}
+```
+
+Grid-based presets (`dashboard`) emit `display: grid` with `grid-template-columns`. `CardSpan::full_width()` emits `grid-column: 1 / -1`. A row span above 1 emits `grid-row: span N`. When using `auto_fill` or `auto_fit`, the output uses `repeat(auto-fill, minmax(...))` or `repeat(auto-fit, minmax(...))` for responsive reflow. Flexbox-based presets emit `display: flex` with `flex-direction`.
 
 ### panes-wasm
 
@@ -1203,7 +1239,7 @@ Enable the `serde` feature to derive `Serialize` and `Deserialize` on core types
 cargo add panes --features serde
 ```
 
-Types with serde derives: `Rect`, `PanelId`, `NodeId`, `PanelKey`, `Constraints`, `Axis`, `ActivePanelVariant`, `DecorationRole`, `AnchorFailure`, `GridColumnMode`, `CardSpan`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotGridItem`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).
+Types with serde derives: `Rect`, `PanelId`, `NodeId`, `PanelKey`, `Constraints`, `Axis`, `ActivePanelVariant`, `DecorationRole`, `AnchorFailure`, `GridColumnMode`, `CardSpan`, `ColumnSpan`, all snapshot types (`LayoutSnapshot`, `SnapshotSource`, `StrategyConfig`, `SnapshotNode`, `SnapshotGridItem`, `SnapshotSlotDef`, `SnapshotOverlay`), and overlay types (`OverlayAnchor`, `OverlayExtent`, `ExtentValue`, `HAlign`, `VAlign`).
 
 This lets resolved layouts flow directly into JSON responses, IPC messages, or config files without manual conversion:
 
@@ -1247,7 +1283,7 @@ let mut rt = LayoutRuntime::from_snapshot(snapshot)?;
 
 **Strategy runtimes** snapshot the recipe — strategy config + panel kinds in sequence order. On restore, the tree is rebuilt through the preset builder, so decorative panels (tabs, titles) are recreated automatically.
 
-**Non-strategy runtimes** snapshot the tree topology — a recursive structure of rows, columns, grids, and panels with their constraints. Grid nodes preserve their column mode, gap, auto-rows flag, and per-item column spans. On restore, the tree is rebuilt via the layout builder.
+**Non-strategy runtimes** snapshot the tree topology — a recursive structure of rows, columns, grids, and panels with their constraints. Grid nodes preserve their column mode, gap, auto-rows flag, and per-item column and row spans. On restore, the tree is rebuilt via the layout builder.
 
 Both variants also persist:
 - **Focused panel** (by kind and `PanelKey` sequence index — IDs are regenerated on rebuild, `PanelKey` provides deterministic restore when multiple panels share a kind)
@@ -1276,7 +1312,7 @@ let bytes = bincode::serialize(&snapshot)?;
 
 ## Escape Hatch: Raw Taffy
 
-> **Note:** For CSS Grid layouts, prefer the first-class `Grid` builder or `grid(...)` macro syntax — they support fixed columns, `auto-fill`, `auto-fit`, column spans, and round-trip through snapshots. Use `taffy_node` only when you need Taffy properties that panes doesn't expose.
+> **Note:** For CSS Grid layouts, prefer the first-class `Grid` builder or `grid(...)` macro syntax — they support fixed columns, `auto-fill`, `auto-fit`, column and row spans, and round-trip through snapshots. Use `taffy_node` only when you need Taffy properties that panes doesn't expose.
 
 When panes' spatial vocabulary doesn't cover your use case, drop down to raw Taffy styles via `taffy_node`:
 

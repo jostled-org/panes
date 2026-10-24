@@ -74,9 +74,9 @@ pub enum Node {
         /// Ordered child node ids.
         children: Vec<NodeId>,
     },
-    /// Wrapper for a grid item that carries a column span.
+    /// Wrapper for a grid item that carries a column and row span.
     GridItemWrapper {
-        /// Column span for this grid item.
+        /// Column and row span for this grid item.
         span: CardSpan,
         /// The single child node (typically a Panel).
         child: NodeId,

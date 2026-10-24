@@ -1,10 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
 use panes::{AnchorFailure, Axis, Layout, LayoutBuilder, Overlay, StrategyKind};
 use rustc_hash::FxHashMap;
 
+#[cfg(test)]
 fn to_egui(layout: &Layout, w: f32, h: f32) -> FxHashMap<panes::PanelId, egui::Rect> {
     let resolved = layout.resolve(w, h).unwrap();
     panes_egui::convert(&resolved)
@@ -165,6 +165,7 @@ fn overlays_at_offsets_rects() {
 // EguiFrame tests
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn master_stack_runtime(kinds: &[&str]) -> LayoutRuntime {
     let kind_arcs: Vec<Arc<str>> = kinds.iter().map(|&k| Arc::from(k)).collect();
     LayoutRuntime::from_strategy(

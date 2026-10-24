@@ -144,39 +144,56 @@ fn adjust_fixed(
         .ok_or(PaneError::NodeNotFound(target_nid))?;
 
     match &siblings[target_idx].kind {
-        SiblingKind::FixedPanel { pid, constraints } => {
-            let new_fixed = clamp_fixed(constraints.fixed.unwrap_or(0.0) + delta, constraints);
-            let updated = Constraints {
-                fixed: Some(new_fixed),
-                grow: None,
-                min: constraints.min,
-                max: constraints.max,
-                ..*constraints
-            };
-            tree.set_constraints(*pid, updated)
-        }
+        SiblingKind::FixedPanel {
+            pid,
+            constraints,
+            fixed,
+        } => set_fixed_size(tree, *pid, constraints, fixed + delta),
         SiblingKind::Panel { .. } | SiblingKind::Container => {
             let (_, neighbor) = find_nearest_fixed(target_idx, siblings)?;
-            let SiblingKind::FixedPanel { pid, constraints } = &neighbor.kind else {
+            let SiblingKind::FixedPanel {
+                pid,
+                constraints,
+                fixed,
+            } = &neighbor.kind
+            else {
                 return Err(PaneError::InvalidMutation(MutationError::SiblingsNotGrow));
             };
-            let new_fixed = clamp_fixed(constraints.fixed.unwrap_or(0.0) - delta, constraints);
-            let updated = Constraints {
-                fixed: Some(new_fixed),
-                grow: None,
-                min: constraints.min,
-                max: constraints.max,
-                ..*constraints
-            };
-            tree.set_constraints(*pid, updated)
+            set_fixed_size(tree, *pid, constraints, fixed - delta)
         }
     }
 }
 
+/// Give a fixed panel a new size, clamped to its bounds.
+fn set_fixed_size(
+    tree: &mut LayoutTree,
+    pid: PanelId,
+    constraints: &Constraints,
+    size: f32,
+) -> Result<(), PaneError> {
+    let updated = Constraints {
+        fixed: Some(clamp_fixed(size, constraints)),
+        grow: None,
+        ..*constraints
+    };
+    tree.set_constraints(pid, updated)
+}
+
+/// Smallest size a fixed panel may shrink to.
+const MIN_FIXED_SIZE: f32 = 1.0;
+
 fn clamp_fixed(value: f32, constraints: &Constraints) -> f32 {
-    let floor = constraints.min.unwrap_or(1.0).max(1.0);
-    let ceiling = constraints.max.unwrap_or(f32::MAX);
-    value.clamp(floor, ceiling)
+    let floor = match constraints.min {
+        Some(min) => min.max(MIN_FIXED_SIZE),
+        None => MIN_FIXED_SIZE,
+    };
+    let floored = value.max(floor);
+    // The ceiling applies last, so a `max` below the floor wins instead of
+    // panicking the way `clamp` does when its bounds cross.
+    match constraints.max {
+        Some(max) => floored.min(max),
+        None => floored,
+    }
 }
 
 fn find_nearest_fixed(
@@ -232,6 +249,8 @@ enum SiblingKind {
     FixedPanel {
         pid: PanelId,
         constraints: Constraints,
+        /// The panel's fixed size, read from `constraints.fixed`.
+        fixed: f32,
     },
     Container,
 }
@@ -264,7 +283,14 @@ fn panel_sibling(nid: NodeId, pid: PanelId, constraints: Constraints) -> Sibling
     let (grow, kind) = match (constraints.grow, constraints.fixed) {
         (Some(g), _) => (g, SiblingKind::Panel { pid, constraints }),
         (None, None) => (1.0, SiblingKind::Panel { pid, constraints }),
-        (None, Some(_)) => (0.0, SiblingKind::FixedPanel { pid, constraints }),
+        (None, Some(fixed)) => (
+            0.0,
+            SiblingKind::FixedPanel {
+                pid,
+                constraints,
+                fixed,
+            },
+        ),
     };
     SiblingInfo { nid, grow, kind }
 }

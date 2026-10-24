@@ -27,7 +27,7 @@ pub(crate) const PRESETS: [PresetInfo; 13] = [
     PresetInfo {
         name: "dashboard",
         input: PanelInputKind::DynamicList,
-        description: "CSS Grid with per-card column spans, responsive reflow, and full-width cards",
+        description: "CSS Grid with per-card column and row spans, responsive reflow, and full-width cards",
     },
     PresetInfo {
         name: "deck",

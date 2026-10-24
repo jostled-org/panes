@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::Layout;
 
 #[test]
@@ -84,6 +83,6 @@ fn panels_kind_index_increments_per_group() {
     }
 
     // Distinct kinds get distinct indices
-    let indices: std::collections::HashSet<usize> = entries.iter().map(|e| e.kind_index).collect();
+    let indices: std::collections::BTreeSet<usize> = entries.iter().map(|e| e.kind_index).collect();
     assert_eq!(indices.len(), 2);
 }

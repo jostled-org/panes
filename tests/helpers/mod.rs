@@ -1,5 +1,6 @@
 use panes::{Constraints, LayoutTree, PanelId};
 
+#[cfg(test)]
 pub fn build_row_tree(count: usize, constraint: Constraints) -> (LayoutTree, Vec<PanelId>) {
     let mut tree = LayoutTree::new();
     let mut pids = Vec::new();

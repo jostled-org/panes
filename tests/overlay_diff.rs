@@ -1,8 +1,7 @@
-#![allow(clippy::unwrap_used)]
-
 use panes::runtime::LayoutRuntime;
 use panes::{Layout, Overlay};
 
+#[cfg(test)]
 fn make_runtime() -> LayoutRuntime {
     Layout::master_stack(["editor", "chat", "status"])
         .master_ratio(0.6)

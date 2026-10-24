@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use panes::PanelInputKind;
 use panes_wasm::WasmRuntime;
 
@@ -192,6 +190,16 @@ fn wasm_rejects_invalid_scroll_inputs() {
     assert_eq!(delta_err, "delta is out of range for f32");
 }
 
+/// Panel kinds for each fixed-slot preset, in slot order.
+#[cfg(test)]
+fn fixed_slot_kinds(preset: &str) -> &'static [&'static str] {
+    match preset {
+        "sidebar" | "split" => &["left", "right"],
+        "holy-grail" => &["header", "footer", "left", "main", "right"],
+        other => panic!("unhandled FixedSlots preset: {other}"),
+    }
+}
+
 #[test]
 fn wasm_from_preset_uses_shared_core_catalog_names() {
     let catalog = WasmRuntime::available_presets();
@@ -199,42 +207,37 @@ fn wasm_from_preset_uses_shared_core_catalog_names() {
 
     // All DynamicList presets should work with a panel list
     let dynamic_kinds = &["a", "b", "c"];
-    for info in catalog
+    for preset in catalog
         .iter()
         .filter(|p| p.input == PanelInputKind::DynamicList)
     {
-        let result = WasmRuntime::from_preset(info.name, dynamic_kinds);
+        let built = WasmRuntime::from_preset(preset.name, dynamic_kinds);
         assert!(
-            result.is_ok(),
+            built.is_ok(),
             "DynamicList preset '{}' should construct successfully, got: {:?}",
-            info.name,
-            result.err()
+            preset.name,
+            built.err()
         );
     }
 
     // FixedSlots presets should work with the correct panel count
-    for info in catalog
+    for preset in catalog
         .iter()
         .filter(|p| p.input == PanelInputKind::FixedSlots)
     {
-        let slots: &[&str] = match info.name {
-            "sidebar" | "split" => &["left", "right"],
-            "holy-grail" => &["header", "footer", "left", "main", "right"],
-            other => panic!("unexpected FixedSlots preset: {other}"),
-        };
-        let result = WasmRuntime::from_preset(info.name, slots);
+        let built = WasmRuntime::from_preset(preset.name, fixed_slot_kinds(preset.name));
         assert!(
-            result.is_ok(),
+            built.is_ok(),
             "FixedSlots preset '{}' should construct successfully, got: {:?}",
-            info.name,
-            result.err()
+            preset.name,
+            built.err()
         );
     }
 
     // Unknown names must be rejected
-    let result = WasmRuntime::from_preset("nonexistent-preset", &["a"]);
-    assert!(result.is_err(), "unknown preset must be rejected");
-    let err = result.err().unwrap();
+    let unknown = WasmRuntime::from_preset("nonexistent-preset", &["a"]);
+    assert!(unknown.is_err(), "unknown preset must be rejected");
+    let err = unknown.err().unwrap();
     assert!(
         err.contains("unknown preset"),
         "expected unknown preset error, got: {err}"
@@ -250,11 +253,7 @@ fn wasm_runtime_uses_shared_preset_catalog_without_convenience_path_drift() {
     for info in catalog {
         let slots: &[&str] = match info.input {
             PanelInputKind::DynamicList => &["x", "y", "z"],
-            PanelInputKind::FixedSlots => match info.name {
-                "sidebar" | "split" => &["left", "right"],
-                "holy-grail" => &["header", "footer", "left", "main", "right"],
-                other => panic!("unhandled FixedSlots preset: {other}"),
-            },
+            PanelInputKind::FixedSlots => fixed_slot_kinds(info.name),
         };
 
         let mut rt = WasmRuntime::from_preset(info.name, slots)

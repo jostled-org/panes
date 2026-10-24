@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{CardSpan, Grid, Layout};
 
 #[test]
@@ -106,8 +105,8 @@ fn grid_macro_inside_row_matches_builder() {
             r.grid(Grid::auto_fit(200.0).gap(12.0).auto_rows(), |g| {
                 g.panel("metric-a");
                 g.panel("metric-b");
-                g.panel_span("detail", CardSpan::Columns(2));
-                g.panel_span("actions", CardSpan::FullWidth);
+                g.panel_span("detail", CardSpan::columns(2));
+                g.panel_span("actions", CardSpan::full_width());
             });
         })
         .unwrap();

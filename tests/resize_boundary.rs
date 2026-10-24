@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod helpers;
 
 use std::sync::Arc;
@@ -469,6 +468,25 @@ fn fixed_clamp_floor() {
 }
 
 #[test]
+fn fixed_max_below_floor_wins_without_panic() {
+    let mut tree = panes::LayoutTree::new();
+    let (p0, n0) = tree.add_panel("a", fixed(0.5).max(0.5)).unwrap();
+    let (_, n1) = tree.add_panel("b", grow(1.0)).unwrap();
+    let root = tree.add_row(0.0, vec![n0, n1]).unwrap();
+    tree.set_root(root);
+    let mut rt = LayoutRuntime::new(tree);
+
+    rt.resize_boundary(p0, 10.0).unwrap();
+
+    let c0 = rt.tree().panel_constraints(p0).unwrap();
+    assert!(
+        (c0.fixed.unwrap() - 0.5).abs() < 0.01,
+        "expected max 0.5 to cap the size, got {}",
+        c0.fixed.unwrap()
+    );
+}
+
+#[test]
 fn fixed_preserves_min_max() {
     let mut tree = panes::LayoutTree::new();
     let (p0, n0) = tree
@@ -749,7 +767,7 @@ fn stacked_resize_adjusts_nearest_title() {
 #[test]
 fn dashboard_resize_boundary_error() {
     let kinds: Vec<Arc<str>> = (0..4).map(|i| Arc::from(format!("p{i}"))).collect();
-    let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); 4].into();
+    let spans: Arc<[CardSpan]> = vec![CardSpan::columns(1); 4].into();
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
             columns: GridColumnMode::Fixed(2),

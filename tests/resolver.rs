@@ -1,8 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::compiler::{compile, compute_layout};
 use panes::resolver::resolve;
 use panes::{Layout, LayoutTree, PanelId, Rect, fixed, grow};
 
+#[cfg(test)]
 fn compile_and_resolve(tree: &LayoutTree, w: f32, h: f32) -> panes::resolver::ResolvedLayout {
     let mut result = compile(tree).unwrap();
     compute_layout(&mut result, w, h).unwrap();
@@ -236,6 +236,7 @@ fn iter_and_panel_ids_yield_all_entries() {
 
 // -- lerp --
 
+#[cfg(test)]
 fn two_panel_layouts() -> (
     panes::resolver::ResolvedLayout,
     panes::resolver::ResolvedLayout,

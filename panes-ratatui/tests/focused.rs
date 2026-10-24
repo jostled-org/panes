@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use panes::{Layout, LayoutBuilder};
 
 #[test]
@@ -172,6 +170,7 @@ fn decoration_kind_index_matches_content_kind_group() {
 // 3.T2: Focus helpers remain correct under shared frame shell
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn tabbed_runtime(kinds: &[&str]) -> panes::runtime::LayoutRuntime {
     let kind_arcs: Vec<std::sync::Arc<str>> =
         kinds.iter().map(|&k| std::sync::Arc::from(k)).collect();

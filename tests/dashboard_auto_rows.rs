@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -11,7 +10,7 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
 #[test]
 fn dashboard_auto_rows_sizes_to_content() {
     let k = kinds(4);
-    let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); 4].into();
+    let spans: Arc<[CardSpan]> = vec![CardSpan::columns(1); 4].into();
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
             columns: GridColumnMode::Fixed(2),
@@ -50,7 +49,7 @@ fn dashboard_auto_rows_sizes_to_content() {
 #[test]
 fn dashboard_default_rows_are_equal() {
     let k = kinds(4);
-    let spans: Arc<[CardSpan]> = vec![CardSpan::Columns(1); 4].into();
+    let spans: Arc<[CardSpan]> = vec![CardSpan::columns(1); 4].into();
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::Dashboard {
             columns: GridColumnMode::Fixed(2),

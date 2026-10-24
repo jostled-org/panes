@@ -193,8 +193,8 @@ pub struct SnapshotSlotDef {
 
 /// A grid item inside a [`SnapshotNode::Grid`] container.
 ///
-/// Wraps a child node with an optional column span. Items without a span
-/// use the default single-column placement.
+/// Wraps a child node with an optional column and row span. Items without
+/// a span use the default single-cell placement.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SnapshotGridItem {

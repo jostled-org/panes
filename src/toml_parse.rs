@@ -97,6 +97,15 @@ struct CardDef {
     kind: Box<str>,
     #[serde(default = "default_span")]
     span: SpanValue,
+    #[serde(default = "default_rows")]
+    rows: usize,
+}
+
+impl CardDef {
+    fn to_card_span(&self) -> Result<crate::strategy::CardSpan, TomlError> {
+        let columns = self.span.to_column_span()?;
+        Ok(crate::strategy::CardSpan::from(columns).with_rows(self.rows))
+    }
 }
 
 #[derive(Deserialize)]
@@ -107,11 +116,11 @@ enum SpanValue {
 }
 
 impl SpanValue {
-    fn to_card_span(&self) -> Result<crate::strategy::CardSpan, TomlError> {
+    fn to_column_span(&self) -> Result<crate::strategy::ColumnSpan, TomlError> {
         match self {
-            Self::Number(n) => Ok(crate::strategy::CardSpan::Columns(*n)),
+            Self::Number(n) => Ok(crate::strategy::ColumnSpan::Count(*n)),
             Self::String(s) if s.as_ref() == "full-width" => {
-                Ok(crate::strategy::CardSpan::FullWidth)
+                Ok(crate::strategy::ColumnSpan::FullWidth)
             }
             Self::String(s) => Err(TomlError::InvalidValue {
                 field: "span".into(),
@@ -123,6 +132,10 @@ impl SpanValue {
 
 fn default_span() -> SpanValue {
     SpanValue::Number(1)
+}
+
+fn default_rows() -> usize {
+    1
 }
 
 #[derive(Deserialize)]
@@ -140,7 +153,8 @@ struct TreeNodeDef {
     max_height: Option<f32>,
     align: Option<crate::panel::Align>,
     size_mode: Option<crate::panel::SizeMode>,
-    gap: Option<f32>,
+    #[serde(default)]
+    gap: f32,
     #[serde(default)]
     children: Vec<TreeNodeDef>,
 }
@@ -280,11 +294,11 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
     let cards = match &def.panels {
         Some(PanelsList::Cards(cards)) => cards
             .iter()
-            .map(|c| Ok((Arc::from(&*c.kind), c.span.to_card_span()?)))
+            .map(|c| Ok((Arc::from(&*c.kind), c.to_card_span()?)))
             .collect::<Result<Vec<_>, TomlError>>()?,
         Some(PanelsList::Strings(strings)) => strings
             .iter()
-            .map(|s| (Arc::from(&**s), crate::strategy::CardSpan::Columns(1)))
+            .map(|s| (Arc::from(&**s), crate::strategy::CardSpan::default()))
             .collect::<Vec<_>>(),
         None => return Err(TomlError::MissingField("panels".into())),
     };
@@ -332,7 +346,7 @@ fn build_dashboard(def: LayoutDef) -> Result<Layout, TomlError> {
 
 fn build_custom(def: LayoutDef) -> Result<Layout, TomlError> {
     let root = def.root.ok_or(TomlError::MissingField("root".into()))?;
-    let gap_val = root.gap.unwrap_or(0.0);
+    let gap_val = root.gap;
     let children = root.children;
     let mut builder = crate::builder::LayoutBuilder::new();
     match root.node_type.as_deref() {
@@ -397,7 +411,7 @@ fn add_tree_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
 }
 
 fn add_row_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
-    let gap = node.gap.unwrap_or(0.0);
+    let gap = node.gap;
     match container_constraints(&node) {
         Some(constraints) => ctx.row_gap_with(gap, constraints, |inner| {
             add_tree_children(inner, node.children);
@@ -407,7 +421,7 @@ fn add_row_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
 }
 
 fn add_col_node(ctx: &mut crate::ContainerCtx, node: TreeNodeDef) {
-    let gap = node.gap.unwrap_or(0.0);
+    let gap = node.gap;
     match container_constraints(&node) {
         Some(constraints) => ctx.col_gap_with(gap, constraints, |inner| {
             add_tree_children(inner, node.children);

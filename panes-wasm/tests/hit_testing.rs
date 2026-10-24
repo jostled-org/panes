@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use panes_wasm::WasmRuntime;
 
 // --- 4.T1: panel_at_point center ---

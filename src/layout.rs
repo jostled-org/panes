@@ -335,6 +335,12 @@ impl Layout {
     }
 }
 
+impl AsRef<LayoutTree> for Layout {
+    fn as_ref(&self) -> &LayoutTree {
+        &self.tree
+    }
+}
+
 impl From<Layout> for LayoutTree {
     fn from(layout: Layout) -> Self {
         layout.tree

@@ -1,9 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
 use panes::{AnchorFailure, Axis, Layout, Overlay, StrategyKind};
 
+#[cfg(test)]
 fn make_runtime() -> LayoutRuntime {
     Layout::master_stack(["editor", "chat", "status"])
         .master_ratio(0.6)
@@ -436,6 +436,7 @@ fn overlay_id_generator_sequential() {
 }
 
 /// Build a runtime with two panels sharing the kind "editor" and one "sidebar".
+#[cfg(test)]
 fn make_repeated_kind_runtime() -> LayoutRuntime {
     let kinds: Vec<Arc<str>> = ["editor", "editor", "sidebar"]
         .iter()

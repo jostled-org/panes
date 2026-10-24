@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -11,28 +10,30 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
 }
 
-fn row_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn row_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::Sequence {
             axis: Axis::Row,
             gap: 0.0,
             ratio: None,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
 
-fn col_runtime(n: usize) -> LayoutRuntime {
-    let k = kinds(n);
+#[cfg(test)]
+fn col_runtime(panel_count: usize) -> LayoutRuntime {
+    let panel_kinds = kinds(panel_count);
     LayoutRuntime::from_strategy(
         StrategyKind::Sequence {
             axis: Axis::Col,
             gap: 0.0,
             ratio: None,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap()
 }
@@ -284,20 +285,20 @@ fn single_panel() {
 
 #[test]
 fn active_panel_returns_spatial_nav_error() {
-    let k = kinds(3);
+    let panel_kinds = kinds(3);
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::ActivePanel {
             variant: ActivePanelVariant::Monocle,
             bar_height: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap();
     let frame = rt.resolve(100.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let navigation = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert!(matches!(
-        result,
+        navigation,
         Err(PaneError::InvalidMutation(
             panes::MutationError::SpatialNavUnsupported
         ))
@@ -306,20 +307,20 @@ fn active_panel_returns_spatial_nav_error() {
 
 #[test]
 fn window_returns_spatial_nav_error() {
-    let k = kinds(3);
+    let panel_kinds = kinds(3);
     let mut rt = LayoutRuntime::from_strategy(
         StrategyKind::Window {
             panel_count: 2,
             gap: 0.0,
         },
-        &k,
+        &panel_kinds,
     )
     .unwrap();
     let frame = rt.resolve(100.0, 100.0).unwrap();
 
-    let result = rt.focus_direction(frame.layout(), FocusDirection::Right);
+    let navigation = rt.focus_direction(frame.layout(), FocusDirection::Right);
     assert!(matches!(
-        result,
+        navigation,
         Err(PaneError::InvalidMutation(
             panes::MutationError::SpatialNavUnsupported
         ))

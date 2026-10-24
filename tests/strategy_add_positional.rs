@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::runtime::LayoutRuntime;
@@ -8,6 +7,7 @@ fn kinds(n: usize) -> Vec<Arc<str>> {
     (0..n).map(|i| Arc::from(format!("p{i}"))).collect()
 }
 
+#[cfg(test)]
 fn sequence_kinds(rt: &LayoutRuntime) -> Vec<String> {
     (0..rt.sequence().len())
         .map(|i| {
@@ -21,6 +21,7 @@ fn sequence_kinds(rt: &LayoutRuntime) -> Vec<String> {
 // Sequence: positional insertion
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn sequence_runtime(n: usize) -> LayoutRuntime {
     LayoutRuntime::from_strategy(
         StrategyKind::Sequence {
@@ -77,6 +78,7 @@ fn sequence_add_panel_with_after() {
 // MasterStack: positional insertion and rebuild
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn master_stack_runtime(n: usize) -> LayoutRuntime {
     LayoutRuntime::from_strategy(
         StrategyKind::MasterStack {

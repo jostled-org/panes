@@ -192,12 +192,10 @@ impl LayoutTree {
         nodes: &[Option<Node>],
         parent: NodeId,
     ) {
-        let children = nodes
-            .get(parent.raw() as usize)
-            .and_then(|slot| slot.as_ref())
-            .map(|n| n.children())
-            .unwrap_or(&[]);
-        for &child in children {
+        let Some(node) = nodes.get(parent.raw() as usize).and_then(Option::as_ref) else {
+            return;
+        };
+        for &child in node.children() {
             parent_map.insert(child, parent);
         }
     }
@@ -286,7 +284,7 @@ impl LayoutTree {
         Ok(id)
     }
 
-    /// Add a grid item wrapper node with a column span.
+    /// Add a grid item wrapper node with a column and row span.
     pub(crate) fn add_grid_item(
         &mut self,
         span: CardSpan,
@@ -296,6 +294,52 @@ impl LayoutTree {
         self.parent_map.insert(child, id);
         self.dirty = true;
         Ok(id)
+    }
+
+    /// Change the span of a grid item panel.
+    ///
+    /// Updates the panel's `GridItemWrapper`, or wraps the panel in place when
+    /// it is a plain grid child. Validates the span first.
+    pub(crate) fn set_grid_span(&mut self, pid: PanelId, span: CardSpan) -> Result<(), PaneError> {
+        crate::preset::validate_grid_span(span)?;
+        let panel_nid = self.resolve_panel(pid)?;
+        let not_grid_item = || PaneError::InvalidMutation(MutationError::NotGridItem(pid));
+        let parent = self
+            .parent_map
+            .get(&panel_nid)
+            .copied()
+            .ok_or_else(not_grid_item)?;
+        match self
+            .nodes
+            .get_mut(parent.raw() as usize)
+            .and_then(Option::as_mut)
+        {
+            Some(Node::GridItemWrapper { span: current, .. }) => *current = span,
+            Some(Node::Grid { .. }) => self.wrap_grid_child(parent, panel_nid, span)?,
+            _ => return Err(not_grid_item()),
+        }
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Replace a plain grid child with a `GridItemWrapper` holding it.
+    fn wrap_grid_child(
+        &mut self,
+        grid: NodeId,
+        child: NodeId,
+        span: CardSpan,
+    ) -> Result<(), PaneError> {
+        let index = self
+            .children(grid)?
+            .iter()
+            .position(|&c| c == child)
+            .ok_or(PaneError::NodeNotFound(child))?;
+        let wrapper = self.add_grid_item(span, child)?;
+        self.parent_map.insert(wrapper, grid);
+        if let Some(children) = self.children_mut(grid) {
+            children[index] = wrapper;
+        }
+        Ok(())
     }
 
     /// Set the root node of the tree.
@@ -485,15 +529,11 @@ impl LayoutTree {
 
     /// Remove a `PanelId` from the kind index, dropping the entry if empty.
     fn remove_from_kind_index(&mut self, kind: &Arc<str>, pid: PanelId) {
-        let is_empty = self
-            .kind_index
-            .get_mut(kind)
-            .map(|ids| {
-                ids.retain(|&p| p != pid);
-                ids.is_empty()
-            })
-            .unwrap_or(false);
-        if is_empty {
+        let Some(ids) = self.kind_index.get_mut(kind) else {
+            return;
+        };
+        ids.retain(|&p| p != pid);
+        if ids.is_empty() {
             self.kind_index.remove(kind);
         }
     }
@@ -839,6 +879,12 @@ fn validate_kind(kind: &str) -> Result<(), PaneError> {
     match kind.is_empty() {
         true => Err(PaneError::InvalidTree(TreeError::EmptyKind)),
         false => Ok(()),
+    }
+}
+
+impl AsRef<LayoutTree> for LayoutTree {
+    fn as_ref(&self) -> &LayoutTree {
+        self
     }
 }
 

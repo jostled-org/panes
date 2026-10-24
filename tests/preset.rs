@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use panes::{CardSpan, Grid, Layout, PanelInputKind, Rect};
 
 // -- Step 1: master_stack, sidebar, split --
@@ -295,8 +294,8 @@ fn dashboard_auto_fill_with_spans() {
 #[test]
 fn dashboard_full_width_spans_all_columns() {
     let resolved = Layout::dashboard([
-        ("narrow", CardSpan::Columns(1)),
-        ("wide", CardSpan::FullWidth),
+        ("narrow", CardSpan::columns(1)),
+        ("wide", CardSpan::full_width()),
     ])
     .columns(4)
     .resolve(100.0, 100.0)
@@ -309,9 +308,9 @@ fn dashboard_full_width_spans_all_columns() {
 #[test]
 fn dashboard_full_width_with_auto_fill() {
     let resolved = Layout::dashboard([
-        ("sidebar", CardSpan::Columns(1)),
-        ("content", CardSpan::FullWidth),
-        ("footer", CardSpan::Columns(1)),
+        ("sidebar", CardSpan::columns(1)),
+        ("content", CardSpan::full_width()),
+        ("footer", CardSpan::columns(1)),
     ])
     .auto_fill(200.0)
     .resolve(800.0, 600.0)
@@ -1030,10 +1029,10 @@ fn active_panel_presets_preserve_runtime_focus_and_sequence_behavior() {
 fn dashboard_build_matches_shared_grid_primitive_behavior() {
     // Dashboard: 4 fixed columns, gap 8, mixed spans
     let dashboard_resolved = Layout::dashboard([
-        ("a", CardSpan::Columns(1)),
-        ("b", CardSpan::Columns(2)),
-        ("c", CardSpan::Columns(1)),
-        ("d", CardSpan::FullWidth),
+        ("a", CardSpan::columns(1)),
+        ("b", CardSpan::columns(2)),
+        ("c", CardSpan::columns(1)),
+        ("d", CardSpan::full_width()),
     ])
     .columns(4)
     .gap(8.0)
@@ -1044,9 +1043,9 @@ fn dashboard_build_matches_shared_grid_primitive_behavior() {
     // Equivalent generic grid builder
     let grid_layout = Layout::build_grid(Grid::columns(4).gap(8.0).auto_rows(), |g| {
         g.panel("a");
-        g.panel_span("b", CardSpan::Columns(2));
+        g.panel_span("b", CardSpan::columns(2));
         g.panel("c");
-        g.panel_span("d", CardSpan::FullWidth);
+        g.panel_span("d", CardSpan::full_width());
     })
     .unwrap();
     let grid_resolved = grid_layout.resolve(400.0, 300.0).unwrap();

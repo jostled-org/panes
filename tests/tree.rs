@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
 use std::sync::Arc;
 
 use panes::{Constraints, LayoutTree, Node, PaneError, PanelId, Position, TreeError, fixed, grow};
