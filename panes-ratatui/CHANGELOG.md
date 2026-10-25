@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.5.3...panes-ratatui-v0.6.0) - 2026-10-25
+
+### Added
+
+- [**breaking**] add grid row spans, tree card spans, and css skeleton
+
 ## [0.5.3](https://github.com/jostled-org/panes/compare/panes-ratatui-v0.5.2...panes-ratatui-v0.5.3) - 2026-10-23
 
 ### Other

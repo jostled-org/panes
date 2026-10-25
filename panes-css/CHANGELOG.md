@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/jostled-org/panes/compare/panes-css-v0.11.0...panes-css-v0.12.0) - 2026-10-25
+
+### Added
+
+- [**breaking**] add grid row spans, tree card spans, and css skeleton
+
 ## [0.11.0](https://github.com/jostled-org/panes/compare/panes-css-v0.10.0...panes-css-v0.11.0) - 2026-10-23
 
 ### Other

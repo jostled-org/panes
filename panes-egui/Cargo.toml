@@ -1,6 +1,6 @@
 [package]
 name = "panes-egui"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 description = "egui adapter for the panes layout engine"
 license = "MIT OR Apache-2.0"
@@ -10,11 +10,11 @@ keywords = ["layout", "egui", "ui", "gui"]
 categories = ["gui"]
 
 [dependencies]
-panes = { version = "0.22", path = ".." }
+panes = { version = "0.23", path = ".." }
 egui = { version = "0.37", default-features = false }
 
 [dev-dependencies]
-panes = { version = "0.22", path = ".." }
+panes = { version = "0.23", path = ".." }
 rustc-hash = "2"
 criterion = { version = "0.8", features = ["html_reports"] }
 
